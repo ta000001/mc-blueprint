@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>設計図 — Voxel Blueprint</title>
+<meta name="theme-color" content="#10171A">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="設計図">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#10171A; --panel:#172124; --panel2:#1D2A2C; --rule:#2A3B3C;
+  --brass:#D4A93C; --brass-dim:#6E5820; --verdigris:#4F8A7B;
+  --chalk:#DCE5E2; --dim:#7D908C;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--ink)}
+body{
+  color:var(--chalk);font-family:'JetBrains Mono',ui-monospace,monospace;
+  touch-action:manipulation;-webkit-text-size-adjust:100%;
+  padding:max(14px,env(safe-area-inset-top)) 12px calc(28px + env(safe-area-inset-bottom));
+  -webkit-tap-highlight-color:transparent;overscroll-behavior:none;
+}
+.head{display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
+h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
+  font-size:22px;letter-spacing:-.02em;line-height:1;margin:0}
+.sub{font-size:11px;color:var(--dim);letter-spacing:.08em}
+.dims{display:flex;gap:6px;align-items:center;margin-left:auto}
+.dims label{font-size:10px;color:var(--dim)}
+.dims input{width:38px;background:var(--panel);border:1px solid var(--rule);
+  color:var(--chalk);font-family:inherit;font-size:12px;padding:4px;text-align:center;
+  border-radius:3px;outline:none}
+#name{background:transparent;border:none;border-bottom:1px solid var(--rule);
+  color:var(--chalk);font-family:inherit;font-size:12px;padding:3px 2px;width:100%;
+  max-width:190px;outline:none;margin-bottom:12px}
+.tabs{display:flex;gap:2px;background:var(--panel);padding:3px;border-radius:5px;margin-bottom:12px}
+.tabs button{flex:1;padding:8px 4px;background:transparent;border:none;color:var(--dim);
+  font-family:inherit;font-size:12px;border-radius:3px}
+.tabs button[aria-selected="true"]{background:var(--panel2);color:var(--brass)}
+.bar{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.btn{flex:1 1 auto;min-width:76px;padding:10px 8px;background:var(--panel);
+  border:1px solid var(--rule);color:var(--chalk);font-family:inherit;font-size:11px;border-radius:4px}
+.btn:active{background:var(--panel2)}
+.btn[aria-pressed="true"]{border-color:var(--brass);color:var(--brass)}
+.btn[disabled]{opacity:.35}
+#space{position:relative;width:100%;height:56vh;min-height:300px;background:var(--panel);
+  border:1px solid var(--rule);border-radius:4px;overflow:hidden;touch-action:none}
+#space canvas{display:block;width:100%;height:100%}
+.hud{position:absolute;left:10px;top:10px;pointer-events:none;font-size:10px;color:var(--dim);line-height:1.6}
+.hud b{color:var(--brass);font-weight:600}
+.slider{display:flex;align-items:center;gap:8px;margin-top:10px}
+.slider input{flex:1;accent-color:#D4A93C;height:26px}
+.y{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;font-size:22px;line-height:1;color:var(--brass)}
+.stage{display:flex;gap:10px;align-items:stretch}
+#spine{width:44px;flex:none;display:flex;flex-direction:column-reverse;background:var(--panel);
+  border:1px solid var(--rule);border-radius:4px;overflow:hidden;touch-action:none}
+.seg{flex:1;min-height:7px;position:relative;border-top:1px solid #0d1315;display:flex;align-items:center;padding-left:5px}
+.seg span.n{font-size:9px;color:var(--dim);position:relative;z-index:2}
+.seg span.f{position:absolute;inset:0;background:var(--brass)}
+.seg[data-cur="1"]{box-shadow:inset 0 0 0 2px var(--verdigris)}
+#gridwrap{flex:1;min-width:0;overflow:auto;background:var(--panel);border:1px solid var(--rule);
+  border-radius:4px;padding:6px;max-height:52vh;-webkit-overflow-scrolling:touch}
+#grid{display:grid;width:max-content;margin:0 auto;border-left:1px solid var(--rule);border-top:1px solid var(--rule)}
+.cell{border-right:1px solid #22302f;border-bottom:1px solid #22302f;background:#131c1e}
+.cell[data-cx="1"]{border-right-color:var(--rule)}
+.cell[data-cz="1"]{border-bottom-color:var(--rule)}
+.cell[data-below="1"]{background:#1b2320;box-shadow:inset 0 0 0 1px var(--brass-dim)}
+.cell[data-on="1"]{background:var(--brass);box-shadow:inset -2px -2px 0 rgba(0,0,0,.22)}
+.readout{display:flex;align-items:baseline;gap:8px;margin:0 0 8px}
+.readout .c{margin-left:auto;font-size:11px;color:var(--dim)}
+#json{width:100%;height:300px;background:var(--panel);border:1px solid var(--rule);color:var(--chalk);
+  font-family:inherit;font-size:11px;line-height:1.5;padding:10px;border-radius:4px;white-space:pre;outline:none}
+.note{font-size:10px;color:var(--dim);line-height:1.6;margin:8px 0 0}
+#status{font-size:10px;color:var(--verdigris);min-height:14px;margin-top:8px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="head">
+  <h1>設計図</h1><span class="sub">VOXEL / MC</span>
+  <div class="dims">
+    <label>X<input id="dx" type="number" min="1" max="64" value="16"></label>
+    <label>Y<input id="dy" type="number" min="1" max="64" value="16"></label>
+    <label>Z<input id="dz" type="number" min="1" max="64" value="16"></label>
+  </div>
+</div>
+<input id="name" value="blueprint-01" aria-label="設計図の名前">
+
+<div class="tabs">
+  <button id="t-space" aria-selected="true">立体</button>
+  <button id="t-plan" aria-selected="false">平面</button>
+  <button id="t-json" aria-selected="false">JSON</button>
+</div>
+
+<section id="v-space">
+  <div id="space"><div class="hud"><div>1本指 = 移動 / 2本指 = 拡大・回転</div><div>タップ = <b id="hud-mode">置く</b></div></div></div>
+  <div class="slider"><span class="y" id="y3">Y00</span><input id="plane" type="range" min="0" max="15" value="0" aria-label="作業面の高さ"></div>
+  <div class="bar">
+    <button class="btn" id="b-place" aria-pressed="true">置く</button>
+    <button class="btn" id="b-break" aria-pressed="false">壊す</button>
+    <button class="btn" id="b-undo">元に戻す</button>
+    <button class="btn" id="b-clear">すべて消去</button>
+  </div>
+  <div class="bar">
+    <button class="btn" id="b-down">▼ 作業面を下げる</button>
+    <button class="btn" id="b-up">▲ 作業面を上げる</button>
+    <button class="btn" id="b-fit">視点をリセット</button>
+  </div>
+  <p class="note">緑の面が作業面。空いている所をタップするとその高さに乗り、既存ブロックの面をタップすると隣に積まれる。合計 <span id="tot">0</span> ブロック。</p>
+</section>
+
+<section id="v-plan" class="hidden">
+  <div class="readout"><span class="y" id="y2">Y00</span><span class="sub" id="ymax">/ 15</span><span class="c" id="cnt"></span></div>
+  <div class="stage">
+    <div id="spine"></div>
+    <div id="gridwrap"><div id="grid"></div></div>
+  </div>
+  <div class="bar">
+    <button class="btn" id="p-draw" aria-pressed="true">描く</button>
+    <button class="btn" id="p-erase" aria-pressed="false">消す</button>
+    <button class="btn" id="p-pan" aria-pressed="false">✋ 移動</button>
+  </div>
+  <div class="bar">
+    <button class="btn" id="p-down">▼ 下の層</button>
+    <button class="btn" id="p-up">▲ 上の層</button>
+    <button class="btn" id="p-zo">− 縮小</button>
+    <button class="btn" id="p-zi">＋ 拡大</button>
+  </div>
+  <div class="bar">
+    <button class="btn" id="p-copy">下の層を複製</button>
+    <button class="btn" id="p-out">外周を描く</button>
+    <button class="btn" id="p-clr">層を消去</button>
+    <button class="btn" id="p-undo">元に戻す</button>
+  </div>
+  <p class="note">上から見た平面図。横がX、縦がZ。左の帯は各Yのブロック量で、ドラッグすると階層を移動する。</p>
+</section>
+
+<section id="v-json" class="hidden">
+  <div class="bar" style="margin-top:0">
+    <button class="btn" id="j-layers" aria-pressed="true">層グリッド</button>
+    <button class="btn" id="j-voxels" aria-pressed="false">座標リスト</button>
+    <button class="btn" id="j-copy">コピー</button>
+    <button class="btn" id="j-dl">保存</button>
+    <button class="btn" id="j-imp">読み込み</button>
+  </div>
+  <textarea id="json" readonly></textarea>
+  <p class="note" id="j-note"></p>
+  <input id="file" type="file" accept="application/json,.json" class="hidden">
+</section>
+
+<div id="status"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const K=(x,y,z)=>x+','+y+','+z;
+
+const S = {
+  dims:{x:16,y:16,z:16}, vox:new Set(), layer:0, mode:'place', tool:'draw',
+  view:'space', jsonMode:'layers', cell:20, hist:[], manualZoom:false
+};
+
+/* ---------- persistence ---------- */
+function save(){
+  try{ localStorage.setItem('blueprint:current', JSON.stringify({
+    dims:S.dims, name:$('#name').value, voxels:[...S.vox]
+  })); }catch(e){}
+}
+function load(){
+  try{
+    const raw = localStorage.getItem('blueprint:current');
+    if(!raw) return;
+    const d = JSON.parse(raw);
+    if(d.dims) S.dims = d.dims;
+    if(d.name) $('#name').value = d.name;
+    if(Array.isArray(d.voxels)) S.vox = new Set(d.voxels);
+  }catch(e){}
+}
+function status(m){ $('#status').textContent = m; clearTimeout(status._t);
+  status._t = setTimeout(()=>$('#status').textContent='',2600); }
+
+/* ---------- model ---------- */
+function pushHist(){ S.hist.push(new Set(S.vox)); if(S.hist.length>60) S.hist.shift(); }
+function inB(x,y,z){ const d=S.dims; return x>=0&&y>=0&&z>=0&&x<d.x&&y<d.y&&z<d.z; }
+function place(x,y,z){ if(!inB(x,y,z)) return; const k=K(x,y,z); if(S.vox.has(k)) return;
+  pushHist(); S.vox.add(k); changed(); }
+function remove(x,y,z){ const k=K(x,y,z); if(!S.vox.has(k)) return; pushHist(); S.vox.delete(k); changed(); }
+function undo(){ const p=S.hist.pop(); if(p){ S.vox=p; changed(); } }
+
+function changed(){ syncVox(); if(S.view==='plan'){ renderGrid(); renderSpine(); }
+  if(S.view==='json') renderJson(); $('#tot').textContent=S.vox.size; save(); }
+
+function setDims(nd){
+  S.dims = nd;
+  const keep = new Set();
+  S.vox.forEach(k=>{ const [x,y,z]=k.split(',').map(Number);
+    if(x<nd.x&&y<nd.y&&z<nd.z) keep.add(k); });
+  S.vox = keep;
+  S.layer = clamp(S.layer,0,nd.y-1);
+  $('#plane').max = nd.y-1; $('#plane').value = S.layer;
+  $('#ymax').textContent = '/ '+(nd.y-1);
+  buildFloor(); buildPlane(); frameCamera(); changed(); renderGrid(); renderSpine(); setLayer(S.layer);
+}
+
+function setLayer(v){
+  S.layer = clamp(v,0,S.dims.y-1);
+  $('#plane').value = S.layer;
+  const lbl = 'Y'+String(S.layer).padStart(2,'0');
+  $('#y3').textContent = lbl; $('#y2').textContent = lbl;
+  buildPlane(); renderGrid(); renderSpine();
+}
+
+/* ---------- three.js ---------- */
+let renderer,scene,camera,inst,list=[],floorObj,planeObj,geo,mat,target,sph,dirty=true;
+
+function initThree(){
+  const mount = $('#space');
+  renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+  renderer.setClearColor(0x131d1f,1);
+  mount.appendChild(renderer.domElement);
+  scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x131d1f,40,220);
+  camera = new THREE.PerspectiveCamera(48,1,.1,1000);
+  scene.add(new THREE.AmbientLight(0xffffff,.66));
+  const sun=new THREE.DirectionalLight(0xfff0d0,.8); sun.position.set(1,2.2,1.4); scene.add(sun);
+  const rim=new THREE.DirectionalLight(0x6fa79a,.35); rim.position.set(-1.4,.6,-1); scene.add(rim);
+
+  const c=document.createElement('canvas'); c.width=c.height=32; const g=c.getContext('2d');
+  g.fillStyle='#D4A93C'; g.fillRect(0,0,32,32);
+  g.fillStyle='#B58F2C'; g.fillRect(0,0,32,2); g.fillRect(0,0,2,32);
+  g.fillStyle='#8E7124'; g.fillRect(0,30,32,2); g.fillRect(30,0,2,32);
+  g.fillStyle='#C79E36'; g.fillRect(8,11,5,4); g.fillRect(19,21,6,3);
+  const tex=new THREE.CanvasTexture(c); tex.magFilter=THREE.NearestFilter; tex.minFilter=THREE.NearestFilter;
+  mat = new THREE.MeshLambertMaterial({map:tex});
+  geo = new THREE.BoxGeometry(1,1,1);
+  target = new THREE.Vector3();
+  sph = {theta:Math.PI*0.72, phi:Math.PI*0.33, r:30};
+
+  const resize=()=>{ const w=mount.clientWidth,h=mount.clientHeight;
+    renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); dirty=true; };
+  resize(); new ResizeObserver(resize).observe(mount);
+  bindGestures(renderer.domElement);
+  (function loop(){ requestAnimationFrame(loop); if(dirty){ renderer.render(scene,camera); dirty=false; } })();
+}
+
+function updateCam(){
+  const {theta,phi,r}=sph;
+  camera.position.set(
+    target.x + r*Math.sin(phi)*Math.sin(theta),
+    target.y + r*Math.cos(phi),
+    target.z + r*Math.sin(phi)*Math.cos(theta));
+  camera.lookAt(target); dirty=true;
+}
+function frameCamera(){
+  const d=S.dims;
+  target.set(d.x/2, Math.min(d.y,8)/2, d.z/2);
+  sph.theta=Math.PI*0.72; sph.phi=Math.PI*0.33;
+  sph.r = Math.max(d.x,d.y,d.z)*2.1;
+  updateCam();
+}
+function buildFloor(){
+  if(floorObj){ scene.remove(floorObj); floorObj.geometry.dispose(); }
+  const d=S.dims, pos=[];
+  for(let i=0;i<=d.x;i++) pos.push(i,0,0, i,0,d.z);
+  for(let i=0;i<=d.z;i++) pos.push(0,0,i, d.x,0,i);
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  floorObj=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0x2f4a45}));
+  scene.add(floorObj); dirty=true;
+}
+function buildPlane(){
+  if(planeObj){ scene.remove(planeObj); planeObj.geometry.dispose(); }
+  const d=S.dims;
+  planeObj=new THREE.Mesh(new THREE.PlaneGeometry(d.x,d.z),
+    new THREE.MeshBasicMaterial({color:0x4f8a7b,transparent:true,opacity:.13,
+      side:THREE.DoubleSide,depthWrite:false}));
+  planeObj.rotation.x=-Math.PI/2;
+  planeObj.position.set(d.x/2, S.layer+0.02, d.z/2);
+  scene.add(planeObj); dirty=true;
+}
+function syncVox(){
+  if(inst) scene.remove(inst);
+  list=[...S.vox].map(k=>k.split(',').map(Number));
+  inst=new THREE.InstancedMesh(geo,mat,Math.max(1,list.length));
+  inst.count=list.length;
+  const m=new THREE.Matrix4();
+  list.forEach((p,i)=>{ m.makeTranslation(p[0]+.5,p[1]+.5,p[2]+.5); inst.setMatrixAt(i,m); });
+  inst.instanceMatrix.needsUpdate=true;
+  scene.add(inst); dirty=true;
+}
+
+/* ---------- gestures ---------- */
+function bindGestures(el){
+  const pts=new Map(); let tap=null, pinch=0, mid=null;
+  const dist=()=>{ const [a,b]=[...pts.values()]; return Math.hypot(a.x-b.x,a.y-b.y); };
+  const midp=()=>{ const [a,b]=[...pts.values()]; return {x:(a.x+b.x)/2,y:(a.y+b.y)/2}; };
+  const ray=new THREE.Raycaster(), ndc=new THREE.Vector2();
+
+  el.addEventListener('pointerdown',e=>{
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===1) tap={id:e.pointerId,x:e.clientX,y:e.clientY,t:Date.now()};
+    else { tap=null; if(pts.size===2){ pinch=dist(); mid=midp(); } }
+  });
+  addEventListener('pointermove',e=>{
+    const p=pts.get(e.pointerId); if(!p) return;
+    const dx=e.clientX-p.x, dy=e.clientY-p.y; p.x=e.clientX; p.y=e.clientY;
+    if(pts.size===1){
+      if(tap && Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>8) tap=null;
+      const f=sph.r*0.0022;
+      const right=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0);
+      const up=new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);
+      target.addScaledVector(right,-dx*f).addScaledVector(up,dy*f); updateCam();
+    } else if(pts.size===2){
+      const d=dist(); if(pinch) sph.r=clamp(sph.r*(pinch/d),3,400); pinch=d;
+      const m=midp();
+      if(mid){ sph.theta-=(m.x-mid.x)*0.008;
+        sph.phi=clamp(sph.phi-(m.y-mid.y)*0.008,0.06,Math.PI*0.495); }
+      mid=m; updateCam();
+    }
+  });
+  const up=e=>{
+    const was=pts.get(e.pointerId); pts.delete(e.pointerId);
+    if(pts.size<2){ pinch=0; mid=null; }
+    if(tap && tap.id===e.pointerId && was && Date.now()-tap.t<600) doTap(was.x,was.y);
+    if(pts.size===0) tap=null;
+  };
+  addEventListener('pointerup',up); addEventListener('pointercancel',up);
+  el.addEventListener('wheel',e=>{ e.preventDefault();
+    sph.r=clamp(sph.r*(1+Math.sign(e.deltaY)*0.12),3,400); updateCam(); },{passive:false});
+
+  function doTap(cx,cy){
+    const r=el.getBoundingClientRect();
+    ndc.set(((cx-r.left)/r.width)*2-1, -((cy-r.top)/r.height)*2+1);
+    ray.setFromCamera(ndc,camera);
+    const targets=[]; if(inst&&inst.count) targets.push(inst); if(planeObj) targets.push(planeObj);
+    const hit=ray.intersectObjects(targets,false)[0]; if(!hit) return;
+    if(hit.object===inst){
+      const p=list[hit.instanceId]; if(!p) return;
+      if(S.mode==='break') remove(p[0],p[1],p[2]);
+      else { const n=hit.face.normal; place(p[0]+n.x,p[1]+n.y,p[2]+n.z); }
+    } else if(S.mode!=='break'){
+      place(Math.floor(hit.point.x), S.layer, Math.floor(hit.point.z));
+    }
+  }
+}
+
+/* ---------- plan view ---------- */
+function counts(){
+  const c=new Array(S.dims.y).fill(0);
+  S.vox.forEach(k=>{ const y=+k.split(',')[1]; if(y<S.dims.y) c[y]++; });
+  return c;
+}
+function renderSpine(){
+  const c=counts(), mx=Math.max(1,...c), sp=$('#spine');
+  sp.innerHTML='';
+  for(let y=0;y<S.dims.y;y++){
+    const d=document.createElement('div');
+    d.className='seg'; d.dataset.cur = y===S.layer?1:0;
+    const f=document.createElement('span'); f.className='f';
+    f.style.opacity = c[y] ? (0.18+0.72*(c[y]/mx)) : 0;
+    d.appendChild(f);
+    if(y%4===0||y===S.layer){ const n=document.createElement('span'); n.className='n'; n.textContent=y; d.appendChild(n); }
+    sp.appendChild(d);
+  }
+  $('#cnt').textContent = 'この層 '+(c[S.layer]||0)+' · 合計 '+S.vox.size;
+}
+function fitCells(){
+  const w=$('#gridwrap').clientWidth-14;
+  S.cell = clamp(Math.floor(w/S.dims.x),6,34);
+}
+function renderGrid(){
+  if(!S.manualZoom) fitCells();
+  const g=$('#grid'), d=S.dims, f=document.createDocumentFragment();
+  g.style.gridTemplateColumns='repeat('+d.x+','+S.cell+'px)';
+  g.innerHTML='';
+  for(let z=0;z<d.z;z++) for(let x=0;x<d.x;x++){
+    const c=document.createElement('div');
+    c.className='cell'; c.dataset.x=x; c.dataset.z=z;
+    c.dataset.on = S.vox.has(K(x,S.layer,z))?1:0;
+    c.dataset.below = (S.layer>0 && S.vox.has(K(x,S.layer-1,z)) && !S.vox.has(K(x,S.layer,z)))?1:0;
+    c.dataset.cx=(x+1)%4===0?1:0; c.dataset.cz=(z+1)%4===0?1:0;
+    c.style.width=c.style.height=S.cell+'px';
+    f.appendChild(c);
+  }
+  g.appendChild(f);
+}
+(function bindPlan(){
+  let painting=false, strokeMode='draw';
+  const wrap=()=>$('#gridwrap');
+  const cellAt=(x,y)=>{ const el=document.elementFromPoint(x,y);
+    return (el&&el.dataset&&el.dataset.x!==undefined)?{x:+el.dataset.x,z:+el.dataset.z}:null; };
+  const apply=(x,z,m)=>{ const k=K(x,S.layer,z);
+    if(m==='draw'){ if(!S.vox.has(k)){ S.vox.add(k); changed(); renderGrid(); } }
+    else { if(S.vox.has(k)){ S.vox.delete(k); changed(); renderGrid(); } } };
+  document.addEventListener('pointerdown',e=>{
+    if(S.view!=='plan'||S.tool==='pan') return;
+    if(!wrap().contains(e.target)) return;
+    const c=cellAt(e.clientX,e.clientY); if(!c) return;
+    e.preventDefault(); pushHist(); painting=true; strokeMode=S.tool; apply(c.x,c.z,S.tool);
+  });
+  document.addEventListener('pointermove',e=>{
+    if(!painting) return; e.preventDefault();
+    const c=cellAt(e.clientX,e.clientY); if(c) apply(c.x,c.z,strokeMode);
+  });
+  ['pointerup','pointercancel'].forEach(ev=>document.addEventListener(ev,()=>painting=false));
+
+  let scrub=false;
+  $('#spine').addEventListener('pointerdown',e=>{ scrub=true; scrubTo(e.clientY); e.preventDefault(); });
+  addEventListener('pointermove',e=>{ if(scrub) scrubTo(e.clientY); });
+  addEventListener('pointerup',()=>scrub=false);
+  function scrubTo(cy){ const r=$('#spine').getBoundingClientRect();
+    setLayer(Math.floor((1-(cy-r.top)/r.height)*S.dims.y)); }
+})();
+
+/* ---------- json ---------- */
+function buildJson(){
+  const d=S.dims, name=$('#name').value;
+  if(S.jsonMode==='voxels'){
+    const arr=[...S.vox].map(k=>k.split(',').map(Number))
+      .sort((a,b)=>a[1]-b[1]||a[2]-b[2]||a[0]-b[0]);
+    return JSON.stringify({name,size:[d.x,d.y,d.z],format:'voxels',voxels:arr},null,1)
+      .replace(/\[\n\s+(\d+),\n\s+(\d+),\n\s+(\d+)\n\s+\]/g,'[$1, $2, $3]');
+  }
+  const c=counts(), layers={};
+  for(let y=0;y<d.y;y++){
+    if(!c[y]) continue;
+    const rows=[];
+    for(let z=0;z<d.z;z++){ let r='';
+      for(let x=0;x<d.x;x++) r += S.vox.has(K(x,y,z))?'#':'.';
+      rows.push(r); }
+    layers[y]=rows;
+  }
+  return JSON.stringify({name,size:[d.x,d.y,d.z],format:'layers',layers},null,1);
+}
+function renderJson(){
+  $('#json').value = buildJson();
+  $('#j-note').textContent = S.jsonMode==='layers'
+    ? 'layers のキーがY。各要素が1行（Z）で、文字の位置がX。# がブロック、. が空。'
+    : 'voxels は [x, y, z] の配列。原点は設計図の南西下端。';
+}
+
+/* ---------- view switching ---------- */
+function setView(v){
+  S.view=v;
+  ['space','plan','json'].forEach(n=>{
+    $('#v-'+n).classList.toggle('hidden', n!==v);
+    $('#t-'+n).setAttribute('aria-selected', n===v);
+  });
+  if(v==='plan'){ renderGrid(); renderSpine(); }
+  if(v==='json') renderJson();
+  if(v==='space') dirty=true;
+}
+
+/* ---------- wiring ---------- */
+['space','plan','json'].forEach(n=>$('#t-'+n).onclick=()=>setView(n));
+
+$('#name').oninput = save;
+['dx','dy','dz'].forEach(id=>$('#'+id).onchange=e=>{
+  const nd={...S.dims};
+  nd[id[1]] = clamp(parseInt(e.target.value,10)||1,1,64);
+  e.target.value = nd[id[1]];
+  setDims(nd);
+});
+
+$('#plane').oninput = e=>setLayer(+e.target.value);
+$('#b-up').onclick = ()=>setLayer(S.layer+1);
+$('#b-down').onclick = ()=>setLayer(S.layer-1);
+$('#b-fit').onclick = frameCamera;
+$('#b-undo').onclick = undo;
+$('#b-clear').onclick = ()=>{ pushHist(); S.vox=new Set(); changed(); renderGrid(); renderSpine(); };
+$('#b-place').onclick = ()=>setMode('place');
+$('#b-break').onclick = ()=>setMode('break');
+function setMode(m){ S.mode=m;
+  $('#b-place').setAttribute('aria-pressed', m==='place');
+  $('#b-break').setAttribute('aria-pressed', m==='break');
+  $('#hud-mode').textContent = m==='break'?'壊す':'置く'; }
+
+$('#p-draw').onclick=()=>setTool('draw');
+$('#p-erase').onclick=()=>setTool('erase');
+$('#p-pan').onclick=()=>setTool('pan');
+function setTool(t){ S.tool=t;
+  ['draw','erase','pan'].forEach(n=>$('#p-'+n).setAttribute('aria-pressed', n===t));
+  $('#gridwrap').style.touchAction = t==='pan' ? 'auto' : 'none'; }
+
+$('#p-up').onclick=()=>setLayer(S.layer+1);
+$('#p-down').onclick=()=>setLayer(S.layer-1);
+$('#p-zi').onclick=()=>{ S.manualZoom=true; S.cell=clamp(S.cell+4,6,44); renderGrid(); };
+$('#p-zo').onclick=()=>{ S.manualZoom=true; S.cell=clamp(S.cell-4,6,44); renderGrid(); };
+$('#p-undo').onclick=()=>{ undo(); renderGrid(); renderSpine(); };
+$('#p-clr').onclick=()=>{ pushHist(); const d=S.dims;
+  for(let x=0;x<d.x;x++) for(let z=0;z<d.z;z++) S.vox.delete(K(x,S.layer,z));
+  changed(); renderGrid(); renderSpine(); };
+$('#p-copy').onclick=()=>{ if(S.layer===0) return; pushHist(); const d=S.dims;
+  for(let x=0;x<d.x;x++) for(let z=0;z<d.z;z++)
+    if(S.vox.has(K(x,S.layer-1,z))) S.vox.add(K(x,S.layer,z));
+  changed(); renderGrid(); renderSpine(); };
+$('#p-out').onclick=()=>{ pushHist(); const d=S.dims;
+  for(let x=0;x<d.x;x++) for(let z=0;z<d.z;z++)
+    if(x===0||z===0||x===d.x-1||z===d.z-1) S.vox.add(K(x,S.layer,z));
+  changed(); renderGrid(); renderSpine(); };
+
+$('#j-layers').onclick=()=>{ S.jsonMode='layers';
+  $('#j-layers').setAttribute('aria-pressed',true); $('#j-voxels').setAttribute('aria-pressed',false); renderJson(); };
+$('#j-voxels').onclick=()=>{ S.jsonMode='voxels';
+  $('#j-layers').setAttribute('aria-pressed',false); $('#j-voxels').setAttribute('aria-pressed',true); renderJson(); };
+$('#j-copy').onclick=async()=>{
+  try{ await navigator.clipboard.writeText(buildJson()); status('JSONをコピーしました'); }
+  catch(e){ $('#json').select(); status('テキストを選択しました。長押しでコピーしてください'); }
+};
+$('#j-dl').onclick=()=>{
+  const b=new Blob([buildJson()],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download=($('#name').value||'blueprint')+'.json'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000); status('ファイルを保存しました');
+};
+$('#j-imp').onclick=()=>$('#file').click();
+$('#file').onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const d=JSON.parse(r.result);
+      const nd={x:d.size[0],y:d.size[1],z:d.size[2]};
+      const set=new Set();
+      if(d.format==='voxels') d.voxels.forEach(p=>set.add(K(p[0],p[1],p[2])));
+      else Object.keys(d.layers).forEach(y=>d.layers[y].forEach((row,z)=>{
+        [...row].forEach((ch,x)=>{ if(ch!=='.') set.add(K(x,+y,z)); }); }));
+      pushHist(); S.dims=nd; S.vox=set;
+      if(d.name) $('#name').value=d.name;
+      setDims(nd); status('読み込みました');
+    }catch(err){ status('このファイルは読み込めません'); }
+    e.target.value='';
+  };
+  r.readAsText(f);
+};
+
+addEventListener('resize',()=>{ if(S.view==='plan'&&!S.manualZoom) renderGrid(); });
+
+/* iOS Safari は user-scalable=no を無視するため、ページ全体のピンチ拡大を個別に止める */
+['gesturestart','gesturechange','gestureend'].forEach(ev=>
+  document.addEventListener(ev, e=>e.preventDefault(), {passive:false}));
+document.addEventListener('dblclick', e=>e.preventDefault(), {passive:false});
+
+/* ---------- boot ---------- */
+load();
+$('#dx').value=S.dims.x; $('#dy').value=S.dims.y; $('#dz').value=S.dims.z;
+$('#plane').max=S.dims.y-1; $('#ymax').textContent='/ '+(S.dims.y-1);
+initThree(); buildFloor(); buildPlane(); frameCamera(); syncVox();
+$('#tot').textContent=S.vox.size; setLayer(0); setView('space');
+
+if('serviceWorker' in navigator){
+  addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+</script>
+</body>
+</html>
