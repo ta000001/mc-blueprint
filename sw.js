@@ -1,4 +1,4 @@
-const CACHE = 'blueprint-v1.3';
+const CACHE = 'blueprint-v1.8';
 const ASSETS = [
   './',
   './index.html',
@@ -26,14 +26,28 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
-  e.respondWith(
-    caches.match(e.request).then((hit) =>
-      hit ||
-      fetch(e.request).then((res) => {
+  const req = e.request;
+  const isDoc = req.mode === 'navigate' || req.destination === 'document';
+  if (isDoc) {
+    // HTML は network-first：オンラインなら常に最新を返し、失敗時のみキャッシュへ
+    e.respondWith(
+      fetch(req).then((res) => {
         const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+        caches.open(CACHE).then((c) => c.put('./index.html', copy)).catch(() => {});
         return res;
-      }).catch(() => caches.match('./index.html'))
+      }).catch(() => caches.match('./index.html').then((h) => h || caches.match('./')))
+    );
+    return;
+  }
+  // 静的資産（three.js / icon / manifest）は cache-first
+  e.respondWith(
+    caches.match(req).then((hit) =>
+      hit ||
+      fetch(req).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        return res;
+      })
     )
   );
 });
