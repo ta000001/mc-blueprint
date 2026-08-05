@@ -100,7 +100,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </div>
 
 <section id="v-space">
-  <div id="space"><div class="hud"><div>1本指 = 編集（ドラッグで範囲） / 2本指 = 視点</div><div>タップ/ドラッグ = <b id="hud-mode">置く</b></div></div></div>
+  <div id="space"><div class="hud"><div>1本指 = 編集(面上)/移動(面外) / 2本指 = 拡大・回転</div><div>タップ/ドラッグ = <b id="hud-mode">置く</b></div></div></div>
   <div class="slider"><span class="y" id="y3">H00</span><input id="plane" type="range" min="0" max="15" value="0" aria-label="作業面の高さ"></div>
   <div class="bar">
     <button class="btn" id="b-place" aria-pressed="true">置く</button>
@@ -161,7 +161,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '1.9';
+const APP_VERSION = '2.0';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -331,11 +331,14 @@ function applyRect(a,b,mode){
 
 /* ---------- gestures ---------- */
 function bindGestures(el){
-  const pts=new Map(); let tap=null, pinch=0, mid=null, ang=null, drag=null;
+  const pts=new Map(); let tap=null, pinch=0, mid=null, drag=null;
   const dist=()=>{ const [a,b]=[...pts.values()]; return Math.hypot(a.x-b.x,a.y-b.y); };
   const midp=()=>{ const [a,b]=[...pts.values()]; return {x:(a.x+b.x)/2,y:(a.y+b.y)/2}; };
-  const angle=()=>{ const [a,b]=[...pts.values()]; return Math.atan2(b.y-a.y,b.x-a.x); };
   const ray=new THREE.Raycaster(), ndc=new THREE.Vector2();
+  function panBy(dx,dy){ const f=sph.r*0.0022;
+    const right=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0);
+    const upv=new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);
+    target.addScaledVector(right,-dx*f).addScaledVector(upv,dy*f); updateCam(); }
 
   function planeCell(cx,cy){          // 作業面（緑）のセル {x,z} or null
     const r=el.getBoundingClientRect();
@@ -359,7 +362,7 @@ function bindGestures(el){
         if(c) drag={mode:S.mode,a:c,b:c};
       }
     } else { tap=null; drag=null; clearPreview();
-      if(pts.size===2){ pinch=dist(); mid=midp(); ang=angle(); } }
+      if(pts.size===2){ pinch=dist(); mid=midp(); } }
   });
   el.addEventListener('contextmenu',e=>e.preventDefault());
   addEventListener('pointermove',e=>{
@@ -371,28 +374,20 @@ function bindGestures(el){
         const c=planeCell(e.clientX,e.clientY); if(c){ drag.b=c; showPreview(drag.a,drag.b); }
         return;
       }
-      if(p.type==='mouse'){           // drag なし＝カメラ（マウスのみ：左回転/右パン）
+      if(p.type==='mouse'){           // マウス：左(空間)=回転 / 右=パン
         if(p.btn===0){ sph.theta-=dx*0.008; sph.phi=clamp(sph.phi-dy*0.008,0.06,Math.PI*0.495); updateCam(); }
-        else { const f=sph.r*0.0022;
-          const right=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0);
-          const upv=new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);
-          target.addScaledVector(right,-dx*f).addScaledVector(upv,dy*f); updateCam(); }
-      }
-      // タッチ1本指で drag なし（作業面外）はカメラを動かさない（カメラは2本指）
-    } else if(pts.size===2){          // 2本指＝カメラ（ズーム＋パン＋回転）
+        else panBy(dx,dy);
+      } else panBy(dx,dy);            // タッチ1本指・作業面外＝移動(パン)
+    } else if(pts.size===2){          // 2本指＝拡大＋回転（パンは1本指へ）
       const d=dist(); if(pinch) sph.r=clamp(sph.r*(pinch/d),3,400); pinch=d;
-      const a2=angle(); if(ang!=null) sph.theta -= (a2-ang); ang=a2;        // twist→回転
       const m=midp();
-      if(mid){ const f=sph.r*0.0022;                                        // midpoint→パン
-        const right=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0);
-        const upv=new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);
-        target.addScaledVector(right,-(m.x-mid.x)*f).addScaledVector(upv,(m.y-mid.y)*f); }
+      if(mid){ sph.theta-=(m.x-mid.x)*0.008; sph.phi=clamp(sph.phi-(m.y-mid.y)*0.008,0.06,Math.PI*0.495); }
       mid=m; updateCam();
     }
   });
   const up=e=>{
     const was=pts.get(e.pointerId); pts.delete(e.pointerId);
-    if(pts.size<2){ pinch=0; mid=null; ang=null; }
+    if(pts.size<2){ pinch=0; mid=null; }
     if(tap && tap.id===e.pointerId && was && Date.now()-tap.t<600){
       doTap(was.x,was.y);             // 動かなければ単発
     } else if(drag){
