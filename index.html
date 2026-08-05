@@ -113,7 +113,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="b-up">▲ 作業面を上げる</button>
     <button class="btn" id="b-fit">視点をリセット</button>
   </div>
-  <p class="note">緑の面が作業面。タップで1個、<b>ドラッグで矩形をまとめて</b>配置/破壊（離すと確定）。作業面より上の層は半透明で編集不可（内部を触りやすく）。合計 <span id="tot">0</span> ブロック。</p>
+  <p class="note">緑の面が作業面。タップで1個、<b>ドラッグで矩形</b>配置。<b>ダブルタップ/クリックで削除</b>、ダブル→ドラッグで削除範囲。作業面より上の層は半透明で編集不可（内部を触りやすく）。合計 <span id="tot">0</span> ブロック。</p>
 </section>
 
 <section id="v-plan" class="hidden">
@@ -161,7 +161,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '2.0';
+const APP_VERSION = '2.1';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -222,7 +222,7 @@ function setLayer(v){
 }
 
 /* ---------- three.js ---------- */
-let renderer,scene,camera,inst,ghost,preview,list=[],floorObj,planeObj,geo,mat,ghostMat,previewMat,target,sph,dirty=true;
+let renderer,scene,camera,inst,ghost,preview,list=[],floorObj,planeObj,geo,mat,ghostMat,previewMat,previewBreakMat,target,sph,dirty=true;
 
 function initThree(){
   const mount = $('#space');
@@ -246,6 +246,7 @@ function initThree(){
   mat = new THREE.MeshLambertMaterial({map:tex});
   ghostMat = new THREE.MeshLambertMaterial({map:tex, transparent:true, opacity:0.22, depthWrite:false});
   previewMat = new THREE.MeshBasicMaterial({color:0xF0D48C, transparent:true, opacity:0.5, depthWrite:false});
+  previewBreakMat = new THREE.MeshBasicMaterial({color:0xE0604A, transparent:true, opacity:0.5, depthWrite:false});
   geo = new THREE.BoxGeometry(1,1,1);
   target = new THREE.Vector3();
   sph = {theta:Math.PI*0.72, phi:Math.PI*0.33, r:30};
@@ -310,12 +311,12 @@ function syncVox(){
 }
 /* ---- ドラッグ矩形（dw平面に複数配置）---- */
 function clearPreview(){ if(preview){ scene.remove(preview); preview=null; dirty=true; } }
-function showPreview(a,b){
+function showPreview(a,b,mode){
   clearPreview();
   const y=S.layer, cells=[];
   const x0=Math.min(a.x,b.x),x1=Math.max(a.x,b.x),z0=Math.min(a.z,b.z),z1=Math.max(a.z,b.z);
   for(let x=x0;x<=x1;x++)for(let z=z0;z<=z1;z++){ if(inB(x,y,z)) cells.push([x,y,z]); }
-  preview=makeInst(cells,previewMat); scene.add(preview); dirty=true;
+  preview=makeInst(cells, mode==='break'?previewBreakMat:previewMat); scene.add(preview); dirty=true;
 }
 function applyRect(a,b,mode){
   const y=S.layer;
@@ -331,7 +332,7 @@ function applyRect(a,b,mode){
 
 /* ---------- gestures ---------- */
 function bindGestures(el){
-  const pts=new Map(); let tap=null, pinch=0, mid=null, drag=null;
+  const pts=new Map(); let tap=null, pinch=0, mid=null, drag=null, lastUp=null;
   const dist=()=>{ const [a,b]=[...pts.values()]; return Math.hypot(a.x-b.x,a.y-b.y); };
   const midp=()=>{ const [a,b]=[...pts.values()]; return {x:(a.x+b.x)/2,y:(a.y+b.y)/2}; };
   const ray=new THREE.Raycaster(), ndc=new THREE.Vector2();
@@ -354,13 +355,17 @@ function bindGestures(el){
   el.addEventListener('pointerdown',e=>{
     pts.set(e.pointerId,{x:e.clientX,y:e.clientY,btn:e.button,type:e.pointerType});
     if(pts.size===1){
-      tap={id:e.pointerId,x:e.clientX,y:e.clientY,t:Date.now()};
+      const now=Date.now();
+      const isDbl = lastUp && now-lastUp.t<300 && Math.hypot(e.clientX-lastUp.x,e.clientY-lastUp.y)<22;
+      const gmode = isDbl ? 'break' : S.mode;      // ダブルクリック/タップ＝削除
+      tap={id:e.pointerId,x:e.clientX,y:e.clientY,t:now,mode:gmode,dbl:!!isDbl};
       drag=null;
       // 編集ドラッグ開始（マウスは左のみ／タッチは1本指）。作業面上で始めたら矩形。
       if(!(e.pointerType==='mouse' && e.button!==0)){
         const c=planeCell(e.clientX,e.clientY);
-        if(c) drag={mode:S.mode,a:c,b:c};
+        if(c) drag={mode:gmode,a:c,b:c};           // ダブル時は削除範囲
       }
+      if(isDbl) lastUp=null;
     } else { tap=null; drag=null; clearPreview();
       if(pts.size===2){ pinch=dist(); mid=midp(); } }
   });
@@ -370,8 +375,8 @@ function bindGestures(el){
     const dx=e.clientX-p.x, dy=e.clientY-p.y; p.x=e.clientX; p.y=e.clientY;
     if(pts.size===1){
       if(tap && Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>8) tap=null;
-      if(drag){                       // 矩形編集ドラッグ（半透明プレビュー）
-        const c=planeCell(e.clientX,e.clientY); if(c){ drag.b=c; showPreview(drag.a,drag.b); }
+      if(drag){                       // 矩形編集ドラッグ（半透明プレビュー・削除は赤）
+        const c=planeCell(e.clientX,e.clientY); if(c){ drag.b=c; showPreview(drag.a,drag.b,drag.mode); }
         return;
       }
       if(p.type==='mouse'){           // マウス：左(空間)=回転 / 右=パン
@@ -389,9 +394,11 @@ function bindGestures(el){
     const was=pts.get(e.pointerId); pts.delete(e.pointerId);
     if(pts.size<2){ pinch=0; mid=null; }
     if(tap && tap.id===e.pointerId && was && Date.now()-tap.t<600){
-      doTap(was.x,was.y);             // 動かなければ単発
+      doTap(was.x,was.y,tap.mode);          // 単発（tap.mode＝置く/壊す。ダブルは壊す）
+      lastUp = tap.dbl ? null : {x:was.x,y:was.y,t:Date.now()};   // 次のダブル検出用
     } else if(drag){
       applyRect(drag.a,drag.b,drag.mode);   // ドラッグ＝矩形確定
+      lastUp=null;
     }
     clearPreview();
     if(pts.size===0){ tap=null; drag=null; }
@@ -400,7 +407,8 @@ function bindGestures(el){
   el.addEventListener('wheel',e=>{ e.preventDefault();
     sph.r=clamp(sph.r*(1+Math.sign(e.deltaY)*0.12),3,400); updateCam(); },{passive:false});
 
-  function doTap(cx,cy){
+  function doTap(cx,cy,mode){
+    mode = mode || S.mode;
     const r=el.getBoundingClientRect();
     ndc.set(((cx-r.left)/r.width)*2-1, -((cy-r.top)/r.height)*2+1);
     ray.setFromCamera(ndc,camera);
@@ -408,10 +416,12 @@ function bindGestures(el){
     const hit=ray.intersectObjects(targets,false)[0]; if(!hit) return;
     if(hit.object===inst){
       const p=list[hit.instanceId]; if(!p) return;
-      if(S.mode==='break') remove(p[0],p[1],p[2]);
+      if(mode==='break') remove(p[0],p[1],p[2]);
       else { const n=hit.face.normal; place(p[0]+n.x,p[1]+n.y,p[2]+n.z); }
-    } else if(S.mode!=='break'){
-      place(Math.floor(hit.point.x), S.layer, Math.floor(hit.point.z));
+    } else {                                   // 作業面
+      const x=Math.floor(hit.point.x), z=Math.floor(hit.point.z);
+      if(mode==='break') remove(x,S.layer,z);  // 平面セルの削除（ダブルタップ削除）
+      else place(x,S.layer,z);
     }
   }
 }
