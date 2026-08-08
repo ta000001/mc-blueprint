@@ -113,6 +113,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="b-up">▲ 作業面を上げる</button>
     <button class="btn" id="b-fit">視点をリセット</button>
   </div>
+  <div class="bar" id="shape-space"></div>
   <div class="bar" id="roles-space"></div>
   <p class="note">緑の面が作業面。タップで1個、<b>ドラッグで矩形</b>配置。<b>ダブルタップ/クリックで削除</b>、ダブル→ドラッグで削除範囲。作業面より上の層は半透明で編集不可。色＝役割（place の mat）。合計 <span id="tot">0</span> ブロック。</p>
 </section>
@@ -140,6 +141,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="p-clr">層を消去</button>
     <button class="btn" id="p-undo">元に戻す</button>
   </div>
+  <div class="bar" id="shape-plan"></div>
   <div class="bar" id="roles-plan"></div>
   <p class="note">上から見た平面図。横がW、縦がD。色＝役割。左の帯は各Hのブロック量で、ドラッグすると階層を移動する。</p>
 </section>
@@ -163,7 +165,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.1';
+const APP_VERSION = '3.2';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -191,10 +193,18 @@ const ROLE_C = Object.fromEntries(ROLES.map(r=>[r.k,r.c]));
 const roleColor = (role)=> (role in ROLE_C) ? ROLE_C[role] : ROLES[0].c;
 const roleHex = (role)=> '#'+roleColor(role).toString(16).padStart(6,'0');
 
+const SHAPES = ['full','slab','stairs','trapdoor'];   // 形（MOD form: BLOCK/SLAB/STAIRS/TRAPDOOR）
+const FAC = ['FRONT','RIGHT','BACK','LEFT'];          // facing（相対トークン）
+const FAC_I = {FRONT:0,RIGHT:1,BACK:2,LEFT:3};
+
 const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'wall_main',
+  shape:'full', facing:0, half:'bottom',
   view:'space', jsonMode:'layers', cell:20, hist:[], manualZoom:false, dirHandle:null
 };
+const cur = ()=>({r:S.role, s:S.shape, f:S.facing, h:S.half});   // 現在のブロック値
+const sig = (v)=> v ? (v.r+'|'+v.s+'|'+v.f+'|'+v.h) : '';        // 同一判定用
+const norm = (v)=> (typeof v==='string') ? {r:v,s:'full',f:0,h:'bottom'} : v;  // 旧形式→オブジェクト
 
 /* ---------- persistence ---------- */
 function save(){
@@ -209,7 +219,7 @@ function load(){
     const d = JSON.parse(raw);
     if(d.dims) S.dims = d.dims;
     if(d.name) $('#name').value = d.name;
-    if(Array.isArray(d.voxels)) S.vox = new Map(d.voxels.map(v=> Array.isArray(v)?v:[v,'wall_main']));
+    if(Array.isArray(d.voxels)) S.vox = new Map(d.voxels.map(([k,v])=>[k, norm(v)]));
     if(d.role) S.role = d.role;
   }catch(e){}
 }
@@ -220,7 +230,7 @@ function status(m){ $('#status').textContent = m; clearTimeout(status._t);
 function pushHist(){ S.hist.push(new Map(S.vox)); if(S.hist.length>60) S.hist.shift(); }
 function inB(x,y,z){ const d=S.dims; return x>=0&&y>=0&&z>=0&&x<d.x&&y<d.y&&z<d.z; }
 function place(x,y,z){ if(!inB(x,y,z)) return; if(y>S.layer) return;  // 作業面より上には置かない
-  const k=K(x,y,z); if(S.vox.get(k)===S.role) return; pushHist(); S.vox.set(k,S.role); changed(); }
+  const k=K(x,y,z), v=cur(); if(sig(S.vox.get(k))===sig(v)) return; pushHist(); S.vox.set(k,v); changed(); }
 function remove(x,y,z){ const k=K(x,y,z); if(!S.vox.has(k)) return; pushHist(); S.vox.delete(k); changed(); }
 function undo(){ const p=S.hist.pop(); if(p){ S.vox=p; changed(); } }
 
@@ -248,7 +258,30 @@ function setLayer(v){
 }
 
 /* ---------- three.js ---------- */
-let renderer,scene,camera,inst,ghost,preview,list=[],floorObj,planeObj,geo,mat,ghostMat,previewMat,previewBreakMat,target,sph,dirty=true;
+let renderer,scene,camera,editMeshes=[],ghostMeshes=[],preview,floorObj,planeObj,geo,GEOS,mat,ghostMat,previewMat,previewBreakMat,target,sph,dirty=true;
+function boxAt(w,h,d,oy,oz){ const g=new THREE.BoxGeometry(w,h,d); g.translate(0,oy||0,oz||0); return g; }
+function mergeGeo(a,b){   // 2つの indexed BoxGeometry を結合（階段用）
+  const g=new THREE.BufferGeometry(), cat=(n,sz)=>{ const aa=a.attributes[n].array, bb=b.attributes[n].array;
+    const out=new Float32Array(aa.length+bb.length); out.set(aa); out.set(bb,aa.length);
+    g.setAttribute(n,new THREE.BufferAttribute(out,sz)); };
+  cat('position',3); cat('normal',3); cat('uv',2);
+  const ai=a.index.array, bi=b.index.array, off=a.attributes.position.count;
+  const idx=new Uint16Array(ai.length+bi.length); idx.set(ai);
+  for(let i=0;i<bi.length;i++) idx[ai.length+i]=bi[i]+off;
+  g.setIndex(new THREE.BufferAttribute(idx,1)); return g;
+}
+function buildGeos(){
+  const T=0.1875;   // trapdoor 厚み
+  GEOS={
+    full: new THREE.BoxGeometry(1,1,1),
+    slab_bottom: boxAt(1,0.5,1,-0.25,0), slab_top: boxAt(1,0.5,1,0.25,0),
+    trapdoor_bottom: boxAt(1,T,1,-0.5+T/2,0), trapdoor_top: boxAt(1,T,1,0.5-T/2,0),
+    stairs_bottom: mergeGeo(boxAt(1,0.5,1,-0.25,0), boxAt(1,0.5,0.5,0.25,0.25)),
+    stairs_top:    mergeGeo(boxAt(1,0.5,1,0.25,0),  boxAt(1,0.5,0.5,-0.25,0.25)),
+  };
+  geo = GEOS.full;
+}
+const geoKey = (v)=> v.s==='full' ? 'full' : v.s+'_'+v.h;
 
 function initThree(){
   const mount = $('#space');
@@ -273,7 +306,7 @@ function initThree(){
   ghostMat = new THREE.MeshLambertMaterial({map:tex, transparent:true, opacity:0.22, depthWrite:false});
   previewMat = new THREE.MeshBasicMaterial({color:0xF0D48C, transparent:true, opacity:0.5, depthWrite:false});
   previewBreakMat = new THREE.MeshBasicMaterial({color:0xE0604A, transparent:true, opacity:0.5, depthWrite:false});
-  geo = new THREE.BoxGeometry(1,1,1);
+  buildGeos();
   target = new THREE.Vector3();
   sph = {theta:Math.PI*0.72, phi:Math.PI*0.33, r:30};
 
@@ -319,23 +352,31 @@ function buildPlane(){
   planeObj.position.set(d.x/2, S.layer+0.02, d.z/2);
   scene.add(planeObj); dirty=true;
 }
-function makeInst(arr, material, colored){
-  const im=new THREE.InstancedMesh(geo,material,Math.max(1,arr.length));
-  im.count=arr.length; const m=new THREE.Matrix4(), col=new THREE.Color();
-  arr.forEach((o,i)=>{ const p=colored?o.p:o; m.makeTranslation(p[0]+.5,p[1]+.5,p[2]+.5); im.setMatrixAt(i,m);
-    if(colored){ col.setHex(roleColor(o.role)); im.setColorAt(i,col); } });
+function makeInst(arr, material){   // プレビュー用（full box・単色 material）
+  const im=new THREE.InstancedMesh(GEOS.full,material,Math.max(1,arr.length));
+  im.count=arr.length; const m=new THREE.Matrix4();
+  arr.forEach((p,i)=>{ m.makeTranslation(p[0]+.5,p[1]+.5,p[2]+.5); im.setMatrixAt(i,m); });
+  im.instanceMatrix.needsUpdate=true; return im;
+}
+function makeInstShape(items, geometry, material){
+  const im=new THREE.InstancedMesh(geometry,material,Math.max(1,items.length));
+  im.count=items.length;
+  const m=new THREE.Matrix4(), q=new THREE.Quaternion(), pos=new THREE.Vector3(),
+        scl=new THREE.Vector3(1,1,1), up=new THREE.Vector3(0,1,0), col=new THREE.Color();
+  items.forEach((o,i)=>{ pos.set(o.p[0]+.5,o.p[1]+.5,o.p[2]+.5); q.setFromAxisAngle(up,-o.v.f*Math.PI/2);
+    m.compose(pos,q,scl); im.setMatrixAt(i,m); col.setHex(roleColor(o.v.r)); im.setColorAt(i,col); });
   im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true;
-  return im;
+  im.userData.items=items; return im;
 }
 function syncVox(){
-  if(inst) scene.remove(inst);
-  if(ghost) scene.remove(ghost);
-  const below=[], above=[];
-  S.vox.forEach((role,k)=>{ const p=k.split(',').map(Number); (p[1]>S.layer?above:below).push({p,role}); });
-  list=below;                        // 当該層以下＝不透明・クリック対象
-  inst=makeInst(below,mat,true);
-  ghost=makeInst(above,ghostMat,true);   // 上層＝半透明・非編集
-  scene.add(inst); scene.add(ghost); dirty=true;
+  editMeshes.forEach(m=>scene.remove(m)); ghostMeshes.forEach(m=>scene.remove(m));
+  editMeshes=[]; ghostMeshes=[];
+  const below={}, above={};   // geoKey -> [{p,v}]
+  S.vox.forEach((val,k)=>{ const v=norm(val), p=k.split(',').map(Number), gk=geoKey(v);
+    (p[1]>S.layer?above:below)[gk] ??= []; (p[1]>S.layer?above:below)[gk].push({p,v}); });
+  for(const gk in below){ const im=makeInstShape(below[gk],GEOS[gk],mat); scene.add(im); editMeshes.push(im); }
+  for(const gk in above){ const im=makeInstShape(above[gk],GEOS[gk],ghostMat); scene.add(im); ghostMeshes.push(im); }
+  dirty=true;
 }
 /* ---- ドラッグ矩形（dw平面に複数配置）---- */
 function clearPreview(){ if(preview){ scene.remove(preview); preview=null; dirty=true; } }
@@ -347,13 +388,13 @@ function showPreview(a,b,mode){
   preview=makeInst(cells, mode==='break'?previewBreakMat:previewMat); scene.add(preview); dirty=true;
 }
 function applyRect(a,b,mode){
-  const y=S.layer;
+  const y=S.layer, v=cur(), vs=sig(v);
   const x0=Math.min(a.x,b.x),x1=Math.max(a.x,b.x),z0=Math.min(a.z,b.z),z1=Math.max(a.z,b.z);
   pushHist(); let ch=false;
   for(let x=x0;x<=x1;x++)for(let z=z0;z<=z1;z++){
     if(!inB(x,y,z)) continue; const k=K(x,y,z);
     if(mode==='break'){ if(S.vox.has(k)){ S.vox.delete(k); ch=true; } }
-    else { if(S.vox.get(k)!==S.role){ S.vox.set(k,S.role); ch=true; } }
+    else { if(sig(S.vox.get(k))!==vs){ S.vox.set(k,v); ch=true; } }
   }
   if(ch) changed(); else S.hist.pop();
 }
@@ -448,12 +489,15 @@ function bindGestures(el){
     const r=el.getBoundingClientRect();
     ndc.set(((cx-r.left)/r.width)*2-1, -((cy-r.top)/r.height)*2+1);
     ray.setFromCamera(ndc,camera);
-    const targets=[]; if(inst&&inst.count) targets.push(inst); if(planeObj) targets.push(planeObj);
+    const targets=editMeshes.filter(m=>m.count).slice(); if(planeObj) targets.push(planeObj);
     const hit=ray.intersectObjects(targets,false)[0]; if(!hit) return;
-    if(hit.object===inst){
-      const o=list[hit.instanceId]; if(!o) return; const p=o.p;
+    if(hit.object!==planeObj){
+      const im=hit.object, o=im.userData.items[hit.instanceId]; if(!o) return; const p=o.p;
       if(mode==='break') remove(p[0],p[1],p[2]);
-      else { const n=hit.face.normal; place(p[0]+n.x,p[1]+n.y,p[2]+n.z); }
+      else { const m4=new THREE.Matrix4(); im.getMatrixAt(hit.instanceId,m4);
+        const nm=new THREE.Matrix3().getNormalMatrix(m4);
+        const n=hit.face.normal.clone().applyMatrix3(nm).normalize();
+        place(p[0]+Math.round(n.x),p[1]+Math.round(n.y),p[2]+Math.round(n.z)); }
     } else {                                   // 作業面
       const x=Math.floor(hit.point.x), z=Math.floor(hit.point.z);
       if(mode==='break') remove(x,S.layer,z);  // 平面セルの削除（ダブルタップ削除）
@@ -494,9 +538,9 @@ function renderGrid(){
   for(let z=0;z<d.z;z++) for(let x=0;x<d.x;x++){
     const c=document.createElement('div');
     c.className='cell'; c.dataset.x=x; c.dataset.z=z;
-    const role=S.vox.get(K(x,S.layer,z));
-    c.dataset.on = role?1:0;
-    if(role) c.style.background = roleHex(role);   // 役割色でセル表示
+    const v=S.vox.get(K(x,S.layer,z));
+    c.dataset.on = v?1:0;
+    if(v) c.style.background = roleHex(v.r);   // 役割色でセル表示
     c.dataset.below = (S.layer>0 && S.vox.has(K(x,S.layer-1,z)) && !S.vox.has(K(x,S.layer,z)))?1:0;
     c.dataset.cx=(x+1)%4===0?1:0; c.dataset.cz=(z+1)%4===0?1:0;
     c.style.width=c.style.height=S.cell+'px';
@@ -510,7 +554,7 @@ function renderGrid(){
   const cellAt=(x,y)=>{ const el=document.elementFromPoint(x,y);
     return (el&&el.dataset&&el.dataset.x!==undefined)?{x:+el.dataset.x,z:+el.dataset.z}:null; };
   const apply=(x,z,m)=>{ const k=K(x,S.layer,z);
-    if(m==='draw'){ if(S.vox.get(k)!==S.role){ S.vox.set(k,S.role); changed(); renderGrid(); } }
+    if(m==='draw'){ const v=cur(); if(sig(S.vox.get(k))!==sig(v)){ S.vox.set(k,v); changed(); renderGrid(); } }
     else { if(S.vox.has(k)){ S.vox.delete(k); changed(); renderGrid(); } } };
   document.addEventListener('pointerdown',e=>{
     if(S.view!=='plan'||S.tool==='pan') return;
@@ -537,9 +581,13 @@ function buildJson(){
   const d=S.dims, name=$('#name').value;
   if(S.jsonMode==='blocks'){
     // structure(d,h,w) 準拠のレコード。x→w, y→h, z→d。1レコード1行。
-    const arr=[...S.vox.entries()].map(([k,role])=>({p:k.split(',').map(Number),role}))
+    const arr=[...S.vox.entries()].map(([k,v])=>({p:k.split(',').map(Number),v:norm(v)}))
       .sort((a,b)=>a.p[2]-b.p[2]||a.p[1]-b.p[1]||a.p[0]-b.p[0]); // d(z) → h(y) → w(x)
-    const recs=arr.map(o=>'  '+JSON.stringify({pos:{d:o.p[2],h:o.p[1],w:o.p[0]},mat:o.role}));
+    const recs=arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:p[0]},mat:v.r};
+      if(v.s==='slab'){ rec.form='SLAB'; rec.type=v.h; }
+      else if(v.s==='stairs'){ rec.form='STAIRS'; rec.facing=FAC[v.f]; rec.half=v.h; }
+      else if(v.s==='trapdoor'){ rec.form='TRAPDOOR'; rec.facing=FAC[v.f]; rec.half=v.h; rec.open='false'; }
+      return '  '+JSON.stringify(rec); });
     return '{\n "name": '+JSON.stringify(name)+',\n "size": ['+d.z+', '+d.y+', '+d.x+'],\n'
       +' "blocks": [\n'+recs.join(',\n')+(recs.length?'\n':'')+' ]\n}';
   }
@@ -604,6 +652,16 @@ function setTool(t){ S.tool=t;
   ['draw','erase','pan'].forEach(n=>$('#p-'+n).setAttribute('aria-pressed', n===t));
   $('#gridwrap').style.touchAction = t==='pan' ? 'auto' : 'none'; }
 
+function renderShapeBar(){   // 形/向き/上下 バー
+  ['shape-space','shape-plan'].forEach(id=>{ const el=$('#'+id); if(!el) return; el.innerHTML='';
+    SHAPES.forEach(s=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=s;
+      b.setAttribute('aria-pressed', S.shape===s); b.onclick=()=>{ S.shape=s; save(); renderShapeBar(); }; el.appendChild(b); });
+    const fb=document.createElement('button'); fb.className='btn'; fb.textContent='向:'+FAC[S.facing];
+    fb.onclick=()=>{ S.facing=(S.facing+1)%4; save(); renderShapeBar(); }; el.appendChild(fb);
+    const hb=document.createElement('button'); hb.className='btn'; hb.textContent=S.half==='top'?'上':'下';
+    hb.onclick=()=>{ S.half=S.half==='top'?'bottom':'top'; save(); renderShapeBar(); }; el.appendChild(hb);
+  });
+}
 function renderRoles(){   // 役割（色）選択バーを立体・平面へ描画
   ['roles-space','roles-plan'].forEach(id=>{ const el=$('#'+id); if(!el) return; el.innerHTML='';
     ROLES.forEach(r=>{ const b=document.createElement('button'); b.className='btn';
@@ -629,7 +687,7 @@ $('#p-copy').onclick=()=>{ if(S.layer===0) return; pushHist(); const d=S.dims;
   changed(); renderGrid(); renderSpine(); };
 $('#p-out').onclick=()=>{ pushHist(); const d=S.dims;
   for(let x=0;x<d.x;x++) for(let z=0;z<d.z;z++)
-    if(x===0||z===0||x===d.x-1||z===d.z-1) S.vox.set(K(x,S.layer,z),S.role);
+    if(x===0||z===0||x===d.x-1||z===d.z-1) S.vox.set(K(x,S.layer,z),cur());
   changed(); renderGrid(); renderSpine(); };
 
 $('#j-layers').onclick=()=>{ S.jsonMode='layers';
@@ -694,13 +752,18 @@ function importJson(text){
   try{
     const d=JSON.parse(text);
     const set=new Map();
-    if(Array.isArray(d.blocks))        // structure 準拠。mat を役割として取り込む
-      d.blocks.forEach(b=>{ const p=b.pos; if(p) set.set(K(p.w,p.h,p.d), b.mat||'wall_main'); });
+    if(Array.isArray(d.blocks))        // structure 準拠。mat=役割・form→shape を取り込む
+      d.blocks.forEach(b=>{ const p=b.pos; if(!p) return;
+        let s='full',f=0,h='bottom'; const fm=(b.form||'').toUpperCase();
+        if(fm==='SLAB'){ s='slab'; h=b.type||'bottom'; }
+        else if(fm==='STAIRS'){ s='stairs'; f=FAC_I[b.facing]||0; h=b.half||'bottom'; }
+        else if(fm==='TRAPDOOR'){ s='trapdoor'; f=FAC_I[b.facing]||0; h=b.half||'bottom'; }
+        set.set(K(p.w,p.h,p.d), {r:b.mat||'wall_main', s, f, h}); });
     else if(Array.isArray(d.voxels))   // 旧形式（後方互換）
-      d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),'wall_main'));
+      d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),{r:'wall_main',s:'full',f:0,h:'bottom'}));
     else if(d.layers)
       Object.keys(d.layers).forEach(y=>d.layers[y].forEach((row,z)=>{
-        [...row].forEach((ch,x)=>{ if(ch!=='.') set.set(K(x,+y,z),'wall_main'); }); }));
+        [...row].forEach((ch,x)=>{ if(ch!=='.') set.set(K(x,+y,z),{r:'wall_main',s:'full',f:0,h:'bottom'}); }); }));
     let nd = null;
     if(d.size) nd = Array.isArray(d.voxels)     // 旧 voxels は [x,y,z]、新(blocks/layers)は [d,h,w]
       ? {x:d.size[0], y:d.size[1], z:d.size[2]}
@@ -745,7 +808,7 @@ load();
 $('#dx').value=S.dims.x; $('#dy').value=S.dims.y; $('#dz').value=S.dims.z;
 $('#plane').max=S.dims.y-1; $('#ymax').textContent='/ '+(S.dims.y-1);
 initThree(); buildFloor(); buildPlane(); frameCamera(); syncVox();
-$('#tot').textContent=S.vox.size; setLayer(0); setView('space'); renderRoles();
+$('#tot').textContent=S.vox.size; setLayer(0); setView('space'); renderRoles(); renderShapeBar();
 
 updateDirLabel();
 if(FS_OK) idbGet('dir').then(h=>{ if(h){ S.dirHandle=h; updateDirLabel(); } }).catch(()=>{});
