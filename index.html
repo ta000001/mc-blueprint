@@ -163,7 +163,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.0';
+const APP_VERSION = '3.1';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -263,8 +263,14 @@ function initThree(){
   const sun=new THREE.DirectionalLight(0xfff0d0,.8); sun.position.set(1,2.2,1.4); scene.add(sun);
   const rim=new THREE.DirectionalLight(0x6fa79a,.35); rim.position.set(-1.4,.6,-1); scene.add(rim);
 
-  mat = new THREE.MeshLambertMaterial({color:0xffffff});            // 役割色は per-instance
-  ghostMat = new THREE.MeshLambertMaterial({color:0xffffff, transparent:true, opacity:0.22, depthWrite:false});
+  // 白ベース＋枠のテクスチャ（instanceColor で役割色に着色＝縁線が残る）
+  const c=document.createElement('canvas'); c.width=c.height=16; const g=c.getContext('2d');
+  g.fillStyle='#ffffff'; g.fillRect(0,0,16,16);
+  g.fillStyle='#dcdcdc'; g.fillRect(0,0,16,1); g.fillRect(0,0,1,16);   // 上/左＝明るい縁
+  g.fillStyle='#6f6f6f'; g.fillRect(0,15,16,1); g.fillRect(15,0,1,16); // 下/右＝暗い縁
+  const tex=new THREE.CanvasTexture(c); tex.magFilter=THREE.NearestFilter; tex.minFilter=THREE.NearestFilter;
+  mat = new THREE.MeshLambertMaterial({map:tex});
+  ghostMat = new THREE.MeshLambertMaterial({map:tex, transparent:true, opacity:0.22, depthWrite:false});
   previewMat = new THREE.MeshBasicMaterial({color:0xF0D48C, transparent:true, opacity:0.5, depthWrite:false});
   previewBreakMat = new THREE.MeshBasicMaterial({color:0xE0604A, transparent:true, opacity:0.5, depthWrite:false});
   geo = new THREE.BoxGeometry(1,1,1);
