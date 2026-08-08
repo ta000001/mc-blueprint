@@ -161,7 +161,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '2.2';
+const APP_VERSION = '2.3';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -356,7 +356,7 @@ function bindGestures(el){
     pts.set(e.pointerId,{x:e.clientX,y:e.clientY,btn:e.button,type:e.pointerType});
     if(pts.size===1){
       const now=Date.now();
-      const isDbl = lastUp && now-lastUp.t<300 && Math.hypot(e.clientX-lastUp.x,e.clientY-lastUp.y)<22;
+      const isDbl = lastUp && now-lastUp.t<200 && Math.hypot(e.clientX-lastUp.x,e.clientY-lastUp.y)<22;
       const gmode = isDbl ? 'break' : S.mode;      // ダブルクリック/タップ＝削除
       tap={id:e.pointerId,x:e.clientX,y:e.clientY,t:now,mode:gmode,dbl:!!isDbl};
       drag=null;
@@ -400,7 +400,7 @@ function bindGestures(el){
       } else {                              // 置く単発はダブル判定のため遅延（ダブルなら次のdownで取消）
         lastUp={x,y,t:Date.now()};
         clearTimeout(pendingPlace);
-        pendingPlace=setTimeout(()=>{ doTap(x,y,'place'); pendingPlace=null; }, 260);
+        pendingPlace=setTimeout(()=>{ doTap(x,y,'place'); pendingPlace=null; }, 200);
       }
     } else if(drag){
       clearTimeout(pendingPlace); pendingPlace=null;
