@@ -165,7 +165,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.2';
+const APP_VERSION = '3.3';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -276,8 +276,8 @@ function buildGeos(){
     full: new THREE.BoxGeometry(1,1,1),
     slab_bottom: boxAt(1,0.5,1,-0.25,0), slab_top: boxAt(1,0.5,1,0.25,0),
     trapdoor_bottom: boxAt(1,T,1,-0.5+T/2,0), trapdoor_top: boxAt(1,T,1,0.5-T/2,0),
-    stairs_bottom: mergeGeo(boxAt(1,0.5,1,-0.25,0), boxAt(1,0.5,0.5,0.25,0.25)),
-    stairs_top:    mergeGeo(boxAt(1,0.5,1,0.25,0),  boxAt(1,0.5,0.5,-0.25,0.25)),
+    stairs_bottom: mergeGeo(boxAt(1,0.5,1,-0.25,0), boxAt(1,0.5,0.5,0.25,-0.25)), // 高段=facingの反対(-z=BACK側)
+    stairs_top:    mergeGeo(boxAt(1,0.5,1,0.25,0),  boxAt(1,0.5,0.5,-0.25,-0.25)),
   };
   geo = GEOS.full;
 }
@@ -363,7 +363,7 @@ function makeInstShape(items, geometry, material){
   im.count=items.length;
   const m=new THREE.Matrix4(), q=new THREE.Quaternion(), pos=new THREE.Vector3(),
         scl=new THREE.Vector3(1,1,1), up=new THREE.Vector3(0,1,0), col=new THREE.Color();
-  items.forEach((o,i)=>{ pos.set(o.p[0]+.5,o.p[1]+.5,o.p[2]+.5); q.setFromAxisAngle(up,-o.v.f*Math.PI/2);
+  items.forEach((o,i)=>{ pos.set(o.p[0]+.5,o.p[1]+.5,o.p[2]+.5); q.setFromAxisAngle(up,o.v.f*Math.PI/2);
     m.compose(pos,q,scl); im.setMatrixAt(i,m); col.setHex(roleColor(o.v.r)); im.setColorAt(i,col); });
   im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true;
   im.userData.items=items; return im;
