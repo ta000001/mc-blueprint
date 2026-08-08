@@ -163,7 +163,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '2.8';
+const APP_VERSION = '2.9';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -600,7 +600,7 @@ function setTool(t){ S.tool=t;
 function renderRoles(){   // 役割（色）選択バーを立体・平面へ描画
   ['roles-space','roles-plan'].forEach(id=>{ const el=$('#'+id); if(!el) return; el.innerHTML='';
     ROLES.forEach(r=>{ const b=document.createElement('button'); b.className='btn';
-      b.textContent=r.jp; const on=S.role===r.k;
+      b.textContent=r.k; const on=S.role===r.k;   // 物理名（役割キー）を表示
       b.style.borderColor=roleHex(r.k); b.style.background=on?roleHex(r.k):''; b.style.color=on?'#10171A':'';
       b.setAttribute('aria-pressed',on);
       b.onclick=()=>{ S.role=r.k; save(); renderRoles(); };
