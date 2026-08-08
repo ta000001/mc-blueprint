@@ -113,7 +113,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="b-up">▲ 作業面を上げる</button>
     <button class="btn" id="b-fit">視点をリセット</button>
   </div>
-  <p class="note">緑の面が作業面。タップで1個、<b>ドラッグで矩形</b>配置。<b>ダブルタップ/クリックで削除</b>、ダブル→ドラッグで削除範囲。作業面より上の層は半透明で編集不可（内部を触りやすく）。合計 <span id="tot">0</span> ブロック。</p>
+  <div class="bar" id="roles-space"></div>
+  <p class="note">緑の面が作業面。タップで1個、<b>ドラッグで矩形</b>配置。<b>ダブルタップ/クリックで削除</b>、ダブル→ドラッグで削除範囲。作業面より上の層は半透明で編集不可。色＝役割（place の mat）。合計 <span id="tot">0</span> ブロック。</p>
 </section>
 
 <section id="v-plan" class="hidden">
@@ -139,7 +140,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="p-clr">層を消去</button>
     <button class="btn" id="p-undo">元に戻す</button>
   </div>
-  <p class="note">上から見た平面図。横がW、縦がD。左の帯は各Hのブロック量で、ドラッグすると階層を移動する。</p>
+  <div class="bar" id="roles-plan"></div>
+  <p class="note">上から見た平面図。横がW、縦がD。色＝役割。左の帯は各Hのブロック量で、ドラッグすると階層を移動する。</p>
 </section>
 
 <section id="v-json" class="hidden">
@@ -161,20 +163,35 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '2.6';
+const APP_VERSION = '2.7';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
 
+/* 役割（色）＝place の mat。palette 側で 役割→dict mat を対応づける */
+const ROLES = [
+  {k:'wall_main', jp:'壁主', c:0xC0533F},
+  {k:'wall_sub',  jp:'壁副', c:0xC8863A},
+  {k:'roof',      jp:'屋根', c:0x3F63B0},
+  {k:'floor',     jp:'床',   c:0x4E9A5A},
+  {k:'frame',     jp:'柱梁', c:0x6B4A2F},
+  {k:'base',      jp:'土台', c:0x8A8F94},
+  {k:'window',    jp:'窓',   c:0x5AB6D0},
+  {k:'accent',    jp:'装飾', c:0x9B5AC0},
+];
+const ROLE_C = Object.fromEntries(ROLES.map(r=>[r.k,r.c]));
+const roleColor = (role)=> (role in ROLE_C) ? ROLE_C[role] : ROLES[0].c;
+const roleHex = (role)=> '#'+roleColor(role).toString(16).padStart(6,'0');
+
 const S = {
-  dims:{x:16,y:16,z:16}, vox:new Set(), layer:0, mode:'place', tool:'draw',
+  dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'wall_main',
   view:'space', jsonMode:'layers', cell:20, hist:[], manualZoom:false, dirHandle:null
 };
 
 /* ---------- persistence ---------- */
 function save(){
   try{ localStorage.setItem('blueprint:current', JSON.stringify({
-    dims:S.dims, name:$('#name').value, voxels:[...S.vox]
+    dims:S.dims, name:$('#name').value, voxels:[...S.vox.entries()], role:S.role
   })); }catch(e){}
 }
 function load(){
@@ -184,17 +201,18 @@ function load(){
     const d = JSON.parse(raw);
     if(d.dims) S.dims = d.dims;
     if(d.name) $('#name').value = d.name;
-    if(Array.isArray(d.voxels)) S.vox = new Set(d.voxels);
+    if(Array.isArray(d.voxels)) S.vox = new Map(d.voxels.map(v=> Array.isArray(v)?v:[v,'wall_main']));
+    if(d.role) S.role = d.role;
   }catch(e){}
 }
 function status(m){ $('#status').textContent = m; clearTimeout(status._t);
   status._t = setTimeout(()=>$('#status').textContent='',2600); }
 
 /* ---------- model ---------- */
-function pushHist(){ S.hist.push(new Set(S.vox)); if(S.hist.length>60) S.hist.shift(); }
+function pushHist(){ S.hist.push(new Map(S.vox)); if(S.hist.length>60) S.hist.shift(); }
 function inB(x,y,z){ const d=S.dims; return x>=0&&y>=0&&z>=0&&x<d.x&&y<d.y&&z<d.z; }
 function place(x,y,z){ if(!inB(x,y,z)) return; if(y>S.layer) return;  // 作業面より上には置かない
-  const k=K(x,y,z); if(S.vox.has(k)) return; pushHist(); S.vox.add(k); changed(); }
+  const k=K(x,y,z); if(S.vox.get(k)===S.role) return; pushHist(); S.vox.set(k,S.role); changed(); }
 function remove(x,y,z){ const k=K(x,y,z); if(!S.vox.has(k)) return; pushHist(); S.vox.delete(k); changed(); }
 function undo(){ const p=S.hist.pop(); if(p){ S.vox=p; changed(); } }
 
@@ -203,9 +221,9 @@ function changed(){ syncVox(); if(S.view==='plan'){ renderGrid(); renderSpine();
 
 function setDims(nd){
   S.dims = nd;
-  const keep = new Set();
-  S.vox.forEach(k=>{ const [x,y,z]=k.split(',').map(Number);
-    if(x<nd.x&&y<nd.y&&z<nd.z) keep.add(k); });
+  const keep = new Map();
+  S.vox.forEach((role,k)=>{ const [x,y,z]=k.split(',').map(Number);
+    if(x<nd.x&&y<nd.y&&z<nd.z) keep.set(k,role); });
   S.vox = keep;
   S.layer = clamp(S.layer,0,nd.y-1);
   $('#plane').max = nd.y-1; $('#plane').value = S.layer;
@@ -237,14 +255,8 @@ function initThree(){
   const sun=new THREE.DirectionalLight(0xfff0d0,.8); sun.position.set(1,2.2,1.4); scene.add(sun);
   const rim=new THREE.DirectionalLight(0x6fa79a,.35); rim.position.set(-1.4,.6,-1); scene.add(rim);
 
-  const c=document.createElement('canvas'); c.width=c.height=32; const g=c.getContext('2d');
-  g.fillStyle='#D4A93C'; g.fillRect(0,0,32,32);
-  g.fillStyle='#B58F2C'; g.fillRect(0,0,32,2); g.fillRect(0,0,2,32);
-  g.fillStyle='#8E7124'; g.fillRect(0,30,32,2); g.fillRect(30,0,2,32);
-  g.fillStyle='#C79E36'; g.fillRect(8,11,5,4); g.fillRect(19,21,6,3);
-  const tex=new THREE.CanvasTexture(c); tex.magFilter=THREE.NearestFilter; tex.minFilter=THREE.NearestFilter;
-  mat = new THREE.MeshLambertMaterial({map:tex});
-  ghostMat = new THREE.MeshLambertMaterial({map:tex, transparent:true, opacity:0.22, depthWrite:false});
+  mat = new THREE.MeshLambertMaterial({color:0xffffff});            // 役割色は per-instance
+  ghostMat = new THREE.MeshLambertMaterial({color:0xffffff, transparent:true, opacity:0.22, depthWrite:false});
   previewMat = new THREE.MeshBasicMaterial({color:0xF0D48C, transparent:true, opacity:0.5, depthWrite:false});
   previewBreakMat = new THREE.MeshBasicMaterial({color:0xE0604A, transparent:true, opacity:0.5, depthWrite:false});
   geo = new THREE.BoxGeometry(1,1,1);
@@ -293,20 +305,22 @@ function buildPlane(){
   planeObj.position.set(d.x/2, S.layer+0.02, d.z/2);
   scene.add(planeObj); dirty=true;
 }
-function makeInst(arr, material){
+function makeInst(arr, material, colored){
   const im=new THREE.InstancedMesh(geo,material,Math.max(1,arr.length));
-  im.count=arr.length; const m=new THREE.Matrix4();
-  arr.forEach((p,i)=>{ m.makeTranslation(p[0]+.5,p[1]+.5,p[2]+.5); im.setMatrixAt(i,m); });
-  im.instanceMatrix.needsUpdate=true; return im;
+  im.count=arr.length; const m=new THREE.Matrix4(), col=new THREE.Color();
+  arr.forEach((o,i)=>{ const p=colored?o.p:o; m.makeTranslation(p[0]+.5,p[1]+.5,p[2]+.5); im.setMatrixAt(i,m);
+    if(colored){ col.setHex(roleColor(o.role)); im.setColorAt(i,col); } });
+  im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true;
+  return im;
 }
 function syncVox(){
   if(inst) scene.remove(inst);
   if(ghost) scene.remove(ghost);
   const below=[], above=[];
-  S.vox.forEach(k=>{ const p=k.split(',').map(Number); (p[1]>S.layer?above:below).push(p); });
+  S.vox.forEach((role,k)=>{ const p=k.split(',').map(Number); (p[1]>S.layer?above:below).push({p,role}); });
   list=below;                        // 当該層以下＝不透明・クリック対象
-  inst=makeInst(below,mat);
-  ghost=makeInst(above,ghostMat);    // 上層＝半透明・非編集
+  inst=makeInst(below,mat,true);
+  ghost=makeInst(above,ghostMat,true);   // 上層＝半透明・非編集
   scene.add(inst); scene.add(ghost); dirty=true;
 }
 /* ---- ドラッグ矩形（dw平面に複数配置）---- */
@@ -325,7 +339,7 @@ function applyRect(a,b,mode){
   for(let x=x0;x<=x1;x++)for(let z=z0;z<=z1;z++){
     if(!inB(x,y,z)) continue; const k=K(x,y,z);
     if(mode==='break'){ if(S.vox.has(k)){ S.vox.delete(k); ch=true; } }
-    else { if(!S.vox.has(k)){ S.vox.add(k); ch=true; } }
+    else { if(S.vox.get(k)!==S.role){ S.vox.set(k,S.role); ch=true; } }
   }
   if(ch) changed(); else S.hist.pop();
 }
@@ -423,7 +437,7 @@ function bindGestures(el){
     const targets=[]; if(inst&&inst.count) targets.push(inst); if(planeObj) targets.push(planeObj);
     const hit=ray.intersectObjects(targets,false)[0]; if(!hit) return;
     if(hit.object===inst){
-      const p=list[hit.instanceId]; if(!p) return;
+      const o=list[hit.instanceId]; if(!o) return; const p=o.p;
       if(mode==='break') remove(p[0],p[1],p[2]);
       else { const n=hit.face.normal; place(p[0]+n.x,p[1]+n.y,p[2]+n.z); }
     } else {                                   // 作業面
@@ -437,7 +451,7 @@ function bindGestures(el){
 /* ---------- plan view ---------- */
 function counts(){
   const c=new Array(S.dims.y).fill(0);
-  S.vox.forEach(k=>{ const y=+k.split(',')[1]; if(y<S.dims.y) c[y]++; });
+  S.vox.forEach((role,k)=>{ const y=+k.split(',')[1]; if(y<S.dims.y) c[y]++; });
   return c;
 }
 function renderSpine(){
@@ -466,7 +480,9 @@ function renderGrid(){
   for(let z=0;z<d.z;z++) for(let x=0;x<d.x;x++){
     const c=document.createElement('div');
     c.className='cell'; c.dataset.x=x; c.dataset.z=z;
-    c.dataset.on = S.vox.has(K(x,S.layer,z))?1:0;
+    const role=S.vox.get(K(x,S.layer,z));
+    c.dataset.on = role?1:0;
+    if(role) c.style.background = roleHex(role);   // 役割色でセル表示
     c.dataset.below = (S.layer>0 && S.vox.has(K(x,S.layer-1,z)) && !S.vox.has(K(x,S.layer,z)))?1:0;
     c.dataset.cx=(x+1)%4===0?1:0; c.dataset.cz=(z+1)%4===0?1:0;
     c.style.width=c.style.height=S.cell+'px';
@@ -480,7 +496,7 @@ function renderGrid(){
   const cellAt=(x,y)=>{ const el=document.elementFromPoint(x,y);
     return (el&&el.dataset&&el.dataset.x!==undefined)?{x:+el.dataset.x,z:+el.dataset.z}:null; };
   const apply=(x,z,m)=>{ const k=K(x,S.layer,z);
-    if(m==='draw'){ if(!S.vox.has(k)){ S.vox.add(k); changed(); renderGrid(); } }
+    if(m==='draw'){ if(S.vox.get(k)!==S.role){ S.vox.set(k,S.role); changed(); renderGrid(); } }
     else { if(S.vox.has(k)){ S.vox.delete(k); changed(); renderGrid(); } } };
   document.addEventListener('pointerdown',e=>{
     if(S.view!=='plan'||S.tool==='pan') return;
@@ -507,9 +523,9 @@ function buildJson(){
   const d=S.dims, name=$('#name').value;
   if(S.jsonMode==='blocks'){
     // structure(d,h,w) 準拠のレコード。x→w, y→h, z→d。1レコード1行。
-    const arr=[...S.vox].map(k=>k.split(',').map(Number))
-      .sort((a,b)=>a[2]-b[2]||a[1]-b[1]||a[0]-b[0]); // d(z) → h(y) → w(x)
-    const recs=arr.map(p=>'  '+JSON.stringify({pos:{d:p[2],h:p[1],w:p[0]}}));
+    const arr=[...S.vox.entries()].map(([k,role])=>({p:k.split(',').map(Number),role}))
+      .sort((a,b)=>a.p[2]-b.p[2]||a.p[1]-b.p[1]||a.p[0]-b.p[0]); // d(z) → h(y) → w(x)
+    const recs=arr.map(o=>'  '+JSON.stringify({pos:{d:o.p[2],h:o.p[1],w:o.p[0]},mat:o.role}));
     return '{\n "name": '+JSON.stringify(name)+',\n "size": ['+d.z+', '+d.y+', '+d.x+'],\n'
       +' "blocks": [\n'+recs.join(',\n')+(recs.length?'\n':'')+' ]\n}';
   }
@@ -528,7 +544,7 @@ function renderJson(){
   $('#json').value = buildJson();
   $('#j-note').textContent = S.jsonMode==='layers'
     ? 'layers のキーが H。各要素が1行（D）で、文字の位置が W。# がブロック、. が空。size は [D,H,W]。'
-    : 'blocks は structure 準拠のレコード。各 pos は d=奥/h=上/w=左右。size は [D,H,W]。ここに form/mat 等を足すと MOD の構造JSONになる。原点は南西下端。';
+    : 'blocks は structure 準拠。pos は d=奥/h=上/w=左右、mat=役割(色)。palette 側で 役割→dict の mat に対応づける。size は [D,H,W]。';
 }
 
 /* ---------- view switching ---------- */
@@ -559,7 +575,7 @@ $('#b-up').onclick = ()=>setLayer(S.layer+1);
 $('#b-down').onclick = ()=>setLayer(S.layer-1);
 $('#b-fit').onclick = frameCamera;
 $('#b-undo').onclick = undo;
-$('#b-clear').onclick = ()=>{ pushHist(); S.vox=new Set(); changed(); renderGrid(); renderSpine(); };
+$('#b-clear').onclick = ()=>{ pushHist(); S.vox=new Map(); changed(); renderGrid(); renderSpine(); };
 $('#b-place').onclick = ()=>setMode('place');
 $('#b-break').onclick = ()=>setMode('break');
 function setMode(m){ S.mode=m;
@@ -574,6 +590,17 @@ function setTool(t){ S.tool=t;
   ['draw','erase','pan'].forEach(n=>$('#p-'+n).setAttribute('aria-pressed', n===t));
   $('#gridwrap').style.touchAction = t==='pan' ? 'auto' : 'none'; }
 
+function renderRoles(){   // 役割（色）選択バーを立体・平面へ描画
+  ['roles-space','roles-plan'].forEach(id=>{ const el=$('#'+id); if(!el) return; el.innerHTML='';
+    ROLES.forEach(r=>{ const b=document.createElement('button'); b.className='btn';
+      b.textContent=r.jp; const on=S.role===r.k;
+      b.style.borderColor=roleHex(r.k); b.style.background=on?roleHex(r.k):''; b.style.color=on?'#10171A':'';
+      b.setAttribute('aria-pressed',on);
+      b.onclick=()=>{ S.role=r.k; save(); renderRoles(); };
+      el.appendChild(b); });
+  });
+}
+
 $('#p-up').onclick=()=>setLayer(S.layer+1);
 $('#p-down').onclick=()=>setLayer(S.layer-1);
 $('#p-zi').onclick=()=>{ S.manualZoom=true; S.cell=clamp(S.cell+4,6,44); renderGrid(); };
@@ -583,12 +610,12 @@ $('#p-clr').onclick=()=>{ pushHist(); const d=S.dims;
   for(let x=0;x<d.x;x++) for(let z=0;z<d.z;z++) S.vox.delete(K(x,S.layer,z));
   changed(); renderGrid(); renderSpine(); };
 $('#p-copy').onclick=()=>{ if(S.layer===0) return; pushHist(); const d=S.dims;
-  for(let x=0;x<d.x;x++) for(let z=0;z<d.z;z++)
-    if(S.vox.has(K(x,S.layer-1,z))) S.vox.add(K(x,S.layer,z));
+  for(let x=0;x<d.x;x++) for(let z=0;z<d.z;z++){ const r=S.vox.get(K(x,S.layer-1,z));
+    if(r) S.vox.set(K(x,S.layer,z),r); }              // 役割も複製
   changed(); renderGrid(); renderSpine(); };
 $('#p-out').onclick=()=>{ pushHist(); const d=S.dims;
   for(let x=0;x<d.x;x++) for(let z=0;z<d.z;z++)
-    if(x===0||z===0||x===d.x-1||z===d.z-1) S.vox.add(K(x,S.layer,z));
+    if(x===0||z===0||x===d.x-1||z===d.z-1) S.vox.set(K(x,S.layer,z),S.role);
   changed(); renderGrid(); renderSpine(); };
 
 $('#j-layers').onclick=()=>{ S.jsonMode='layers';
@@ -652,20 +679,20 @@ $('#j-dl').onclick=async()=>{
 function importJson(text){
   try{
     const d=JSON.parse(text);
-    const set=new Set();
-    if(Array.isArray(d.blocks))        // structure 準拠（form/mat 等があっても pos だけ使う）
-      d.blocks.forEach(b=>{ const p=b.pos; if(p) set.add(K(p.w,p.h,p.d)); });
+    const set=new Map();
+    if(Array.isArray(d.blocks))        // structure 準拠。mat を役割として取り込む
+      d.blocks.forEach(b=>{ const p=b.pos; if(p) set.set(K(p.w,p.h,p.d), b.mat||'wall_main'); });
     else if(Array.isArray(d.voxels))   // 旧形式（後方互換）
-      d.voxels.forEach(p=>set.add(K(p[0],p[1],p[2])));
+      d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),'wall_main'));
     else if(d.layers)
       Object.keys(d.layers).forEach(y=>d.layers[y].forEach((row,z)=>{
-        [...row].forEach((ch,x)=>{ if(ch!=='.') set.add(K(x,+y,z)); }); }));
+        [...row].forEach((ch,x)=>{ if(ch!=='.') set.set(K(x,+y,z),'wall_main'); }); }));
     let nd = null;
     if(d.size) nd = Array.isArray(d.voxels)     // 旧 voxels は [x,y,z]、新(blocks/layers)は [d,h,w]
       ? {x:d.size[0], y:d.size[1], z:d.size[2]}
       : {x:d.size[2], y:d.size[1], z:d.size[0]};
     if(!nd){ let mx=1,my=1,mz=1;   // size 無し（MOD 直の structure 等）は最大座標から復元
-      set.forEach(k=>{ const a=k.split(',').map(Number);
+      set.forEach((role,k)=>{ const a=k.split(',').map(Number);
         mx=Math.max(mx,a[0]+1); my=Math.max(my,a[1]+1); mz=Math.max(mz,a[2]+1); });
       nd={x:mx,y:my,z:mz}; }
     pushHist(); S.dims=nd; S.vox=set;
@@ -704,7 +731,7 @@ load();
 $('#dx').value=S.dims.x; $('#dy').value=S.dims.y; $('#dz').value=S.dims.z;
 $('#plane').max=S.dims.y-1; $('#ymax').textContent='/ '+(S.dims.y-1);
 initThree(); buildFloor(); buildPlane(); frameCamera(); syncVox();
-$('#tot').textContent=S.vox.size; setLayer(0); setView('space');
+$('#tot').textContent=S.vox.size; setLayer(0); setView('space'); renderRoles();
 
 updateDirLabel();
 if(FS_OK) idbGet('dir').then(h=>{ if(h){ S.dirHandle=h; updateDirLabel(); } }).catch(()=>{});
