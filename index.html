@@ -161,7 +161,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '2.5';
+const APP_VERSION = '2.6';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -404,7 +404,8 @@ function bindGestures(el){
       }
     } else if(drag){
       clearTimeout(pendingPlace); pendingPlace=null;
-      applyRect(drag.a,drag.b,drag.mode);   // ドラッグ＝矩形確定
+      if(drag.a.x!==drag.b.x || drag.a.z!==drag.b.z)   // 1ブロックのみの範囲はキャンセル
+        applyRect(drag.a,drag.b,drag.mode);
       lastUp=null;
     }
     clearPreview();
