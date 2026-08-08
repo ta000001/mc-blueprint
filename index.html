@@ -161,7 +161,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '2.1';
+const APP_VERSION = '2.2';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -332,7 +332,7 @@ function applyRect(a,b,mode){
 
 /* ---------- gestures ---------- */
 function bindGestures(el){
-  const pts=new Map(); let tap=null, pinch=0, mid=null, drag=null, lastUp=null;
+  const pts=new Map(); let tap=null, pinch=0, mid=null, drag=null, lastUp=null, pendingPlace=null;
   const dist=()=>{ const [a,b]=[...pts.values()]; return Math.hypot(a.x-b.x,a.y-b.y); };
   const midp=()=>{ const [a,b]=[...pts.values()]; return {x:(a.x+b.x)/2,y:(a.y+b.y)/2}; };
   const ray=new THREE.Raycaster(), ndc=new THREE.Vector2();
@@ -365,7 +365,7 @@ function bindGestures(el){
         const c=planeCell(e.clientX,e.clientY);
         if(c) drag={mode:gmode,a:c,b:c};           // ダブル時は削除範囲
       }
-      if(isDbl) lastUp=null;
+      if(isDbl){ clearTimeout(pendingPlace); pendingPlace=null; lastUp=null; }  // 1回目の配置を取消
     } else { tap=null; drag=null; clearPreview();
       if(pts.size===2){ pinch=dist(); mid=midp(); } }
   });
@@ -394,9 +394,16 @@ function bindGestures(el){
     const was=pts.get(e.pointerId); pts.delete(e.pointerId);
     if(pts.size<2){ pinch=0; mid=null; }
     if(tap && tap.id===e.pointerId && was && Date.now()-tap.t<600){
-      doTap(was.x,was.y,tap.mode);          // 単発（tap.mode＝置く/壊す。ダブルは壊す）
-      lastUp = tap.dbl ? null : {x:was.x,y:was.y,t:Date.now()};   // 次のダブル検出用
+      const x=was.x, y=was.y;
+      if(tap.mode==='break'){
+        doTap(x,y,'break'); lastUp=null;    // 削除は即時（ダブル/壊すモード）
+      } else {                              // 置く単発はダブル判定のため遅延（ダブルなら次のdownで取消）
+        lastUp={x,y,t:Date.now()};
+        clearTimeout(pendingPlace);
+        pendingPlace=setTimeout(()=>{ doTap(x,y,'place'); pendingPlace=null; }, 260);
+      }
     } else if(drag){
+      clearTimeout(pendingPlace); pendingPlace=null;
       applyRect(drag.a,drag.b,drag.mode);   // ドラッグ＝矩形確定
       lastUp=null;
     }
