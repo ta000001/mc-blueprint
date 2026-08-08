@@ -163,21 +163,28 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '2.7';
+const APP_VERSION = '2.8';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
 
 /* 役割（色）＝place の mat。palette 側で 役割→dict mat を対応づける */
 const ROLES = [
-  {k:'wall_main', jp:'壁主', c:0xC0533F},
-  {k:'wall_sub',  jp:'壁副', c:0xC8863A},
-  {k:'roof',      jp:'屋根', c:0x3F63B0},
-  {k:'floor',     jp:'床',   c:0x4E9A5A},
-  {k:'frame',     jp:'柱梁', c:0x6B4A2F},
-  {k:'base',      jp:'土台', c:0x8A8F94},
-  {k:'window',    jp:'窓',   c:0x5AB6D0},
-  {k:'accent',    jp:'装飾', c:0x9B5AC0},
+  {k:'wall_main', jp:'壁主',   c:0xC0533F},
+  {k:'wall_sub',  jp:'壁副',   c:0xD98C5A},
+  {k:'roof_main', jp:'屋根主', c:0x3F63B0},
+  {k:'roof_sub',  jp:'屋根副', c:0x5A86D0},
+  {k:'base_main', jp:'土台主', c:0x8A8F94},
+  {k:'base_sub',  jp:'土台副', c:0xB2B6BA},
+  {k:'floor',     jp:'床',     c:0x4E9A5A},
+  {k:'frame',     jp:'柱梁',   c:0x6B4A2F},
+  {k:'window',    jp:'窓',     c:0x5AB6D0},
+  {k:'door',      jp:'ドア',   c:0xB8862F},
+  {k:'accent1',   jp:'装飾1',  c:0x9B5AC0},
+  {k:'accent2',   jp:'装飾2',  c:0xC05A9B},
+  {k:'accent3',   jp:'装飾3',  c:0xC0A03F},
+  {k:'accent4',   jp:'装飾4',  c:0x5AC0A0},
+  {k:'accent5',   jp:'装飾5',  c:0xC06A3F},
 ];
 const ROLE_C = Object.fromEntries(ROLES.map(r=>[r.k,r.c]));
 const roleColor = (role)=> (role in ROLE_C) ? ROLE_C[role] : ROLES[0].c;
