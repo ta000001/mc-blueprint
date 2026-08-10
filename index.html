@@ -167,7 +167,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.11';
+const APP_VERSION = '3.12';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -269,7 +269,7 @@ function setLayer(v){
 }
 
 /* ---------- three.js ---------- */
-let renderer,scene,camera,editMeshes=[],ghostMeshes=[],outlineMeshes=[],preview,floorObj,planeObj,originObj,geo,GEOS,mat,ghostMat,outlineMat,outlineGhostMat,hingeMat,hingeGhostMat,EDGE_POS,previewMat,previewBreakMat,target,sph,dirty=true;
+let renderer,scene,camera,editMeshes=[],ghostMeshes=[],outlineMeshes=[],preview,floorObj,planeObj,originObj,geo,GEOS,mat,ghostMat,outlineMat,outlineGhostMat,hingeMat,hingeGhostMat,HINGE_GEO,EDGE_POS,previewMat,previewBreakMat,target,sph,dirty=true;
 function boxAt(w,h,d,oy,oz){ const g=new THREE.BoxGeometry(w,h,d); g.translate(0,oy||0,oz||0); return g; }
 function mergeGeo(a,b){   // 2つの indexed BoxGeometry を結合（階段用）
   const g=new THREE.BufferGeometry(), cat=(n,sz)=>{ const aa=a.attributes[n].array, bb=b.attributes[n].array;
@@ -326,8 +326,9 @@ function initThree(){
   EDGE_POS=eg.attributes.position.array.slice(); eg.dispose();
   outlineMat      = new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.32});
   outlineGhostMat = new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.11});
-  hingeMat        = new THREE.LineBasicMaterial({color:0x0a0f12, transparent:true, opacity:0.6});   // open trapdoor の開閉軸
-  hingeGhostMat   = new THREE.LineBasicMaterial({color:0x0a0f12, transparent:true, opacity:0.2});
+  hingeMat        = new THREE.MeshBasicMaterial({color:0x9aa7b0});                                 // open trapdoor の蝶番(開閉軸)＝棒
+  hingeGhostMat   = new THREE.MeshBasicMaterial({color:0x9aa7b0, transparent:true, opacity:0.3});
+  HINGE_GEO       = new THREE.BoxGeometry(1, 0.13, 0.13);   // 幅方向に伸びる細い棒＝蝶番
   target = new THREE.Vector3();
   sph = {theta:Math.PI*0.72, phi:Math.PI*0.33, r:30};
 
@@ -368,8 +369,8 @@ function buildOrigin(){   // MOD 原点(0,0,0)=手前・下・左 をコーナ�
     originObj.traverse(o=>{ if(o.geometry)o.geometry.dispose(); if(o.material)o.material.dispose(); }); }
   const g=new THREE.Group();
   g.position.set(S.dims.x, 0, 0);   // W ミラー後、exported w=0 は内部 x=最大側の角
-  const L=clamp(Math.max(S.dims.x,S.dims.y,S.dims.z)*0.22, 1.6, 4);   // ブラケットの辺長
-  const T=0.14;                                                       // バーの太さ
+  const L=1;        // ブラケットの辺長＝1ブロック分
+  const T=0.14;     // バーの太さ
   const bar=(w,h,d,cx,cy,cz,col)=>{ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
       new THREE.MeshBasicMaterial({color:col})); m.position.set(cx,cy,cz); return m; };
   g.add(bar(L,T,T, -L/2,0,0, 0xff5a5a));  // +W＝内部 -x（赤）
@@ -412,15 +413,16 @@ function makeOutline(cells, material){   // 各セルの単位立方体エッジ
 }
 const rotY=(px,py,pz,f)=>{ const c=[1,0,-1,0][f&3], s=[0,1,0,-1][f&3];   // +Y 周り f*90°（メッシュと同じ）
   return [px*c+pz*s, py, -px*s+pz*c]; };
-function makeHinges(entries, material){   // open trapdoor の開閉軸を線分で（half=bottom→下端 / top→上端、facing で回転）
-  const pos=[];
-  entries.forEach(({p,v})=>{ const y = v.h==='top' ? 0.5 : -0.5;   // 蝶番の高さ
-    const a=rotY(-0.5,y,-0.5,v.f), b=rotY(0.5,y,-0.5,v.f);          // 板の外面(-z)の下/上エッジ
-    const cx=p[0]+0.5, cy=p[1]+0.5, cz=p[2]+0.5;
-    pos.push(a[0]+cx,a[1]+cy,a[2]+cz, b[0]+cx,b[1]+cy,b[2]+cz); });
-  if(!pos.length) return null;
-  const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
-  return new THREE.LineSegments(g, material);
+function makeHingeRods(entries, material){   // open trapdoor の蝶番(開閉軸)を棒で（half=bottom→下端 / top→上端、facing で回転）
+  const im=new THREE.InstancedMesh(HINGE_GEO, material, entries.length); im.count=entries.length;
+  const m=new THREE.Matrix4(), q=new THREE.Quaternion(), pos=new THREE.Vector3(),
+        scl=new THREE.Vector3(1,1,1), up=new THREE.Vector3(0,1,0);
+  entries.forEach((o,i)=>{ const y=o.v.h==='top'?0.5:-0.5;         // 蝶番の高さ（板の外面 -z の下/上エッジ）
+    const off=rotY(0,y,-0.5,o.v.f);
+    pos.set(o.p[0]+0.5+off[0], o.p[1]+0.5+off[1], o.p[2]+0.5+off[2]);
+    q.setFromAxisAngle(up, o.v.f*Math.PI/2);                        // 幅方向の棒を facing に回す
+    m.compose(pos,q,scl); im.setMatrixAt(i,m); });
+  im.instanceMatrix.needsUpdate=true; return im;
 }
 function syncVox(){
   editMeshes.forEach(m=>scene.remove(m)); ghostMeshes.forEach(m=>scene.remove(m));
@@ -434,8 +436,8 @@ function syncVox(){
   for(const gk in above){ const im=makeInstShape(above[gk],GEOS[gk],ghostMat); scene.add(im); ghostMeshes.push(im); }
   if(belowCells.length){ const o=makeOutline(belowCells,outlineMat); scene.add(o); outlineMeshes.push(o); }
   if(aboveCells.length){ const o=makeOutline(aboveCells,outlineGhostMat); scene.add(o); outlineMeshes.push(o); }
-  if(below['trapdoor_open']){ const h=makeHinges(below['trapdoor_open'],hingeMat); if(h){ scene.add(h); outlineMeshes.push(h); } }
-  if(above['trapdoor_open']){ const h=makeHinges(above['trapdoor_open'],hingeGhostMat); if(h){ scene.add(h); outlineMeshes.push(h); } }
+  if(below['trapdoor_open']){ const h=makeHingeRods(below['trapdoor_open'],hingeMat); scene.add(h); editMeshes.push(h); }
+  if(above['trapdoor_open']){ const h=makeHingeRods(above['trapdoor_open'],hingeGhostMat); scene.add(h); ghostMeshes.push(h); }
   dirty=true;
 }
 /* ---- ドラッグ矩形（dw平面に複数配置）---- */
