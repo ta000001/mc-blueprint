@@ -167,7 +167,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.8';
+const APP_VERSION = '3.9';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -269,7 +269,7 @@ function setLayer(v){
 }
 
 /* ---------- three.js ---------- */
-let renderer,scene,camera,editMeshes=[],ghostMeshes=[],preview,floorObj,planeObj,originObj,geo,GEOS,mat,ghostMat,previewMat,previewBreakMat,target,sph,dirty=true;
+let renderer,scene,camera,editMeshes=[],ghostMeshes=[],outlineMeshes=[],preview,floorObj,planeObj,originObj,geo,GEOS,mat,ghostMat,outlineMat,outlineGhostMat,EDGE_POS,previewMat,previewBreakMat,target,sph,dirty=true;
 function boxAt(w,h,d,oy,oz){ const g=new THREE.BoxGeometry(w,h,d); g.translate(0,oy||0,oz||0); return g; }
 function mergeGeo(a,b){   // 2つの indexed BoxGeometry を結合（階段用）
   const g=new THREE.BufferGeometry(), cat=(n,sz)=>{ const aa=a.attributes[n].array, bb=b.attributes[n].array;
@@ -321,6 +321,11 @@ function initThree(){
   previewMat = new THREE.MeshBasicMaterial({color:0xF0D48C, transparent:true, opacity:0.5, depthWrite:false});
   previewBreakMat = new THREE.MeshBasicMaterial({color:0xE0604A, transparent:true, opacity:0.5, depthWrite:false});
   buildGeos();
+  // 単位セル(1×1×1)の外枠エッジ座標（中心原点＝±0.5）。セルごとにオフセットして枠線を描く。
+  const eg=new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1));
+  EDGE_POS=eg.attributes.position.array.slice(); eg.dispose();
+  outlineMat      = new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.32});
+  outlineGhostMat = new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.11});
   target = new THREE.Vector3();
   sph = {theta:Math.PI*0.72, phi:Math.PI*0.33, r:30};
 
@@ -399,14 +404,25 @@ function makeInstShape(items, geometry, material){
   im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true;
   im.userData.items=items; return im;
 }
+function makeOutline(cells, material){   // 各セルの単位立方体エッジをまとめた1本の LineSegments
+  const stride=EDGE_POS.length, arr=new Float32Array(stride*cells.length);
+  cells.forEach((p,i)=>{ const ox=p[0]+0.5, oy=p[1]+0.5, oz=p[2]+0.5, base=stride*i;
+    for(let j=0;j<stride;j+=3){ arr[base+j]=EDGE_POS[j]+ox; arr[base+j+1]=EDGE_POS[j+1]+oy; arr[base+j+2]=EDGE_POS[j+2]+oz; } });
+  const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(arr,3));
+  return new THREE.LineSegments(g, material);
+}
 function syncVox(){
   editMeshes.forEach(m=>scene.remove(m)); ghostMeshes.forEach(m=>scene.remove(m));
-  editMeshes=[]; ghostMeshes=[];
-  const below={}, above={};   // geoKey -> [{p,v}]
-  S.vox.forEach((val,k)=>{ const v=norm(val), p=k.split(',').map(Number), gk=geoKey(v);
-    (p[1]>S.layer?above:below)[gk] ??= []; (p[1]>S.layer?above:below)[gk].push({p,v}); });
+  outlineMeshes.forEach(m=>{ scene.remove(m); m.geometry.dispose(); });
+  editMeshes=[]; ghostMeshes=[]; outlineMeshes=[];
+  const below={}, above={}, belowCells=[], aboveCells=[];   // geoKey -> [{p,v}] / 枠線用セル座標
+  S.vox.forEach((val,k)=>{ const v=norm(val), p=k.split(',').map(Number), gk=geoKey(v), up=p[1]>S.layer;
+    (up?above:below)[gk] ??= []; (up?above:below)[gk].push({p,v});
+    (up?aboveCells:belowCells).push(p); });
   for(const gk in below){ const im=makeInstShape(below[gk],GEOS[gk],mat); scene.add(im); editMeshes.push(im); }
   for(const gk in above){ const im=makeInstShape(above[gk],GEOS[gk],ghostMat); scene.add(im); ghostMeshes.push(im); }
+  if(belowCells.length){ const o=makeOutline(belowCells,outlineMat); scene.add(o); outlineMeshes.push(o); }
+  if(aboveCells.length){ const o=makeOutline(aboveCells,outlineGhostMat); scene.add(o); outlineMeshes.push(o); }
   dirty=true;
 }
 /* ---- ドラッグ矩形（dw平面に複数配置）---- */
