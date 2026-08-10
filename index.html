@@ -48,8 +48,6 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .btn{flex:1 1 auto;min-width:76px;padding:10px 8px;background:var(--panel);
   border:1px solid var(--rule);color:var(--chalk);font-family:inherit;font-size:11px;border-radius:4px}
 .btn:active{background:var(--panel2)}
-.btn:disabled{opacity:.32;cursor:default;background:var(--panel);color:var(--dim);border-style:dashed}
-.btn:disabled:active{background:var(--panel)}
 .btn[aria-pressed="true"]{border-color:var(--brass);color:var(--brass)}
 .btn[disabled]{opacity:.35}
 #space{position:relative;width:100%;height:56vh;min-height:300px;background:var(--panel);
@@ -169,7 +167,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.6';
+const APP_VERSION = '3.7';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -211,12 +209,13 @@ const mirFac = (tok)=> MIR_FAC[tok] || tok;
 
 const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'wall_main',
-  shape:'full', facing:0, half:'bottom',
+  shape:'full', facing:0, half:'bottom', open:'false',
   view:'space', jsonMode:'layers', cell:20, hist:[], manualZoom:false, dirHandle:null
 };
-const cur = ()=>({r:S.role, s:S.shape, f:S.facing, h:S.half});   // 現在のブロック値
-const sig = (v)=> v ? (v.r+'|'+v.s+'|'+v.f+'|'+v.h) : '';        // 同一判定用
-const norm = (v)=> (typeof v==='string') ? {r:v,s:'full',f:0,h:'bottom'} : v;  // 旧形式→オブジェクト
+const cur = ()=>({r:S.role, s:S.shape, f:S.facing, h:S.half, o:S.open});   // 現在のブロック値
+const sig = (v)=> v ? (v.r+'|'+v.s+'|'+v.f+'|'+v.h+'|'+(v.o||'false')) : '';  // 同一判定用
+const norm = (v)=> (typeof v==='string') ? {r:v,s:'full',f:0,h:'bottom',o:'false'}
+  : (v.o===undefined ? {...v,o:'false'} : v);   // 旧形式→オブジェクト（open 既定 false）
 
 /* ---------- persistence ---------- */
 function save(){
@@ -616,7 +615,7 @@ function buildJson(){
     const recs=arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:mirW(p[0],W)},mat:v.r};
       if(v.s==='slab'){ rec.form='SLAB'; rec.type=v.h; }
       else if(v.s==='stairs'){ rec.form='STAIRS'; rec.facing=mirFac(FAC[v.f]); rec.half=v.h; }
-      else if(v.s==='trapdoor'){ rec.form='TRAPDOOR'; rec.facing=mirFac(FAC[v.f]); rec.half=v.h; rec.open='false'; }
+      else if(v.s==='trapdoor'){ rec.form='TRAPDOOR'; rec.facing=mirFac(FAC[v.f]); rec.half=v.h; rec.open=v.o||'false'; }
       return '  '+JSON.stringify(rec); });
     return '{\n "name": '+JSON.stringify(name)+',\n "size": ['+d.z+', '+d.y+', '+d.x+'],\n'
       +' "blocks": [\n'+recs.join(',\n')+(recs.length?'\n':'')+' ]\n}';
@@ -682,21 +681,22 @@ function setTool(t){ S.tool=t;
   ['draw','erase','pan'].forEach(n=>$('#p-'+n).setAttribute('aria-pressed', n===t));
   $('#gridwrap').style.touchAction = t==='pan' ? 'auto' : 'none'; }
 
-function renderShapeBar(){   // 形（行1）／ facing・上下（行2）。form に無いプロパティは無効化
+function renderShapeBar(){   // 形（行1）／ facing・上下・open（行2、該当プロパティのみ・詰めて表示）
   const hasFacing = (S.shape==='stairs' || S.shape==='trapdoor');
-  const hasLevel  = (S.shape!=='full');   // slab=type / stairs・trapdoor=half（full は無し）
+  const hasLevel  = (S.shape!=='full');       // slab=type / stairs・trapdoor=half（full は無し）
+  const hasOpen   = (S.shape==='trapdoor');
   [['form-space','dir-space'],['form-plan','dir-plan']].forEach(([fid,did])=>{
     const fel=$('#'+fid), del=$('#'+did); if(!fel||!del) return;
     fel.innerHTML=''; del.innerHTML='';
     SHAPES.forEach(s=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=s;
       b.setAttribute('aria-pressed', S.shape===s); b.onclick=()=>{ S.shape=s; save(); renderShapeBar(); }; fel.appendChild(b); });
-    const fb=document.createElement('button'); fb.className='btn'; fb.textContent='facing:'+FAC[S.facing];
-    fb.disabled=!hasFacing;
-    fb.onclick=()=>{ S.facing=(S.facing+1)%4; save(); renderShapeBar(); }; del.appendChild(fb);
-    const hb=document.createElement('button'); hb.className='btn';
-    hb.textContent=(S.shape==='slab'?'type:':'half:')+S.half;   // slab は type、stairs/trapdoor は half
-    hb.disabled=!hasLevel;
-    hb.onclick=()=>{ S.half=S.half==='top'?'bottom':'top'; save(); renderShapeBar(); }; del.appendChild(hb);
+    if(hasFacing){ const fb=document.createElement('button'); fb.className='btn'; fb.textContent='facing:'+FAC[S.facing];
+      fb.onclick=()=>{ S.facing=(S.facing+1)%4; save(); renderShapeBar(); }; del.appendChild(fb); }
+    if(hasLevel){ const hb=document.createElement('button'); hb.className='btn';
+      hb.textContent=(S.shape==='slab'?'type:':'half:')+S.half;   // slab は type、stairs/trapdoor は half
+      hb.onclick=()=>{ S.half=S.half==='top'?'bottom':'top'; save(); renderShapeBar(); }; del.appendChild(hb); }
+    if(hasOpen){ const ob=document.createElement('button'); ob.className='btn'; ob.textContent='open:'+S.open;
+      ob.onclick=()=>{ S.open=S.open==='true'?'false':'true'; save(); renderShapeBar(); }; del.appendChild(ob); }
   });
 }
 function renderRoles(){   // 役割（色）選択バーを立体・平面へ描画
@@ -794,11 +794,11 @@ function importJson(text){
       const impW = (d.size && d.size[2]) ? d.size[2]
         : d.blocks.reduce((m,b)=>Math.max(m,(b.pos?b.pos.w:0)+1),1);
       d.blocks.forEach(b=>{ const p=b.pos; if(!p) return;
-        let s='full',f=0,h='bottom'; const fm=(b.form||'').toUpperCase();
+        let s='full',f=0,h='bottom',o='false'; const fm=(b.form||'').toUpperCase();
         if(fm==='SLAB'){ s='slab'; h=b.type||'bottom'; }
         else if(fm==='STAIRS'){ s='stairs'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; }
-        else if(fm==='TRAPDOOR'){ s='trapdoor'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; }
-        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, f, h}); });
+        else if(fm==='TRAPDOOR'){ s='trapdoor'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; o=String(b.open==null?'false':b.open); }
+        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, f, h, o}); });
     }
     else if(Array.isArray(d.voxels))   // 旧形式（後方互換・ミラー前のアプリ内部座標）
       d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),{r:'wall_main',s:'full',f:0,h:'bottom'}));
