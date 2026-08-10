@@ -165,7 +165,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.4';
+const APP_VERSION = '3.5';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -679,11 +679,12 @@ function setTool(t){ S.tool=t;
 
 function renderShapeBar(){   // 形/向き/上下 バー
   ['shape-space','shape-plan'].forEach(id=>{ const el=$('#'+id); if(!el) return; el.innerHTML='';
-    SHAPES.forEach(s=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=s;
+    SHAPES.forEach(s=>{ const b=document.createElement('button'); b.className='btn'; b.textContent='form:'+s;
       b.setAttribute('aria-pressed', S.shape===s); b.onclick=()=>{ S.shape=s; save(); renderShapeBar(); }; el.appendChild(b); });
-    const fb=document.createElement('button'); fb.className='btn'; fb.textContent='向:'+FAC[S.facing];
+    const fb=document.createElement('button'); fb.className='btn'; fb.textContent='facing:'+FAC[S.facing];
     fb.onclick=()=>{ S.facing=(S.facing+1)%4; save(); renderShapeBar(); }; el.appendChild(fb);
-    const hb=document.createElement('button'); hb.className='btn'; hb.textContent=S.half==='top'?'上':'下';
+    const hb=document.createElement('button'); hb.className='btn';
+    hb.textContent=(S.shape==='slab'?'type:':'half:')+S.half;   // slab は type、stairs/trapdoor は half
     hb.onclick=()=>{ S.half=S.half==='top'?'bottom':'top'; save(); renderShapeBar(); }; el.appendChild(hb);
   });
 }
