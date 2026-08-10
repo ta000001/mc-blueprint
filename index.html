@@ -48,6 +48,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .btn{flex:1 1 auto;min-width:76px;padding:10px 8px;background:var(--panel);
   border:1px solid var(--rule);color:var(--chalk);font-family:inherit;font-size:11px;border-radius:4px}
 .btn:active{background:var(--panel2)}
+.btn:disabled{opacity:.32;cursor:default;background:var(--panel);color:var(--dim);border-style:dashed}
+.btn:disabled:active{background:var(--panel)}
 .btn[aria-pressed="true"]{border-color:var(--brass);color:var(--brass)}
 .btn[disabled]{opacity:.35}
 #space{position:relative;width:100%;height:56vh;min-height:300px;background:var(--panel);
@@ -100,7 +102,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </div>
 
 <section id="v-space">
-  <div id="space"><div class="hud"><div>1本指 = 編集(面上)/移動(面外) / 2本指 = 拡大・回転</div><div>タップ/ドラッグ = <b id="hud-mode">置く</b></div><div>● 原点(0,0,0)=南西下　<span style="color:#ff8a8a">赤=W→</span> <span style="color:#7ad79a">緑=H↑</span> <span style="color:#8aa8ff">青=D奥</span></div></div></div>
+  <div id="space"><div class="hud"><div>1本指 = 編集(面上)/移動(面外) / 2本指 = 拡大・回転</div><div>タップ/ドラッグ = <b id="hud-mode">置く</b></div><div>● 原点(0,0,0)=手前・下・左　<span style="color:#ff8a8a">赤=W→</span> <span style="color:#7ad79a">緑=H↑</span> <span style="color:#8aa8ff">青=D奥</span></div></div></div>
   <div class="slider"><span class="y" id="y3">H00</span><input id="plane" type="range" min="0" max="15" value="0" aria-label="作業面の高さ"></div>
   <div class="bar">
     <button class="btn" id="b-place" aria-pressed="true">置く</button>
@@ -113,7 +115,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="b-up">▲ 作業面を上げる</button>
     <button class="btn" id="b-fit">視点をリセット</button>
   </div>
-  <div class="bar" id="shape-space"></div>
+  <div class="bar" id="form-space"></div>
+  <div class="bar" id="dir-space"></div>
   <div class="bar" id="roles-space"></div>
   <p class="note">緑の面が作業面。タップで1個、<b>ドラッグで矩形</b>配置。<b>ダブルタップ/クリックで削除</b>、ダブル→ドラッグで削除範囲。作業面より上の層は半透明で編集不可。色＝役割（place の mat）。合計 <span id="tot">0</span> ブロック。</p>
 </section>
@@ -141,7 +144,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="p-clr">層を消去</button>
     <button class="btn" id="p-undo">元に戻す</button>
   </div>
-  <div class="bar" id="shape-plan"></div>
+  <div class="bar" id="form-plan"></div>
+  <div class="bar" id="dir-plan"></div>
   <div class="bar" id="roles-plan"></div>
   <p class="note">上から見た平面図。横がW、縦がD。色＝役割。左の帯は各Hのブロック量で、ドラッグすると階層を移動する。</p>
 </section>
@@ -165,7 +169,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.5';
+const APP_VERSION = '3.6';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -350,10 +354,11 @@ function buildFloor(){
   floorObj=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0x2f4a45}));
   scene.add(floorObj); dirty=true;
 }
-function buildOrigin(){   // 原点(0,0,0)=南西・下端 を可視化（●マーカー＋W/H/D 軸線）
+function buildOrigin(){   // MOD 原点(0,0,0)=手前・下・左 を可視化（●＋W/H/D 軸線）
   if(originObj){ scene.remove(originObj);
     originObj.traverse(o=>{ if(o.geometry)o.geometry.dispose(); if(o.material)o.material.dispose(); }); }
   const g=new THREE.Group();
+  g.position.set(S.dims.x, 0, 0);   // W ミラー後、exported w=0 は内部 x=最大側の角
   const dot=new THREE.Mesh(new THREE.SphereGeometry(0.32,18,12),
     new THREE.MeshBasicMaterial({color:0xffd24a}));   // 金色の球＝原点
   g.add(dot);
@@ -361,9 +366,9 @@ function buildOrigin(){   // 原点(0,0,0)=南西・下端 を可視化（●マ
   const axis=(vx,vy,vz,col)=>{ const a=new THREE.BufferGeometry();
     a.setAttribute('position', new THREE.Float32BufferAttribute([0,0,0, vx,vy,vz],3));
     return new THREE.LineSegments(a, new THREE.LineBasicMaterial({color:col})); };
-  g.add(axis(L,0,0,0xff5a5a));  // +W（右）＝赤
-  g.add(axis(0,L,0,0x5ad07a));  // +H（上）＝緑
-  g.add(axis(0,0,L,0x5a86ff));  // +D（奥）＝青
+  g.add(axis(-L,0,0,0xff5a5a));  // +W（W増加＝内部 -x 方向）＝赤
+  g.add(axis(0,L,0,0x5ad07a));   // +H（上）＝緑
+  g.add(axis(0,0,L,0x5a86ff));   // +D（奥）＝青
   originObj=g; scene.add(g); dirty=true;
 }
 function buildPlane(){
@@ -677,15 +682,21 @@ function setTool(t){ S.tool=t;
   ['draw','erase','pan'].forEach(n=>$('#p-'+n).setAttribute('aria-pressed', n===t));
   $('#gridwrap').style.touchAction = t==='pan' ? 'auto' : 'none'; }
 
-function renderShapeBar(){   // 形/向き/上下 バー
-  ['shape-space','shape-plan'].forEach(id=>{ const el=$('#'+id); if(!el) return; el.innerHTML='';
-    SHAPES.forEach(s=>{ const b=document.createElement('button'); b.className='btn'; b.textContent='form:'+s;
-      b.setAttribute('aria-pressed', S.shape===s); b.onclick=()=>{ S.shape=s; save(); renderShapeBar(); }; el.appendChild(b); });
+function renderShapeBar(){   // 形（行1）／ facing・上下（行2）。form に無いプロパティは無効化
+  const hasFacing = (S.shape==='stairs' || S.shape==='trapdoor');
+  const hasLevel  = (S.shape!=='full');   // slab=type / stairs・trapdoor=half（full は無し）
+  [['form-space','dir-space'],['form-plan','dir-plan']].forEach(([fid,did])=>{
+    const fel=$('#'+fid), del=$('#'+did); if(!fel||!del) return;
+    fel.innerHTML=''; del.innerHTML='';
+    SHAPES.forEach(s=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=s;
+      b.setAttribute('aria-pressed', S.shape===s); b.onclick=()=>{ S.shape=s; save(); renderShapeBar(); }; fel.appendChild(b); });
     const fb=document.createElement('button'); fb.className='btn'; fb.textContent='facing:'+FAC[S.facing];
-    fb.onclick=()=>{ S.facing=(S.facing+1)%4; save(); renderShapeBar(); }; el.appendChild(fb);
+    fb.disabled=!hasFacing;
+    fb.onclick=()=>{ S.facing=(S.facing+1)%4; save(); renderShapeBar(); }; del.appendChild(fb);
     const hb=document.createElement('button'); hb.className='btn';
     hb.textContent=(S.shape==='slab'?'type:':'half:')+S.half;   // slab は type、stairs/trapdoor は half
-    hb.onclick=()=>{ S.half=S.half==='top'?'bottom':'top'; save(); renderShapeBar(); }; el.appendChild(hb);
+    hb.disabled=!hasLevel;
+    hb.onclick=()=>{ S.half=S.half==='top'?'bottom':'top'; save(); renderShapeBar(); }; del.appendChild(hb);
   });
 }
 function renderRoles(){   // 役割（色）選択バーを立体・平面へ描画
