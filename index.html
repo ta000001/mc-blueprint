@@ -106,7 +106,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="b-place" aria-pressed="true">置く</button>
     <button class="btn" id="b-break" aria-pressed="false">壊す</button>
     <button class="btn" id="b-undo">元に戻す</button>
-    <button class="btn" id="b-clear">すべて消去</button>
+    <button class="btn" id="b-redo" disabled>進む</button>
   </div>
   <div class="bar">
     <button class="btn" id="b-down">▼ 作業面を下げる</button>
@@ -116,6 +116,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="bar" id="form-space"></div>
   <div class="bar" id="dir-space"></div>
   <div class="bar" id="roles-space"></div>
+  <div class="bar"><button class="btn" id="b-clear">すべて消去</button></div>
   <p class="note">緑の面が作業面。タップで1個、<b>ドラッグで矩形</b>配置。<b>ダブルタップ/クリックで削除</b>、ダブル→ドラッグで削除範囲。作業面より上の層は半透明で編集不可。色＝役割（place の mat）。合計 <span id="tot">0</span> ブロック。</p>
 </section>
 
@@ -167,7 +168,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.13';
+const APP_VERSION = '3.14';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -210,7 +211,7 @@ const mirFac = (tok)=> MIR_FAC[tok] || tok;
 const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'wall_main',
   shape:'full', facing:0, half:'bottom', open:'false',
-  view:'space', jsonMode:'layers', cell:20, hist:[], manualZoom:false, dirHandle:null
+  view:'space', jsonMode:'layers', cell:20, hist:[], redo:[], manualZoom:false, dirHandle:null
 };
 const cur = ()=>({r:S.role, s:S.shape, f:S.facing, h:S.half, o:S.open});   // 現在のブロック値
 const sig = (v)=> v ? (v.r+'|'+v.s+'|'+v.f+'|'+v.h+'|'+(v.o||'false')) : '';  // 同一判定用
@@ -238,15 +239,17 @@ function status(m){ $('#status').textContent = m; clearTimeout(status._t);
   status._t = setTimeout(()=>$('#status').textContent='',2600); }
 
 /* ---------- model ---------- */
-function pushHist(){ S.hist.push(new Map(S.vox)); if(S.hist.length>60) S.hist.shift(); }
+function pushHist(){ S.hist.push(new Map(S.vox)); if(S.hist.length>60) S.hist.shift(); S.redo=[]; } // 新規操作でredo破棄
+function updateHistBtns(){ const r=$('#b-redo'); if(r) r.disabled = S.redo.length===0; }
 function inB(x,y,z){ const d=S.dims; return x>=0&&y>=0&&z>=0&&x<d.x&&y<d.y&&z<d.z; }
 function place(x,y,z){ if(!inB(x,y,z)) return; if(y>S.layer) return;  // 作業面より上には置かない
   const k=K(x,y,z), v=cur(); if(sig(S.vox.get(k))===sig(v)) return; pushHist(); S.vox.set(k,v); changed(); }
 function remove(x,y,z){ const k=K(x,y,z); if(!S.vox.has(k)) return; pushHist(); S.vox.delete(k); changed(); }
-function undo(){ const p=S.hist.pop(); if(p){ S.vox=p; changed(); } }
+function undo(){ const p=S.hist.pop(); if(!p) return; S.redo.push(new Map(S.vox)); S.vox=p; changed(); }
+function redo(){ const n=S.redo.pop(); if(!n) return; S.hist.push(new Map(S.vox)); S.vox=n; changed(); } // 元に戻すの取り消し
 
 function changed(){ syncVox(); if(S.view==='plan'){ renderGrid(); renderSpine(); }
-  if(S.view==='json') renderJson(); $('#tot').textContent=S.vox.size; save(); }
+  if(S.view==='json') renderJson(); $('#tot').textContent=S.vox.size; save(); updateHistBtns(); }
 
 function setDims(nd){
   S.dims = nd;
@@ -701,6 +704,7 @@ $('#b-up').onclick = ()=>setLayer(S.layer+1);
 $('#b-down').onclick = ()=>setLayer(S.layer-1);
 $('#b-fit').onclick = frameCamera;
 $('#b-undo').onclick = undo;
+$('#b-redo').onclick = redo;
 $('#b-clear').onclick = ()=>{ pushHist(); S.vox=new Map(); changed(); renderGrid(); renderSpine(); };
 $('#b-place').onclick = ()=>setMode('place');
 $('#b-break').onclick = ()=>setMode('break');
