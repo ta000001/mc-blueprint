@@ -167,7 +167,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.7';
+const APP_VERSION = '3.8';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -287,12 +287,15 @@ function buildGeos(){
     full: new THREE.BoxGeometry(1,1,1),
     slab_bottom: boxAt(1,0.5,1,-0.25,0), slab_top: boxAt(1,0.5,1,0.25,0),
     trapdoor_bottom: boxAt(1,T,1,-0.5+T/2,0), trapdoor_top: boxAt(1,T,1,0.5-T/2,0),
+    trapdoor_open:   boxAt(1,1,T,0,-0.5+T/2),   // 開＝facing の反対側(-z)に立つ縦板（half 非依存）
     stairs_bottom: mergeGeo(boxAt(1,0.5,1,-0.25,0), boxAt(1,0.5,0.5,0.25,-0.25)), // 高段=facingの反対(-z=BACK側)
     stairs_top:    mergeGeo(boxAt(1,0.5,1,0.25,0),  boxAt(1,0.5,0.5,-0.25,-0.25)),
   };
   geo = GEOS.full;
 }
-const geoKey = (v)=> v.s==='full' ? 'full' : v.s+'_'+v.h;
+const geoKey = (v)=> v.s==='full' ? 'full'
+  : (v.s==='trapdoor' && v.o==='true') ? 'trapdoor_open'   // 開はhalf非依存で同一形状
+  : v.s+'_'+v.h;
 
 function initThree(){
   const mount = $('#space');
