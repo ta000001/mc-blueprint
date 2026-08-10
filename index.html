@@ -100,7 +100,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </div>
 
 <section id="v-space">
-  <div id="space"><div class="hud"><div>1本指 = 編集(面上)/移動(面外) / 2本指 = 拡大・回転</div><div>タップ/ドラッグ = <b id="hud-mode">置く</b></div></div></div>
+  <div id="space"><div class="hud"><div>1本指 = 編集(面上)/移動(面外) / 2本指 = 拡大・回転</div><div>タップ/ドラッグ = <b id="hud-mode">置く</b></div><div>● 原点(0,0,0)=南西下　<span style="color:#ff8a8a">赤=W→</span> <span style="color:#7ad79a">緑=H↑</span> <span style="color:#8aa8ff">青=D奥</span></div></div></div>
   <div class="slider"><span class="y" id="y3">H00</span><input id="plane" type="range" min="0" max="15" value="0" aria-label="作業面の高さ"></div>
   <div class="bar">
     <button class="btn" id="b-place" aria-pressed="true">置く</button>
@@ -165,7 +165,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.3';
+const APP_VERSION = '3.4';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -196,6 +196,14 @@ const roleHex = (role)=> '#'+roleColor(role).toString(16).padStart(6,'0');
 const SHAPES = ['full','slab','stairs','trapdoor'];   // 形（MOD form: BLOCK/SLAB/STAIRS/TRAPDOOR）
 const FAC = ['FRONT','RIGHT','BACK','LEFT'];          // facing（相対トークン）
 const FAC_I = {FRONT:0,RIGHT:1,BACK:2,LEFT:3};
+
+/* three.js(右手系) ⇄ Minecraft/autobuilder(左手系) の橋渡し（v3.4）。
+   これをしないと、建築結果がアプリ表示の「左右鏡像」になる（W=左右軸の利き手が逆）。
+   MOD が読む blocks/layers の入出力時にだけ W を反転し、facing の RIGHT↔LEFT を入れ替える。
+   アプリ内部（three.js 座標・localStorage）は無変換のまま。 */
+const mirW  = (w, width)=> (width-1) - w;                       // W 反転（0..width-1 内）
+const MIR_FAC = {FRONT:'FRONT', RIGHT:'LEFT', BACK:'BACK', LEFT:'RIGHT'};
+const mirFac = (tok)=> MIR_FAC[tok] || tok;
 
 const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'wall_main',
@@ -246,7 +254,7 @@ function setDims(nd){
   S.layer = clamp(S.layer,0,nd.y-1);
   $('#plane').max = nd.y-1; $('#plane').value = S.layer;
   $('#ymax').textContent = '/ '+(nd.y-1);
-  buildFloor(); buildPlane(); frameCamera(); changed(); renderGrid(); renderSpine(); setLayer(S.layer);
+  buildFloor(); buildOrigin(); buildPlane(); frameCamera(); changed(); renderGrid(); renderSpine(); setLayer(S.layer);
 }
 
 function setLayer(v){
@@ -258,7 +266,7 @@ function setLayer(v){
 }
 
 /* ---------- three.js ---------- */
-let renderer,scene,camera,editMeshes=[],ghostMeshes=[],preview,floorObj,planeObj,geo,GEOS,mat,ghostMat,previewMat,previewBreakMat,target,sph,dirty=true;
+let renderer,scene,camera,editMeshes=[],ghostMeshes=[],preview,floorObj,planeObj,originObj,geo,GEOS,mat,ghostMat,previewMat,previewBreakMat,target,sph,dirty=true;
 function boxAt(w,h,d,oy,oz){ const g=new THREE.BoxGeometry(w,h,d); g.translate(0,oy||0,oz||0); return g; }
 function mergeGeo(a,b){   // 2つの indexed BoxGeometry を結合（階段用）
   const g=new THREE.BufferGeometry(), cat=(n,sz)=>{ const aa=a.attributes[n].array, bb=b.attributes[n].array;
@@ -341,6 +349,22 @@ function buildFloor(){
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
   floorObj=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0x2f4a45}));
   scene.add(floorObj); dirty=true;
+}
+function buildOrigin(){   // 原点(0,0,0)=南西・下端 を可視化（●マーカー＋W/H/D 軸線）
+  if(originObj){ scene.remove(originObj);
+    originObj.traverse(o=>{ if(o.geometry)o.geometry.dispose(); if(o.material)o.material.dispose(); }); }
+  const g=new THREE.Group();
+  const dot=new THREE.Mesh(new THREE.SphereGeometry(0.32,18,12),
+    new THREE.MeshBasicMaterial({color:0xffd24a}));   // 金色の球＝原点
+  g.add(dot);
+  const L=clamp(Math.max(S.dims.x,S.dims.y,S.dims.z)*0.4,2,6);   // 軸線の長さ
+  const axis=(vx,vy,vz,col)=>{ const a=new THREE.BufferGeometry();
+    a.setAttribute('position', new THREE.Float32BufferAttribute([0,0,0, vx,vy,vz],3));
+    return new THREE.LineSegments(a, new THREE.LineBasicMaterial({color:col})); };
+  g.add(axis(L,0,0,0xff5a5a));  // +W（右）＝赤
+  g.add(axis(0,L,0,0x5ad07a));  // +H（上）＝緑
+  g.add(axis(0,0,L,0x5a86ff));  // +D（奥）＝青
+  originObj=g; scene.add(g); dirty=true;
 }
 function buildPlane(){
   if(planeObj){ scene.remove(planeObj); planeObj.geometry.dispose(); }
@@ -581,12 +605,13 @@ function buildJson(){
   const d=S.dims, name=$('#name').value;
   if(S.jsonMode==='blocks'){
     // structure(d,h,w) 準拠のレコード。x→w, y→h, z→d。1レコード1行。
+    const W=d.x;
     const arr=[...S.vox.entries()].map(([k,v])=>({p:k.split(',').map(Number),v:norm(v)}))
-      .sort((a,b)=>a.p[2]-b.p[2]||a.p[1]-b.p[1]||a.p[0]-b.p[0]); // d(z) → h(y) → w(x)
-    const recs=arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:p[0]},mat:v.r};
+      .sort((a,b)=>a.p[2]-b.p[2]||a.p[1]-b.p[1]||b.p[0]-a.p[0]); // d(z) → h(y) → 出力W昇順(=x降順)
+    const recs=arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:mirW(p[0],W)},mat:v.r};
       if(v.s==='slab'){ rec.form='SLAB'; rec.type=v.h; }
-      else if(v.s==='stairs'){ rec.form='STAIRS'; rec.facing=FAC[v.f]; rec.half=v.h; }
-      else if(v.s==='trapdoor'){ rec.form='TRAPDOOR'; rec.facing=FAC[v.f]; rec.half=v.h; rec.open='false'; }
+      else if(v.s==='stairs'){ rec.form='STAIRS'; rec.facing=mirFac(FAC[v.f]); rec.half=v.h; }
+      else if(v.s==='trapdoor'){ rec.form='TRAPDOOR'; rec.facing=mirFac(FAC[v.f]); rec.half=v.h; rec.open='false'; }
       return '  '+JSON.stringify(rec); });
     return '{\n "name": '+JSON.stringify(name)+',\n "size": ['+d.z+', '+d.y+', '+d.x+'],\n'
       +' "blocks": [\n'+recs.join(',\n')+(recs.length?'\n':'')+' ]\n}';
@@ -596,7 +621,7 @@ function buildJson(){
     if(!c[y]) continue;
     const rows=[];
     for(let z=0;z<d.z;z++){ let r='';
-      for(let x=0;x<d.x;x++) r += S.vox.has(K(x,y,z))?'#':'.';
+      for(let x=d.x-1;x>=0;x--) r += S.vox.has(K(x,y,z))?'#':'.'; // W ミラー（x を降順で並べる）
       rows.push(r); }
     layers[y]=rows;
   }
@@ -752,18 +777,22 @@ function importJson(text){
   try{
     const d=JSON.parse(text);
     const set=new Map();
-    if(Array.isArray(d.blocks))        // structure 準拠。mat=役割・form→shape を取り込む
+    if(Array.isArray(d.blocks)){       // structure 準拠。mat=役割・form→shape を取り込む
+      // W ミラーを戻すための幅（size[2]=W。無ければ最大 w+1）。
+      const impW = (d.size && d.size[2]) ? d.size[2]
+        : d.blocks.reduce((m,b)=>Math.max(m,(b.pos?b.pos.w:0)+1),1);
       d.blocks.forEach(b=>{ const p=b.pos; if(!p) return;
         let s='full',f=0,h='bottom'; const fm=(b.form||'').toUpperCase();
         if(fm==='SLAB'){ s='slab'; h=b.type||'bottom'; }
-        else if(fm==='STAIRS'){ s='stairs'; f=FAC_I[b.facing]||0; h=b.half||'bottom'; }
-        else if(fm==='TRAPDOOR'){ s='trapdoor'; f=FAC_I[b.facing]||0; h=b.half||'bottom'; }
-        set.set(K(p.w,p.h,p.d), {r:b.mat||'wall_main', s, f, h}); });
-    else if(Array.isArray(d.voxels))   // 旧形式（後方互換）
+        else if(fm==='STAIRS'){ s='stairs'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; }
+        else if(fm==='TRAPDOOR'){ s='trapdoor'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; }
+        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, f, h}); });
+    }
+    else if(Array.isArray(d.voxels))   // 旧形式（後方互換・ミラー前のアプリ内部座標）
       d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),{r:'wall_main',s:'full',f:0,h:'bottom'}));
     else if(d.layers)
       Object.keys(d.layers).forEach(y=>d.layers[y].forEach((row,z)=>{
-        [...row].forEach((ch,x)=>{ if(ch!=='.') set.set(K(x,+y,z),{r:'wall_main',s:'full',f:0,h:'bottom'}); }); }));
+        [...row].forEach((ch,x)=>{ if(ch!=='.') set.set(K(mirW(x,row.length),+y,z),{r:'wall_main',s:'full',f:0,h:'bottom'}); }); }));
     let nd = null;
     if(d.size) nd = Array.isArray(d.voxels)     // 旧 voxels は [x,y,z]、新(blocks/layers)は [d,h,w]
       ? {x:d.size[0], y:d.size[1], z:d.size[2]}
@@ -807,7 +836,7 @@ $('#ver').textContent = 'v'+APP_VERSION;
 load();
 $('#dx').value=S.dims.x; $('#dy').value=S.dims.y; $('#dz').value=S.dims.z;
 $('#plane').max=S.dims.y-1; $('#ymax').textContent='/ '+(S.dims.y-1);
-initThree(); buildFloor(); buildPlane(); frameCamera(); syncVox();
+initThree(); buildFloor(); buildOrigin(); buildPlane(); frameCamera(); syncVox();
 $('#tot').textContent=S.vox.size; setLayer(0); setView('space'); renderRoles(); renderShapeBar();
 
 updateDirLabel();
