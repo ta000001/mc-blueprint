@@ -167,7 +167,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.12';
+const APP_VERSION = '3.13';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -328,7 +328,7 @@ function initThree(){
   outlineGhostMat = new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.11});
   hingeMat        = new THREE.MeshBasicMaterial({color:0x9aa7b0});                                 // open trapdoor の蝶番(開閉軸)＝棒
   hingeGhostMat   = new THREE.MeshBasicMaterial({color:0x9aa7b0, transparent:true, opacity:0.3});
-  HINGE_GEO       = new THREE.BoxGeometry(1, 0.13, 0.13);   // 幅方向に伸びる細い棒＝蝶番
+  HINGE_GEO       = new THREE.BoxGeometry(1, 0.06, 0.06);   // 幅方向に伸びる細い棒＝蝶番（開閉軸）
   target = new THREE.Vector3();
   sph = {theta:Math.PI*0.72, phi:Math.PI*0.33, r:30};
 
@@ -413,7 +413,7 @@ function makeOutline(cells, material){   // 各セルの単位立方体エッジ
 }
 const rotY=(px,py,pz,f)=>{ const c=[1,0,-1,0][f&3], s=[0,1,0,-1][f&3];   // +Y 周り f*90°（メッシュと同じ）
   return [px*c+pz*s, py, -px*s+pz*c]; };
-function makeHingeRods(entries, material){   // open trapdoor の蝶番(開閉軸)を棒で（half=bottom→下端 / top→上端、facing で回転）
+function makeHingeRods(entries, material){   // trapdoor の蝶番(開閉軸)を棒で（開閉問わず／half=bottom→下端 / top→上端、facing で回転）
   const im=new THREE.InstancedMesh(HINGE_GEO, material, entries.length); im.count=entries.length;
   const m=new THREE.Matrix4(), q=new THREE.Quaternion(), pos=new THREE.Vector3(),
         scl=new THREE.Vector3(1,1,1), up=new THREE.Vector3(0,1,0);
@@ -428,16 +428,17 @@ function syncVox(){
   editMeshes.forEach(m=>scene.remove(m)); ghostMeshes.forEach(m=>scene.remove(m));
   outlineMeshes.forEach(m=>{ scene.remove(m); m.geometry.dispose(); });
   editMeshes=[]; ghostMeshes=[]; outlineMeshes=[];
-  const below={}, above={}, belowCells=[], aboveCells=[];   // geoKey -> [{p,v}] / 枠線用セル座標
+  const below={}, above={}, belowCells=[], aboveCells=[], belowTrap=[], aboveTrap=[];   // buckets / 枠線 / trapdoor(開閉問わず)
   S.vox.forEach((val,k)=>{ const v=norm(val), p=k.split(',').map(Number), gk=geoKey(v), up=p[1]>S.layer;
     (up?above:below)[gk] ??= []; (up?above:below)[gk].push({p,v});
-    (up?aboveCells:belowCells).push(p); });
+    (up?aboveCells:belowCells).push(p);
+    if(v.s==='trapdoor') (up?aboveTrap:belowTrap).push({p,v}); });
   for(const gk in below){ const im=makeInstShape(below[gk],GEOS[gk],mat); scene.add(im); editMeshes.push(im); }
   for(const gk in above){ const im=makeInstShape(above[gk],GEOS[gk],ghostMat); scene.add(im); ghostMeshes.push(im); }
   if(belowCells.length){ const o=makeOutline(belowCells,outlineMat); scene.add(o); outlineMeshes.push(o); }
   if(aboveCells.length){ const o=makeOutline(aboveCells,outlineGhostMat); scene.add(o); outlineMeshes.push(o); }
-  if(below['trapdoor_open']){ const h=makeHingeRods(below['trapdoor_open'],hingeMat); scene.add(h); editMeshes.push(h); }
-  if(above['trapdoor_open']){ const h=makeHingeRods(above['trapdoor_open'],hingeGhostMat); scene.add(h); ghostMeshes.push(h); }
+  if(belowTrap.length){ const h=makeHingeRods(belowTrap,hingeMat); scene.add(h); editMeshes.push(h); }
+  if(aboveTrap.length){ const h=makeHingeRods(aboveTrap,hingeGhostMat); scene.add(h); ghostMeshes.push(h); }
   dirty=true;
 }
 /* ---- ドラッグ矩形（dw平面に複数配置）---- */
