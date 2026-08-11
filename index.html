@@ -176,7 +176,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.20';
+const APP_VERSION = '3.21';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -211,11 +211,12 @@ const AXES = ['VERTICAL','DEPTH','WIDTH'];                 // axis（相対軸 R
 
 /* 「その他」で選ぶ種類。form＋その種類に適した方向プロパティ。まずはドア/松明。 */
 const OTHERS = [
-  {key:'door',            form:'DOOR',            label:'ドア',        props:['facing','hinge','open']},
-  {key:'torch',           form:'TORCH',           label:'松明(床)',     props:[]},
-  {key:'wall_torch',      form:'WALL_TORCH',      label:'松明(壁)',     props:['facing']},
-  {key:'soul_wall_torch', form:'SOUL_WALL_TORCH', label:'魂の松明(壁)',  props:['facing']},
+  {key:'door',            form:'DOOR',            label:'ドア',        props:['facing','hinge']},
+  {key:'torch',           form:'TORCH',           label:'松明(床)',     props:[],         noMat:true},
+  {key:'wall_torch',      form:'WALL_TORCH',      label:'松明(壁)',     props:['facing'], noMat:true},
+  {key:'soul_wall_torch', form:'SOUL_WALL_TORCH', label:'魂の松明(壁)',  props:['facing'], noMat:true},
 ];
+const isNoMat = ()=> S.shape==='others' && OTHER_BY[S.other].noMat;   // 材質なし種類（役割/mat 不要）
 const OTHER_BY      = Object.fromEntries(OTHERS.map(o=>[o.key,o]));
 const OTHER_BY_FORM = Object.fromEntries(OTHERS.map(o=>[o.form,o.key]));
 const mirHinge = (h)=> h==='left'?'right':(h==='right'?'left':h);   // W ミラーで hinge も左右反転
@@ -736,6 +737,7 @@ function buildJson(){
       else if(v.s==='stairs'){ rec.form='STAIRS'; rec.facing=mirFac(FAC[v.f%4]); rec.half=v.h; }
       else if(v.s==='trapdoor'){ rec.form='TRAPDOOR'; rec.facing=mirFac(FAC[v.f%4]); rec.half=v.h; rec.open=v.o||'false'; }
       else if(v.s==='others'){ const t=OTHER_BY[v.ot]||OTHER_BY.door; rec.form=t.form;
+        if(t.noMat) delete rec.mat;                             // 材質なし種類は mat を書かない
         if(t.props.includes('facing')) rec.facing=mirFac(FAC[(v.f||0)%4]);
         if(t.props.includes('hinge'))  rec.hinge=mirHinge(v.hg||'left');
         if(t.props.includes('open'))   rec.open=v.o||'false';
@@ -838,6 +840,7 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
     if(hasLevel) mk((S.shape==='slab'?'type:':'half:')+S.half, ()=>{ S.half=S.half==='top'?'bottom':'top'; save(); renderShapeBar(); });
     if(hasOpen)  mk('open:'+S.open, ()=>{ S.open=S.open==='true'?'false':'true'; save(); renderShapeBar(); });
   });
+  renderRoles();   // 材質なし種類では役割バーを隠す
 }
 function openModal(){ const g=$('#modal-grid'); if(!g) return; g.innerHTML='';
   OTHERS.forEach(o=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=o.form;
@@ -846,8 +849,10 @@ function openModal(){ const g=$('#modal-grid'); if(!g) return; g.innerHTML='';
   $('#modal').classList.add('on');
 }
 function closeModal(){ $('#modal').classList.remove('on'); }
-function renderRoles(){   // 役割（色）選択バーを立体・平面へ描画
-  ['roles-space','roles-plan'].forEach(id=>{ const el=$('#'+id); if(!el) return; el.innerHTML='';
+function renderRoles(){   // 役割（色）選択バーを立体・平面へ描画（材質なし種類では非表示）
+  const hide = isNoMat();
+  ['roles-space','roles-plan'].forEach(id=>{ const el=$('#'+id); if(!el) return; el.innerHTML=''; el.style.display=hide?'none':'';
+    if(hide) return;
     ROLES.forEach(r=>{ const b=document.createElement('button'); b.className='btn';
       b.textContent=r.k; const on=S.role===r.k;   // 物理名（役割キー）を表示
       b.style.borderColor=roleHex(r.k); b.style.background=on?roleHex(r.k):''; b.style.color=on?'#10171A':'';
