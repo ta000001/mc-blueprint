@@ -176,7 +176,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.21';
+const APP_VERSION = '3.22';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -204,7 +204,7 @@ const ROLE_C = Object.fromEntries(ROLES.map(r=>[r.k,r.c]));
 const roleColor = (role)=> (role in ROLE_C) ? ROLE_C[role] : ROLES[0].c;
 const roleHex = (role)=> '#'+roleColor(role).toString(16).padStart(6,'0');
 
-const SHAPES = ['full','slab','stairs','trapdoor'];   // 形（MOD form: BLOCK/SLAB/STAIRS/TRAPDOOR）
+const SHAPES = ['fullblock','slab','stairs','trapdoor'];   // 形（MOD form: FULLBLOCK/SLAB/STAIRS/TRAPDOOR）
 const FAC = ['FRONT','RIGHT','BACK','LEFT','UP','DOWN'];   // facing（相対トークン, full は6方向）
 const FAC_I = {FRONT:0,RIGHT:1,BACK:2,LEFT:3,UP:4,DOWN:5};
 const AXES = ['VERTICAL','DEPTH','WIDTH'];                 // axis（相対軸 RelAxis, 原木/柱など）
@@ -231,12 +231,12 @@ const mirFac = (tok)=> MIR_FAC[tok] || tok;
 
 const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'wall_main',
-  shape:'full', facing:0, half:'bottom', open:'false', axis:'VERTICAL', other:'door', hinge:'left', dhalf:'lower',
+  shape:'fullblock', facing:0, half:'bottom', open:'false', axis:'VERTICAL', other:'door', hinge:'left', dhalf:'lower',
   view:'space', jsonMode:'layers', cell:20, hist:[], redo:[], manualZoom:false, dirHandle:null
 };
 const cur = ()=>({r:S.role, s:S.shape, f:S.facing, h:S.half, o:S.open, ax:S.axis, ot:S.other, hg:S.hinge, dh:S.dhalf});
 const sig = (v)=> v ? [v.r,v.s,v.f,v.h,v.o||'false',v.ax||'VERTICAL',v.ot||'door',v.hg||'left',v.dh||'lower'].join('|') : '';
-const norm = (v)=> (typeof v==='string') ? {r:v,s:'full',f:0,h:'bottom',o:'false',ax:'VERTICAL',ot:'door',hg:'left',dh:'lower'}
+const norm = (v)=> (typeof v==='string') ? {r:v,s:'fullblock',f:0,h:'bottom',o:'false',ax:'VERTICAL',ot:'door',hg:'left',dh:'lower'}
   : {ax:'VERTICAL',o:'false',ot:'door',hg:'left',dh:'lower',...v};   // 旧形式→オブジェクト（既定補完）
 
 /* ---------- persistence ---------- */
@@ -329,7 +329,7 @@ function buildGeos(){
   geo = GEOS.full;
 }
 const OTHER_GEO = {torch:'o_torch', wall_torch:'o_wtorch', soul_wall_torch:'o_wtorch'};
-const geoKey = (v)=> v.s==='full' ? 'full'
+const geoKey = (v)=> v.s==='fullblock' ? 'full'
   : v.s==='others' ? (v.ot==='door' ? 'o_door_'+(v.hg||'left') : (OTHER_GEO[v.ot]||'other'))  // 種類別の見た目（facing で回転）
   : (v.s==='trapdoor' && v.o==='true') ? 'trapdoor_open'   // 開はhalf非依存で同一形状
   : v.s+'_'+v.h;
@@ -513,7 +513,7 @@ function syncVox(){
     (up?above:below)[gk] ??= []; (up?above:below)[gk].push({p,v});
     (up?aboveCells:belowCells).push(p);
     if(v.s==='trapdoor') (up?aboveTrap:belowTrap).push({p,v});
-    if(v.s==='full') (up?aboveFull:belowFull).push({p,v}); });
+    if(v.s==='fullblock') (up?aboveFull:belowFull).push({p,v}); });
   for(const gk in below){ const im=makeInstShape(below[gk],GEOS[gk],mat); scene.add(im); editMeshes.push(im); }
   for(const gk in above){ const im=makeInstShape(above[gk],GEOS[gk],ghostMat); scene.add(im); ghostMeshes.push(im); }
   if(belowCells.length){ const o=makeOutline(belowCells,outlineMat); scene.add(o); outlineMeshes.push(o); }
@@ -745,7 +745,7 @@ function buildJson(){
           const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},mat:v.r,form:'DOOR',half:'upper'};
           if(rec.facing) up.facing=rec.facing; if(rec.hinge) up.hinge=rec.hinge; if(rec.open) up.open=rec.open;
           return '  '+JSON.stringify(rec)+',\n  '+JSON.stringify(up); } }
-      else { rec.axis=v.ax||'VERTICAL'; rec.facing=mirFac(FAC[(v.f||0)%6]); }  // full: axis+facing（該当ブロックのみMOD側で適用）
+      else { rec.form='FULLBLOCK'; rec.axis=v.ax||'VERTICAL'; rec.facing=mirFac(FAC[(v.f||0)%6]); }  // fullblock: form＋axis＋facing（該当ブロックのみMOD側で適用）
       return '  '+JSON.stringify(rec); });
     return '{\n "name": '+JSON.stringify(name)+',\n "size": ['+d.z+', '+d.y+', '+d.x+'],\n'
       +' "blocks": [\n'+recs.join(',\n')+(recs.length?'\n':'')+' ]\n}';
@@ -814,7 +814,7 @@ function setTool(t){ S.tool=t;
   $('#gridwrap').style.touchAction = t==='pan' ? 'auto' : 'none'; }
 
 function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他）／ 方向系（行2・種類に適したもののみ）
-  const isFull  = (S.shape==='full');
+  const isFull  = (S.shape==='fullblock');
   const isOther = (S.shape==='others');
   const oprops  = isOther ? OTHER_BY[S.other].props : [];
   const hasAxis   = isFull;
@@ -946,7 +946,7 @@ function importJson(text){
       const impW = (d.size && d.size[2]) ? d.size[2]
         : d.blocks.reduce((m,b)=>Math.max(m,(b.pos?b.pos.w:0)+1),1);
       d.blocks.forEach(b=>{ const p=b.pos; if(!p) return;
-        let s='full',f=0,h='bottom',o='false',ax='VERTICAL',ot='door',hg='left',dh='lower'; const fm=(b.form||'').toUpperCase();
+        let s='fullblock',f=0,h='bottom',o='false',ax='VERTICAL',ot='door',hg='left',dh='lower'; const fm=(b.form||'').toUpperCase();
         if(fm==='DOOR' && b.half==='upper') return;   // ドア上半分は下半分(app 1セル)に集約するのでスキップ
         if(fm==='SLAB'){ s='slab'; h=b.type||'bottom'; }
         else if(fm==='STAIRS'){ s='stairs'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; }
@@ -960,10 +960,10 @@ function importJson(text){
         set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, f, h, o, ax, ot, hg, dh}); });
     }
     else if(Array.isArray(d.voxels))   // 旧形式（後方互換・ミラー前のアプリ内部座標）
-      d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),{r:'wall_main',s:'full',f:0,h:'bottom'}));
+      d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),{r:'wall_main',s:'fullblock',f:0,h:'bottom'}));
     else if(d.layers)
       Object.keys(d.layers).forEach(y=>d.layers[y].forEach((row,z)=>{
-        [...row].forEach((ch,x)=>{ if(ch!=='.') set.set(K(mirW(x,row.length),+y,z),{r:'wall_main',s:'full',f:0,h:'bottom'}); }); }));
+        [...row].forEach((ch,x)=>{ if(ch!=='.') set.set(K(mirW(x,row.length),+y,z),{r:'wall_main',s:'fullblock',f:0,h:'bottom'}); }); }));
     let nd = null;
     if(d.size) nd = Array.isArray(d.voxels)     // 旧 voxels は [x,y,z]、新(blocks/layers)は [d,h,w]
       ? {x:d.size[0], y:d.size[1], z:d.size[2]}
