@@ -168,7 +168,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.14';
+const APP_VERSION = '3.15';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -197,8 +197,9 @@ const roleColor = (role)=> (role in ROLE_C) ? ROLE_C[role] : ROLES[0].c;
 const roleHex = (role)=> '#'+roleColor(role).toString(16).padStart(6,'0');
 
 const SHAPES = ['full','slab','stairs','trapdoor'];   // 形（MOD form: BLOCK/SLAB/STAIRS/TRAPDOOR）
-const FAC = ['FRONT','RIGHT','BACK','LEFT'];          // facing（相対トークン）
-const FAC_I = {FRONT:0,RIGHT:1,BACK:2,LEFT:3};
+const FAC = ['FRONT','RIGHT','BACK','LEFT','UP','DOWN'];   // facing（相対トークン, full は6方向）
+const FAC_I = {FRONT:0,RIGHT:1,BACK:2,LEFT:3,UP:4,DOWN:5};
+const AXES = ['VERTICAL','DEPTH','WIDTH'];                 // axis（相対軸 RelAxis, 原木/柱など）
 
 /* three.js(右手系) ⇄ Minecraft/autobuilder(左手系) の橋渡し（v3.4）。
    これをしないと、建築結果がアプリ表示の「左右鏡像」になる（W=左右軸の利き手が逆）。
@@ -210,13 +211,13 @@ const mirFac = (tok)=> MIR_FAC[tok] || tok;
 
 const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'wall_main',
-  shape:'full', facing:0, half:'bottom', open:'false',
+  shape:'full', facing:0, half:'bottom', open:'false', axis:'VERTICAL',
   view:'space', jsonMode:'layers', cell:20, hist:[], redo:[], manualZoom:false, dirHandle:null
 };
-const cur = ()=>({r:S.role, s:S.shape, f:S.facing, h:S.half, o:S.open});   // 現在のブロック値
-const sig = (v)=> v ? (v.r+'|'+v.s+'|'+v.f+'|'+v.h+'|'+(v.o||'false')) : '';  // 同一判定用
-const norm = (v)=> (typeof v==='string') ? {r:v,s:'full',f:0,h:'bottom',o:'false'}
-  : (v.o===undefined ? {...v,o:'false'} : v);   // 旧形式→オブジェクト（open 既定 false）
+const cur = ()=>({r:S.role, s:S.shape, f:S.facing, h:S.half, o:S.open, ax:S.axis});   // 現在のブロック値
+const sig = (v)=> v ? (v.r+'|'+v.s+'|'+v.f+'|'+v.h+'|'+(v.o||'false')+'|'+(v.ax||'VERTICAL')) : '';  // 同一判定用
+const norm = (v)=> (typeof v==='string') ? {r:v,s:'full',f:0,h:'bottom',o:'false',ax:'VERTICAL'}
+  : {ax:'VERTICAL',o:'false',...v};   // 旧形式→オブジェクト（open/axis 既定補完）
 
 /* ---------- persistence ---------- */
 function save(){
@@ -652,8 +653,9 @@ function buildJson(){
       .sort((a,b)=>a.p[2]-b.p[2]||a.p[1]-b.p[1]||b.p[0]-a.p[0]); // d(z) → h(y) → 出力W昇順(=x降順)
     const recs=arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:mirW(p[0],W)},mat:v.r};
       if(v.s==='slab'){ rec.form='SLAB'; rec.type=v.h; }
-      else if(v.s==='stairs'){ rec.form='STAIRS'; rec.facing=mirFac(FAC[v.f]); rec.half=v.h; }
-      else if(v.s==='trapdoor'){ rec.form='TRAPDOOR'; rec.facing=mirFac(FAC[v.f]); rec.half=v.h; rec.open=v.o||'false'; }
+      else if(v.s==='stairs'){ rec.form='STAIRS'; rec.facing=mirFac(FAC[v.f%4]); rec.half=v.h; }
+      else if(v.s==='trapdoor'){ rec.form='TRAPDOOR'; rec.facing=mirFac(FAC[v.f%4]); rec.half=v.h; rec.open=v.o||'false'; }
+      else { rec.axis=v.ax||'VERTICAL'; rec.facing=mirFac(FAC[(v.f||0)%6]); }  // full: axis+facing（該当ブロックのみMOD側で適用）
       return '  '+JSON.stringify(rec); });
     return '{\n "name": '+JSON.stringify(name)+',\n "size": ['+d.z+', '+d.y+', '+d.x+'],\n'
       +' "blocks": [\n'+recs.join(',\n')+(recs.length?'\n':'')+' ]\n}';
@@ -721,7 +723,10 @@ function setTool(t){ S.tool=t;
   $('#gridwrap').style.touchAction = t==='pan' ? 'auto' : 'none'; }
 
 function renderShapeBar(){   // 形（行1）／ facing・上下・open（行2、該当プロパティのみ・詰めて表示）
-  const hasFacing = (S.shape==='stairs' || S.shape==='trapdoor');
+  const isFull    = (S.shape==='full');
+  const hasAxis   = isFull;                                   // full: axis（原木・柱など）
+  const hasFacing = isFull || S.shape==='stairs' || S.shape==='trapdoor';
+  const facMod    = isFull ? 6 : 4;                           // full は6方向(UP/DOWN含む)、他は水平4方向
   const hasLevel  = (S.shape!=='full');       // slab=type / stairs・trapdoor=half（full は無し）
   const hasOpen   = (S.shape==='trapdoor');
   [['form-space','dir-space'],['form-plan','dir-plan']].forEach(([fid,did])=>{
@@ -729,8 +734,10 @@ function renderShapeBar(){   // 形（行1）／ facing・上下・open（行2�
     fel.innerHTML=''; del.innerHTML='';
     SHAPES.forEach(s=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=s;
       b.setAttribute('aria-pressed', S.shape===s); b.onclick=()=>{ S.shape=s; save(); renderShapeBar(); }; fel.appendChild(b); });
-    if(hasFacing){ const fb=document.createElement('button'); fb.className='btn'; fb.textContent='facing:'+FAC[S.facing];
-      fb.onclick=()=>{ S.facing=(S.facing+1)%4; save(); renderShapeBar(); }; del.appendChild(fb); }
+    if(hasAxis){ const xb=document.createElement('button'); xb.className='btn'; xb.textContent='axis:'+S.axis;
+      xb.onclick=()=>{ S.axis=AXES[(AXES.indexOf(S.axis)+1)%AXES.length]; save(); renderShapeBar(); }; del.appendChild(xb); }
+    if(hasFacing){ const fc=S.facing%facMod; const fb=document.createElement('button'); fb.className='btn'; fb.textContent='facing:'+FAC[fc];
+      fb.onclick=()=>{ S.facing=(fc+1)%facMod; save(); renderShapeBar(); }; del.appendChild(fb); }
     if(hasLevel){ const hb=document.createElement('button'); hb.className='btn';
       hb.textContent=(S.shape==='slab'?'type:':'half:')+S.half;   // slab は type、stairs/trapdoor は half
       hb.onclick=()=>{ S.half=S.half==='top'?'bottom':'top'; save(); renderShapeBar(); }; del.appendChild(hb); }
@@ -833,11 +840,12 @@ function importJson(text){
       const impW = (d.size && d.size[2]) ? d.size[2]
         : d.blocks.reduce((m,b)=>Math.max(m,(b.pos?b.pos.w:0)+1),1);
       d.blocks.forEach(b=>{ const p=b.pos; if(!p) return;
-        let s='full',f=0,h='bottom',o='false'; const fm=(b.form||'').toUpperCase();
+        let s='full',f=0,h='bottom',o='false',ax='VERTICAL'; const fm=(b.form||'').toUpperCase();
         if(fm==='SLAB'){ s='slab'; h=b.type||'bottom'; }
         else if(fm==='STAIRS'){ s='stairs'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; }
         else if(fm==='TRAPDOOR'){ s='trapdoor'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; o=String(b.open==null?'false':b.open); }
-        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, f, h, o}); });
+        else { if(b.facing) f=FAC_I[mirFac(b.facing)]||0; if(b.axis) ax=b.axis; }  // full: axis/facing 取り込み
+        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, f, h, o, ax}); });
     }
     else if(Array.isArray(d.voxels))   // 旧形式（後方互換・ミラー前のアプリ内部座標）
       d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),{r:'wall_main',s:'full',f:0,h:'bottom'}));
