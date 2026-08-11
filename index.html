@@ -80,6 +80,13 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .note{font-size:10px;color:var(--dim);line-height:1.6;margin:8px 0 0}
 #status{font-size:10px;color:var(--verdigris);min-height:14px;margin-top:8px}
 .hidden{display:none}
+.btn small{display:block;font-size:9px;color:var(--brass);line-height:1.2}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:50}
+#modal.on{display:flex}
+#modal .panel{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:14px;max-width:88%;max-height:78%;overflow:auto}
+#modal h3{margin:0 0 10px;font-size:13px;color:var(--brass)}
+#modal .grid{display:flex;flex-wrap:wrap;gap:6px}
+#modal .grid .btn{flex:0 0 auto;min-width:110px}
 </style>
 </head>
 <body>
@@ -165,10 +172,11 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </section>
 
 <div id="status"></div>
+<div id="modal"><div class="panel"><h3>種類を選択</h3><div class="grid" id="modal-grid"></div></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.17';
+const APP_VERSION = '3.18';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -201,6 +209,17 @@ const FAC = ['FRONT','RIGHT','BACK','LEFT','UP','DOWN'];   // facing（相対ト
 const FAC_I = {FRONT:0,RIGHT:1,BACK:2,LEFT:3,UP:4,DOWN:5};
 const AXES = ['VERTICAL','DEPTH','WIDTH'];                 // axis（相対軸 RelAxis, 原木/柱など）
 
+/* 「その他」で選ぶ種類。form＋その種類に適した方向プロパティ。まずはドア/松明。 */
+const OTHERS = [
+  {key:'door',            form:'DOOR',            label:'ドア',        props:['facing','hinge','dhalf','open']},
+  {key:'torch',           form:'TORCH',           label:'松明(床)',     props:[]},
+  {key:'wall_torch',      form:'WALL_TORCH',      label:'松明(壁)',     props:['facing']},
+  {key:'soul_wall_torch', form:'SOUL_WALL_TORCH', label:'魂の松明(壁)',  props:['facing']},
+];
+const OTHER_BY      = Object.fromEntries(OTHERS.map(o=>[o.key,o]));
+const OTHER_BY_FORM = Object.fromEntries(OTHERS.map(o=>[o.form,o.key]));
+const mirHinge = (h)=> h==='left'?'right':(h==='right'?'left':h);   // W ミラーで hinge も左右反転
+
 /* three.js(右手系) ⇄ Minecraft/autobuilder(左手系) の橋渡し（v3.4）。
    これをしないと、建築結果がアプリ表示の「左右鏡像」になる（W=左右軸の利き手が逆）。
    MOD が読む blocks/layers の入出力時にだけ W を反転し、facing の RIGHT↔LEFT を入れ替える。
@@ -211,13 +230,13 @@ const mirFac = (tok)=> MIR_FAC[tok] || tok;
 
 const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'wall_main',
-  shape:'full', facing:0, half:'bottom', open:'false', axis:'VERTICAL',
+  shape:'full', facing:0, half:'bottom', open:'false', axis:'VERTICAL', other:'door', hinge:'left', dhalf:'lower',
   view:'space', jsonMode:'layers', cell:20, hist:[], redo:[], manualZoom:false, dirHandle:null
 };
-const cur = ()=>({r:S.role, s:S.shape, f:S.facing, h:S.half, o:S.open, ax:S.axis});   // 現在のブロック値
-const sig = (v)=> v ? (v.r+'|'+v.s+'|'+v.f+'|'+v.h+'|'+(v.o||'false')+'|'+(v.ax||'VERTICAL')) : '';  // 同一判定用
-const norm = (v)=> (typeof v==='string') ? {r:v,s:'full',f:0,h:'bottom',o:'false',ax:'VERTICAL'}
-  : {ax:'VERTICAL',o:'false',...v};   // 旧形式→オブジェクト（open/axis 既定補完）
+const cur = ()=>({r:S.role, s:S.shape, f:S.facing, h:S.half, o:S.open, ax:S.axis, ot:S.other, hg:S.hinge, dh:S.dhalf});
+const sig = (v)=> v ? [v.r,v.s,v.f,v.h,v.o||'false',v.ax||'VERTICAL',v.ot||'door',v.hg||'left',v.dh||'lower'].join('|') : '';
+const norm = (v)=> (typeof v==='string') ? {r:v,s:'full',f:0,h:'bottom',o:'false',ax:'VERTICAL',ot:'door',hg:'left',dh:'lower'}
+  : {ax:'VERTICAL',o:'false',ot:'door',hg:'left',dh:'lower',...v};   // 旧形式→オブジェクト（既定補完）
 
 /* ---------- persistence ---------- */
 function save(){
@@ -294,10 +313,12 @@ function buildGeos(){
     trapdoor_open:   boxAt(1,1,T,0,-0.5+T/2),   // 開＝facing の反対側(-z)に立つ縦板（half 非依存）
     stairs_bottom: mergeGeo(boxAt(1,0.5,1,-0.25,0), boxAt(1,0.5,0.5,0.25,-0.25)), // 高段=facingの反対(-z=BACK側)
     stairs_top:    mergeGeo(boxAt(1,0.5,1,0.25,0),  boxAt(1,0.5,0.5,-0.25,-0.25)),
+    other: boxAt(0.4,0.92,0.4,0,0),   // その他（ドア/松明等）の暫定プレースホルダ＝細い縦箱
   };
   geo = GEOS.full;
 }
 const geoKey = (v)=> v.s==='full' ? 'full'
+  : v.s==='others' ? 'other'                              // その他は暫定形状（facing で回転）
   : (v.s==='trapdoor' && v.o==='true') ? 'trapdoor_open'   // 開はhalf非依存で同一形状
   : v.s+'_'+v.h;
 
@@ -703,6 +724,11 @@ function buildJson(){
       if(v.s==='slab'){ rec.form='SLAB'; rec.type=v.h; }
       else if(v.s==='stairs'){ rec.form='STAIRS'; rec.facing=mirFac(FAC[v.f%4]); rec.half=v.h; }
       else if(v.s==='trapdoor'){ rec.form='TRAPDOOR'; rec.facing=mirFac(FAC[v.f%4]); rec.half=v.h; rec.open=v.o||'false'; }
+      else if(v.s==='others'){ const t=OTHER_BY[v.ot]||OTHER_BY.door; rec.form=t.form;
+        if(t.props.includes('facing')) rec.facing=mirFac(FAC[(v.f||0)%4]);
+        if(t.props.includes('hinge'))  rec.hinge=mirHinge(v.hg||'left');
+        if(t.props.includes('dhalf'))  rec.half=v.dh||'lower';
+        if(t.props.includes('open'))   rec.open=v.o||'false'; }
       else { rec.axis=v.ax||'VERTICAL'; rec.facing=mirFac(FAC[(v.f||0)%6]); }  // full: axis+facing（該当ブロックのみMOD側で適用）
       return '  '+JSON.stringify(rec); });
     return '{\n "name": '+JSON.stringify(name)+',\n "size": ['+d.z+', '+d.y+', '+d.x+'],\n'
@@ -740,6 +766,7 @@ function setView(v){
 
 /* ---------- wiring ---------- */
 ['space','plan','json'].forEach(n=>$('#t-'+n).onclick=()=>setView(n));
+$('#modal').onclick=e=>{ if(e.target.id==='modal') closeModal(); };   // 背景タップで閉じる
 
 $('#name').oninput = save;
 ['dx','dy','dz'].forEach(id=>$('#'+id).onchange=e=>{
@@ -770,29 +797,41 @@ function setTool(t){ S.tool=t;
   ['draw','erase','pan'].forEach(n=>$('#p-'+n).setAttribute('aria-pressed', n===t));
   $('#gridwrap').style.touchAction = t==='pan' ? 'auto' : 'none'; }
 
-function renderShapeBar(){   // 形（行1）／ facing・上下・open（行2、該当プロパティのみ・詰めて表示）
-  const isFull    = (S.shape==='full');
-  const hasAxis   = isFull;                                   // full: axis（原木・柱など）
-  const hasFacing = isFull || S.shape==='stairs' || S.shape==='trapdoor';
-  const facMod    = isFull ? 6 : 4;                           // full は6方向(UP/DOWN含む)、他は水平4方向
-  const hasLevel  = (S.shape!=='full');       // slab=type / stairs・trapdoor=half（full は無し）
-  const hasOpen   = (S.shape==='trapdoor');
+function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他）／ 方向系（行2・種類に適したもののみ）
+  const isFull  = (S.shape==='full');
+  const isOther = (S.shape==='others');
+  const oprops  = isOther ? OTHER_BY[S.other].props : [];
+  const hasAxis   = isFull;
+  const hasFacing = isFull || S.shape==='stairs' || S.shape==='trapdoor' || oprops.includes('facing');
+  const facMod    = isFull ? 6 : 4;                           // full は6方向、他は水平4方向
+  const hasHinge  = oprops.includes('hinge');
+  const hasDhalf  = oprops.includes('dhalf');                 // ドアの upper/lower
+  const hasLevel  = (S.shape==='slab'||S.shape==='stairs'||S.shape==='trapdoor'); // top/bottom
+  const hasOpen   = (S.shape==='trapdoor') || oprops.includes('open');
   [['form-space','dir-space'],['form-plan','dir-plan']].forEach(([fid,did])=>{
     const fel=$('#'+fid), del=$('#'+did); if(!fel||!del) return;
     fel.innerHTML=''; del.innerHTML='';
-    SHAPES.forEach(s=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=s;
-      b.setAttribute('aria-pressed', S.shape===s); b.onclick=()=>{ S.shape=s; save(); renderShapeBar(); }; fel.appendChild(b); });
-    if(hasAxis){ const xb=document.createElement('button'); xb.className='btn'; xb.textContent='axis:'+S.axis;
-      xb.onclick=()=>{ S.axis=AXES[(AXES.indexOf(S.axis)+1)%AXES.length]; save(); renderShapeBar(); }; del.appendChild(xb); }
-    if(hasFacing){ const fc=S.facing%facMod; const fb=document.createElement('button'); fb.className='btn'; fb.textContent='facing:'+FAC[fc];
-      fb.onclick=()=>{ S.facing=(fc+1)%facMod; save(); renderShapeBar(); }; del.appendChild(fb); }
-    if(hasLevel){ const hb=document.createElement('button'); hb.className='btn';
-      hb.textContent=(S.shape==='slab'?'type:':'half:')+S.half;   // slab は type、stairs/trapdoor は half
-      hb.onclick=()=>{ S.half=S.half==='top'?'bottom':'top'; save(); renderShapeBar(); }; del.appendChild(hb); }
-    if(hasOpen){ const ob=document.createElement('button'); ob.className='btn'; ob.textContent='open:'+S.open;
-      ob.onclick=()=>{ S.open=S.open==='true'?'false':'true'; save(); renderShapeBar(); }; del.appendChild(ob); }
+    const mkform=(label,pressed,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.innerHTML=label;
+      b.setAttribute('aria-pressed', pressed); b.onclick=onclick; fel.appendChild(b); };
+    SHAPES.forEach(s=>mkform(s, S.shape===s, ()=>{ S.shape=s; save(); renderShapeBar(); }));
+    mkform(isOther?('その他<br><small>'+OTHER_BY[S.other].label+'</small>'):'その他', isOther,
+      ()=>{ S.shape='others'; openModal(); save(); renderShapeBar(); });   // クリックでモーダル→種類選択
+    const mk=(label,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=label; b.onclick=onclick; del.appendChild(b); };
+    if(hasAxis) mk('axis:'+S.axis, ()=>{ S.axis=AXES[(AXES.indexOf(S.axis)+1)%AXES.length]; save(); renderShapeBar(); });
+    if(hasFacing){ const fc=S.facing%facMod; mk('facing:'+FAC[fc], ()=>{ S.facing=(fc+1)%facMod; save(); renderShapeBar(); }); }
+    if(hasHinge) mk('hinge:'+S.hinge, ()=>{ S.hinge=S.hinge==='left'?'right':'left'; save(); renderShapeBar(); });
+    if(hasDhalf) mk('half:'+S.dhalf, ()=>{ S.dhalf=S.dhalf==='lower'?'upper':'lower'; save(); renderShapeBar(); });
+    if(hasLevel) mk((S.shape==='slab'?'type:':'half:')+S.half, ()=>{ S.half=S.half==='top'?'bottom':'top'; save(); renderShapeBar(); });
+    if(hasOpen)  mk('open:'+S.open, ()=>{ S.open=S.open==='true'?'false':'true'; save(); renderShapeBar(); });
   });
 }
+function openModal(){ const g=$('#modal-grid'); if(!g) return; g.innerHTML='';
+  OTHERS.forEach(o=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=o.label;
+    b.setAttribute('aria-pressed', S.shape==='others'&&S.other===o.key);
+    b.onclick=()=>{ S.other=o.key; S.shape='others'; closeModal(); save(); renderShapeBar(); }; g.appendChild(b); });
+  $('#modal').classList.add('on');
+}
+function closeModal(){ $('#modal').classList.remove('on'); }
 function renderRoles(){   // 役割（色）選択バーを立体・平面へ描画
   ['roles-space','roles-plan'].forEach(id=>{ const el=$('#'+id); if(!el) return; el.innerHTML='';
     ROLES.forEach(r=>{ const b=document.createElement('button'); b.className='btn';
@@ -888,12 +927,17 @@ function importJson(text){
       const impW = (d.size && d.size[2]) ? d.size[2]
         : d.blocks.reduce((m,b)=>Math.max(m,(b.pos?b.pos.w:0)+1),1);
       d.blocks.forEach(b=>{ const p=b.pos; if(!p) return;
-        let s='full',f=0,h='bottom',o='false',ax='VERTICAL'; const fm=(b.form||'').toUpperCase();
+        let s='full',f=0,h='bottom',o='false',ax='VERTICAL',ot='door',hg='left',dh='lower'; const fm=(b.form||'').toUpperCase();
         if(fm==='SLAB'){ s='slab'; h=b.type||'bottom'; }
         else if(fm==='STAIRS'){ s='stairs'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; }
         else if(fm==='TRAPDOOR'){ s='trapdoor'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; o=String(b.open==null?'false':b.open); }
+        else if(OTHER_BY_FORM[fm]){ s='others'; ot=OTHER_BY_FORM[fm]; const t=OTHER_BY[ot];
+          if(t.props.includes('facing')) f=FAC_I[mirFac(b.facing)]||0;
+          if(t.props.includes('hinge'))  hg=mirHinge(b.hinge||'left');
+          if(t.props.includes('dhalf'))  dh=b.half||'lower';
+          if(t.props.includes('open'))   o=String(b.open==null?'false':b.open); }
         else { if(b.facing) f=FAC_I[mirFac(b.facing)]||0; if(b.axis) ax=b.axis; }  // full: axis/facing 取り込み
-        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, f, h, o, ax}); });
+        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, f, h, o, ax, ot, hg, dh}); });
     }
     else if(Array.isArray(d.voxels))   // 旧形式（後方互換・ミラー前のアプリ内部座標）
       d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),{r:'wall_main',s:'full',f:0,h:'bottom'}));
