@@ -176,7 +176,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.19';
+const APP_VERSION = '3.20';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -211,7 +211,7 @@ const AXES = ['VERTICAL','DEPTH','WIDTH'];                 // axis（相対軸 R
 
 /* 「その他」で選ぶ種類。form＋その種類に適した方向プロパティ。まずはドア/松明。 */
 const OTHERS = [
-  {key:'door',            form:'DOOR',            label:'ドア',        props:['facing','hinge','dhalf','open']},
+  {key:'door',            form:'DOOR',            label:'ドア',        props:['facing','hinge','open']},
   {key:'torch',           form:'TORCH',           label:'松明(床)',     props:[]},
   {key:'wall_torch',      form:'WALL_TORCH',      label:'松明(壁)',     props:['facing']},
   {key:'soul_wall_torch', form:'SOUL_WALL_TORCH', label:'魂の松明(壁)',  props:['facing']},
@@ -304,6 +304,12 @@ function mergeGeo(a,b){   // 2つの indexed BoxGeometry を結合（階段用�
   for(let i=0;i<bi.length;i++) idx[ai.length+i]=bi[i]+off;
   g.setIndex(new THREE.BufferAttribute(idx,1)); return g;
 }
+function doorGeo(left){   // ドア＝2ブロック高の薄板＋蝶番側の縦バー（cell下端→上へ2マス）
+  const T=0.1875, oy=0.5;
+  const panel=new THREE.BoxGeometry(0.94,2,T); panel.translate(0,oy,-0.5+T/2);
+  const bar=new THREE.BoxGeometry(0.12,2,T+0.14); bar.translate(left?-0.42:0.42, oy, -0.5+(T+0.14)/2);
+  return mergeGeo(panel,bar);
+}
 function buildGeos(){
   const T=0.1875;   // trapdoor 厚み
   GEOS={
@@ -314,15 +320,16 @@ function buildGeos(){
     stairs_bottom: mergeGeo(boxAt(1,0.5,1,-0.25,0), boxAt(1,0.5,0.5,0.25,-0.25)), // 高段=facingの反対(-z=BACK側)
     stairs_top:    mergeGeo(boxAt(1,0.5,1,0.25,0),  boxAt(1,0.5,0.5,-0.25,-0.25)),
     other:    boxAt(0.4,0.92,0.4,0,0),                       // その他の汎用フォールバック
-    o_door:   boxAt(1,1,0.1875,0,-0.5+0.1875/2),             // ドア＝facing側(-z)の薄い縦板（全高・全幅）
+    o_door_left:  doorGeo(true),                             // ドア（蝶番=左）2ブロック高
+    o_door_right: doorGeo(false),                            // ドア（蝶番=右）
     o_torch:  boxAt(0.16,0.62,0.16,-0.19,0),                 // 松明(床)＝中央の細い棒
     o_wtorch: boxAt(0.16,0.55,0.16,0.02,-0.36),              // 壁松明＝facing壁際(-z)の細い棒
   };
   geo = GEOS.full;
 }
-const OTHER_GEO = {door:'o_door', torch:'o_torch', wall_torch:'o_wtorch', soul_wall_torch:'o_wtorch'};
+const OTHER_GEO = {torch:'o_torch', wall_torch:'o_wtorch', soul_wall_torch:'o_wtorch'};
 const geoKey = (v)=> v.s==='full' ? 'full'
-  : v.s==='others' ? (OTHER_GEO[v.ot]||'other')           // 種類別の見た目（facing で回転）
+  : v.s==='others' ? (v.ot==='door' ? 'o_door_'+(v.hg||'left') : (OTHER_GEO[v.ot]||'other'))  // 種類別の見た目（facing で回転）
   : (v.s==='trapdoor' && v.o==='true') ? 'trapdoor_open'   // 開はhalf非依存で同一形状
   : v.s+'_'+v.h;
 
@@ -731,8 +738,11 @@ function buildJson(){
       else if(v.s==='others'){ const t=OTHER_BY[v.ot]||OTHER_BY.door; rec.form=t.form;
         if(t.props.includes('facing')) rec.facing=mirFac(FAC[(v.f||0)%4]);
         if(t.props.includes('hinge'))  rec.hinge=mirHinge(v.hg||'left');
-        if(t.props.includes('dhalf'))  rec.half=v.dh||'lower';
-        if(t.props.includes('open'))   rec.open=v.o||'false'; }
+        if(t.props.includes('open'))   rec.open=v.o||'false';
+        if(v.ot==='door'){ rec.half='lower';                    // ドアは lower＋upper の2レコードに展開
+          const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},mat:v.r,form:'DOOR',half:'upper'};
+          if(rec.facing) up.facing=rec.facing; if(rec.hinge) up.hinge=rec.hinge; if(rec.open) up.open=rec.open;
+          return '  '+JSON.stringify(rec)+',\n  '+JSON.stringify(up); } }
       else { rec.axis=v.ax||'VERTICAL'; rec.facing=mirFac(FAC[(v.f||0)%6]); }  // full: axis+facing（該当ブロックのみMOD側で適用）
       return '  '+JSON.stringify(rec); });
     return '{\n "name": '+JSON.stringify(name)+',\n "size": ['+d.z+', '+d.y+', '+d.x+'],\n'
@@ -932,6 +942,7 @@ function importJson(text){
         : d.blocks.reduce((m,b)=>Math.max(m,(b.pos?b.pos.w:0)+1),1);
       d.blocks.forEach(b=>{ const p=b.pos; if(!p) return;
         let s='full',f=0,h='bottom',o='false',ax='VERTICAL',ot='door',hg='left',dh='lower'; const fm=(b.form||'').toUpperCase();
+        if(fm==='DOOR' && b.half==='upper') return;   // ドア上半分は下半分(app 1セル)に集約するのでスキップ
         if(fm==='SLAB'){ s='slab'; h=b.type||'bottom'; }
         else if(fm==='STAIRS'){ s='stairs'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; }
         else if(fm==='TRAPDOOR'){ s='trapdoor'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; o=String(b.open==null?'false':b.open); }
