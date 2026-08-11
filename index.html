@@ -176,7 +176,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.24';
+const APP_VERSION = '3.25';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -214,6 +214,11 @@ const OTHERS = [
   {key:'door',       form:'DOOR',       label:'ドア',     props:['facing','hinge']},
   {key:'torch',      form:'TORCH',      label:'松明(床)', props:[],         noMat:true, mats:['COAL','SOUL','REDSTONE']},
   {key:'wall_torch', form:'WALL_TORCH', label:'松明(壁)', props:['facing'], noMat:true, mats:['COAL','SOUL','REDSTONE']},
+  {key:'lantern',    form:'LANTERN',    label:'ランタン', props:[],         noMat:true, mats:['COAL','SOUL']},
+  {key:'campfire',   form:'CAMPFIRE',   label:'焚き火',   props:['facing'], noMat:true, mats:['COAL','SOUL']},
+  {key:'chain',      form:'CHAIN',      label:'チェーン', props:['axis'],   noMat:true, mat:'IRON'},
+  {key:'fence',      form:'FENCE',      label:'柵',       props:[]},                          // 素材=役割
+  {key:'fence_gate', form:'FENCE_GATE', label:'フェンスゲート', props:['facing','open']},      // 素材=役割
 ];
 const isNoMat = ()=> S.shape==='others' && OTHER_BY[S.other].noMat;   // 役割選択不要（mat は固定 or 無し）
 const OTHER_BY      = Object.fromEntries(OTHERS.map(o=>[o.key,o]));
@@ -325,10 +330,15 @@ function buildGeos(){
     o_door_right: doorGeo(false),                            // ドア（蝶番=右）
     o_torch:  boxAt(0.16,0.62,0.16,-0.19,0),                 // 松明(床)＝中央の細い棒
     o_wtorch: boxAt(0.16,0.55,0.16,0.02,-0.36),              // 壁松明＝facing壁際(-z)の細い棒
+    o_lantern:  boxAt(0.34,0.5,0.34,-0.12,0),                // ランタン＝小さな箱
+    o_campfire: boxAt(0.86,0.24,0.86,-0.38,0),               // 焚き火＝低く幅広（薪）
+    o_chain:    boxAt(0.14,1,0.14,0,0),                      // チェーン＝細い縦棒
+    o_fence:    boxAt(0.22,1,0.22,0,0),                      // 柵＝中央の支柱
+    o_fencegate:boxAt(0.92,0.42,0.16,0.02,0),               // フェンスゲート＝幅広の薄板（facingで回転）
   };
   geo = GEOS.full;
 }
-const OTHER_GEO = {torch:'o_torch', wall_torch:'o_wtorch'};
+const OTHER_GEO = {torch:'o_torch', wall_torch:'o_wtorch', lantern:'o_lantern', campfire:'o_campfire', chain:'o_chain', fence:'o_fence', fence_gate:'o_fencegate'};
 const geoKey = (v)=> v.s==='fullblock' ? 'full'
   : v.s==='others' ? (v.ot==='door' ? 'o_door_'+(v.hg||'left') : (OTHER_GEO[v.ot]||'other'))  // 種類別の見た目（facing で回転）
   : (v.s==='trapdoor' && v.o==='true') ? 'trapdoor_open'   // 開はhalf非依存で同一形状
@@ -737,7 +747,8 @@ function buildJson(){
       else if(v.s==='stairs'){ rec.form='STAIRS'; rec.facing=mirFac(FAC[v.f%4]); rec.half=v.h; }
       else if(v.s==='trapdoor'){ rec.form='TRAPDOOR'; rec.facing=mirFac(FAC[v.f%4]); rec.half=v.h; rec.open=v.o||'false'; }
       else if(v.s==='others'){ const t=OTHER_BY[v.ot]||OTHER_BY.door; rec.form=t.form;
-        if(t.mats) rec.mat=v.om||t.mats[0]; else if(t.noMat) delete rec.mat;  // mat候補あれば選択mat / noMatなら省略
+        if(t.mats) rec.mat=v.om||t.mats[0]; else if(t.mat) rec.mat=t.mat; else if(t.noMat) delete rec.mat;  // mat候補=選択/固定mat/noMat=省略
+        if(t.props.includes('axis'))   rec.axis=v.ax||'VERTICAL';
         if(t.props.includes('facing')) rec.facing=mirFac(FAC[(v.f||0)%4]);
         if(t.props.includes('hinge'))  rec.hinge=mirHinge(v.hg||'left');
         if(t.props.includes('open'))   rec.open=v.o||'false';
@@ -817,7 +828,7 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
   const isFull  = (S.shape==='fullblock');
   const isOther = (S.shape==='others');
   const oprops  = isOther ? OTHER_BY[S.other].props : [];
-  const hasAxis   = isFull;
+  const hasAxis   = isFull || oprops.includes('axis');
   const hasFacing = isFull || S.shape==='stairs' || S.shape==='trapdoor' || oprops.includes('facing');
   const facMod    = isFull ? 6 : 4;                           // full は6方向、他は水平4方向
   const omats     = isOther ? OTHER_BY[S.other].mats : null;  // 松明の COAL/SOUL/REDSTONE 等
@@ -955,6 +966,7 @@ function importJson(text){
         else if(fm==='TRAPDOOR'){ s='trapdoor'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; o=String(b.open==null?'false':b.open); }
         else if(OTHER_BY_FORM[fm]){ s='others'; ot=OTHER_BY_FORM[fm]; const t=OTHER_BY[ot];
           if(t.mats) om=b.mat||t.mats[0];
+          if(t.props.includes('axis') && b.axis) ax=b.axis;
           if(t.props.includes('facing')) f=FAC_I[mirFac(b.facing)]||0;
           if(t.props.includes('hinge'))  hg=mirHinge(b.hinge||'left');
           if(t.props.includes('open'))   o=String(b.open==null?'false':b.open); }
