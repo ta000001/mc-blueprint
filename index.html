@@ -176,7 +176,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.23';
+const APP_VERSION = '3.24';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -211,13 +211,9 @@ const AXES = ['VERTICAL','DEPTH','WIDTH'];                 // axis（相対軸 R
 
 /* 「その他」で選ぶ種類。form＋固定mat＋方向プロパティ。松明系は COAL/SOUL/REDSTONE × TORCH/WALL_TORCH。 */
 const OTHERS = [
-  {key:'door',                form:'DOOR',       label:'ドア',         props:['facing','hinge']},
-  {key:'torch',               form:'TORCH',      mat:'COAL',     label:'松明(床)',     props:[],         noMat:true},
-  {key:'wall_torch',          form:'WALL_TORCH', mat:'COAL',     label:'松明(壁)',     props:['facing'], noMat:true},
-  {key:'soul_torch',          form:'TORCH',      mat:'SOUL',     label:'魂の松明(床)',  props:[],         noMat:true},
-  {key:'soul_wall_torch',     form:'WALL_TORCH', mat:'SOUL',     label:'魂の松明(壁)',  props:['facing'], noMat:true},
-  {key:'redstone_torch',      form:'TORCH',      mat:'REDSTONE', label:'RS松明(床)',    props:[],         noMat:true},
-  {key:'redstone_wall_torch', form:'WALL_TORCH', mat:'REDSTONE', label:'RS松明(壁)',    props:['facing'], noMat:true},
+  {key:'door',       form:'DOOR',       label:'ドア',     props:['facing','hinge']},
+  {key:'torch',      form:'TORCH',      label:'松明(床)', props:[],         noMat:true, mats:['COAL','SOUL','REDSTONE']},
+  {key:'wall_torch', form:'WALL_TORCH', label:'松明(壁)', props:['facing'], noMat:true, mats:['COAL','SOUL','REDSTONE']},
 ];
 const isNoMat = ()=> S.shape==='others' && OTHER_BY[S.other].noMat;   // 役割選択不要（mat は固定 or 無し）
 const OTHER_BY      = Object.fromEntries(OTHERS.map(o=>[o.key,o]));
@@ -235,13 +231,13 @@ const mirFac = (tok)=> MIR_FAC[tok] || tok;
 
 const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'wall_main',
-  shape:'fullblock', facing:0, half:'bottom', open:'false', axis:'VERTICAL', other:'door', hinge:'left', dhalf:'lower',
+  shape:'fullblock', facing:0, half:'bottom', open:'false', axis:'VERTICAL', other:'door', hinge:'left', dhalf:'lower', omat:'COAL',
   view:'space', jsonMode:'layers', cell:20, hist:[], redo:[], manualZoom:false, dirHandle:null
 };
-const cur = ()=>({r:S.role, s:S.shape, f:S.facing, h:S.half, o:S.open, ax:S.axis, ot:S.other, hg:S.hinge, dh:S.dhalf});
-const sig = (v)=> v ? [v.r,v.s,v.f,v.h,v.o||'false',v.ax||'VERTICAL',v.ot||'door',v.hg||'left',v.dh||'lower'].join('|') : '';
-const norm = (v)=> (typeof v==='string') ? {r:v,s:'fullblock',f:0,h:'bottom',o:'false',ax:'VERTICAL',ot:'door',hg:'left',dh:'lower'}
-  : {ax:'VERTICAL',o:'false',ot:'door',hg:'left',dh:'lower',...v};   // 旧形式→オブジェクト（既定補完）
+const cur = ()=>({r:S.role, s:S.shape, f:S.facing, h:S.half, o:S.open, ax:S.axis, ot:S.other, hg:S.hinge, dh:S.dhalf, om:S.omat});
+const sig = (v)=> v ? [v.r,v.s,v.f,v.h,v.o||'false',v.ax||'VERTICAL',v.ot||'door',v.hg||'left',v.dh||'lower',v.om||'COAL'].join('|') : '';
+const norm = (v)=> (typeof v==='string') ? {r:v,s:'fullblock',f:0,h:'bottom',o:'false',ax:'VERTICAL',ot:'door',hg:'left',dh:'lower',om:'COAL'}
+  : {ax:'VERTICAL',o:'false',ot:'door',hg:'left',dh:'lower',om:'COAL',...v};   // 旧形式→オブジェクト（既定補完）
 
 /* ---------- persistence ---------- */
 function save(){
@@ -332,8 +328,7 @@ function buildGeos(){
   };
   geo = GEOS.full;
 }
-const OTHER_GEO = {torch:'o_torch', soul_torch:'o_torch', redstone_torch:'o_torch',
-  wall_torch:'o_wtorch', soul_wall_torch:'o_wtorch', redstone_wall_torch:'o_wtorch'};
+const OTHER_GEO = {torch:'o_torch', wall_torch:'o_wtorch'};
 const geoKey = (v)=> v.s==='fullblock' ? 'full'
   : v.s==='others' ? (v.ot==='door' ? 'o_door_'+(v.hg||'left') : (OTHER_GEO[v.ot]||'other'))  // 種類別の見た目（facing で回転）
   : (v.s==='trapdoor' && v.o==='true') ? 'trapdoor_open'   // 開はhalf非依存で同一形状
@@ -742,7 +737,7 @@ function buildJson(){
       else if(v.s==='stairs'){ rec.form='STAIRS'; rec.facing=mirFac(FAC[v.f%4]); rec.half=v.h; }
       else if(v.s==='trapdoor'){ rec.form='TRAPDOOR'; rec.facing=mirFac(FAC[v.f%4]); rec.half=v.h; rec.open=v.o||'false'; }
       else if(v.s==='others'){ const t=OTHER_BY[v.ot]||OTHER_BY.door; rec.form=t.form;
-        if(t.noMat){ if(t.mat) rec.mat=t.mat; else delete rec.mat; }  // 固定matあれば出力・無ければ mat 省略
+        if(t.mats) rec.mat=v.om||t.mats[0]; else if(t.noMat) delete rec.mat;  // mat候補あれば選択mat / noMatなら省略
         if(t.props.includes('facing')) rec.facing=mirFac(FAC[(v.f||0)%4]);
         if(t.props.includes('hinge'))  rec.hinge=mirHinge(v.hg||'left');
         if(t.props.includes('open'))   rec.open=v.o||'false';
@@ -825,6 +820,7 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
   const hasAxis   = isFull;
   const hasFacing = isFull || S.shape==='stairs' || S.shape==='trapdoor' || oprops.includes('facing');
   const facMod    = isFull ? 6 : 4;                           // full は6方向、他は水平4方向
+  const omats     = isOther ? OTHER_BY[S.other].mats : null;  // 松明の COAL/SOUL/REDSTONE 等
   const hasHinge  = oprops.includes('hinge');
   const hasDhalf  = oprops.includes('dhalf');                 // ドアの upper/lower
   const hasLevel  = (S.shape==='slab'||S.shape==='stairs'||S.shape==='trapdoor'); // top/bottom
@@ -838,6 +834,7 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
     mkform(isOther?('others<br><small>'+otherLabel(OTHER_BY[S.other])+'</small>'):'others', isOther,
       ()=>{ S.shape='others'; openModal(); save(); renderShapeBar(); });   // クリックでモーダル→種類選択
     const mk=(label,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=label; b.onclick=onclick; del.appendChild(b); };
+    if(omats) mk('mat:'+S.omat, ()=>{ const i=omats.indexOf(S.omat); S.omat=omats[(i<0?0:i+1)%omats.length]; save(); renderShapeBar(); });
     if(hasAxis) mk('axis:'+S.axis, ()=>{ S.axis=AXES[(AXES.indexOf(S.axis)+1)%AXES.length]; save(); renderShapeBar(); });
     if(hasFacing){ const fc=S.facing%facMod; mk('facing:'+FAC[fc], ()=>{ S.facing=(fc+1)%facMod; save(); renderShapeBar(); }); }
     if(hasHinge) mk('hinge:'+S.hinge, ()=>{ S.hinge=S.hinge==='left'?'right':'left'; save(); renderShapeBar(); });
@@ -951,18 +948,18 @@ function importJson(text){
       const impW = (d.size && d.size[2]) ? d.size[2]
         : d.blocks.reduce((m,b)=>Math.max(m,(b.pos?b.pos.w:0)+1),1);
       d.blocks.forEach(b=>{ const p=b.pos; if(!p) return;
-        let s='fullblock',f=0,h='bottom',o='false',ax='VERTICAL',ot='door',hg='left',dh='lower'; const fm=(b.form||'').toUpperCase();
+        let s='fullblock',f=0,h='bottom',o='false',ax='VERTICAL',ot='door',hg='left',dh='lower',om='COAL'; const fm=(b.form||'').toUpperCase();
         if(fm==='DOOR' && b.half==='upper') return;   // ドア上半分は下半分(app 1セル)に集約するのでスキップ
         if(fm==='SLAB'){ s='slab'; h=b.type||'bottom'; }
         else if(fm==='STAIRS'){ s='stairs'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; }
         else if(fm==='TRAPDOOR'){ s='trapdoor'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; o=String(b.open==null?'false':b.open); }
         else if(OTHER_BY_FORM[fm]){ s='others'; ot=OTHER_BY_FORM[fm]; const t=OTHER_BY[ot];
+          if(t.mats) om=b.mat||t.mats[0];
           if(t.props.includes('facing')) f=FAC_I[mirFac(b.facing)]||0;
           if(t.props.includes('hinge'))  hg=mirHinge(b.hinge||'left');
-          if(t.props.includes('dhalf'))  dh=b.half||'lower';
           if(t.props.includes('open'))   o=String(b.open==null?'false':b.open); }
         else { if(b.facing) f=FAC_I[mirFac(b.facing)]||0; if(b.axis) ax=b.axis; }  // full: axis/facing 取り込み
-        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, f, h, o, ax, ot, hg, dh}); });
+        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, f, h, o, ax, ot, hg, dh, om}); });
     }
     else if(Array.isArray(d.voxels))   // 旧形式（後方互換・ミラー前のアプリ内部座標）
       d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),{r:'wall_main',s:'fullblock',f:0,h:'bottom'}));
