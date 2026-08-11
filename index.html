@@ -177,7 +177,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.26';
+const APP_VERSION = '3.27';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -210,21 +210,50 @@ const FAC = ['FRONT','RIGHT','BACK','LEFT','UP','DOWN'];   // facing（相対ト
 const FAC_I = {FRONT:0,RIGHT:1,BACK:2,LEFT:3,UP:4,DOWN:5};
 const AXES = ['VERTICAL','DEPTH','WIDTH'];                 // axis（相対軸 RelAxis, 原木/柱など）
 
-/* 「その他」で選ぶ種類。form＋固定mat＋方向プロパティ。松明系は COAL/SOUL/REDSTONE × TORCH/WALL_TORCH。 */
+/* 「その他」で選ぶ種類。form＋方向プロパティ。mat は下記 FORM_MATS から自動判定（一意→自動確定 / 複数(noMat)→選択 / 材質forms→役割）。 */
 const OTHERS = [
   {key:'door',       form:'DOOR',       label:'ドア',     props:['facing','hinge']},
-  {key:'torch',      form:'TORCH',      label:'松明(床)', props:[],         noMat:true, mats:['COAL','SOUL','REDSTONE']},
-  {key:'wall_torch', form:'WALL_TORCH', label:'松明(壁)', props:['facing'], noMat:true, mats:['COAL','SOUL','REDSTONE']},
-  {key:'lantern',    form:'LANTERN',    label:'ランタン', props:[],         noMat:true, mats:['COAL','SOUL']},
-  {key:'campfire',   form:'CAMPFIRE',   label:'焚き火',   props:['facing'], noMat:true, mats:['COAL','SOUL']},
-  {key:'chain',      form:'CHAIN',      label:'チェーン', props:['axis'],   noMat:true, mat:'IRON'},
-  {key:'fence',      form:'FENCE',      label:'柵',       props:[]},                          // 素材=役割
-  {key:'fence_gate', form:'FENCE_GATE', label:'フェンスゲート', props:['facing','open']},      // 素材=役割
+  {key:'torch',      form:'TORCH',      label:'松明(床)', props:[],         noMat:true},
+  {key:'wall_torch', form:'WALL_TORCH', label:'松明(壁)', props:['facing'], noMat:true},
+  {key:'lantern',    form:'LANTERN',    label:'ランタン', props:[],         noMat:true},
+  {key:'campfire',   form:'CAMPFIRE',   label:'焚き火',   props:['facing'], noMat:true},
+  {key:'chain',      form:'CHAIN',      label:'チェーン', props:['axis'],   noMat:true},
+  {key:'fence',      form:'FENCE',      label:'柵',       props:[]},
+  {key:'fence_gate', form:'FENCE_GATE', label:'フェンスゲート', props:['facing','open']},
 ];
-const isNoMat = ()=> S.shape==='others' && OTHER_BY[S.other].noMat;   // 役割選択不要（mat は固定 or 無し）
 const OTHER_BY      = Object.fromEntries(OTHERS.map(o=>[o.key,o]));
-const otherLabel = (o)=> o.mat ? o.mat+' '+o.form : o.form;          // 表示: 固定matあれば "MAT FORM"
 const OTHER_BY_FORM = Object.fromEntries(OTHERS.map(o=>[o.form,o.key]));
+const otherLabel = (o)=> o.form;   // form のみ表示（IRON CHAIN のようにしない）
+
+/* dict.json のコピー（form→mat一覧）。mat 一意判定に使う。FULLBLOCK 等の材質forms は役割/palette 由来なので省略（dict.json 参照）。変更時は再生成。 */
+const FORM_MATS = {
+  "BUTTON":["DARK_OAK_PLANKS","OAK_PLANKS","STONE"],
+  "CAMPFIRE":["COAL","SOUL"],
+  "CHAIN":["IRON"],
+  "DOOR":["DARK_OAK_PLANKS","IRON","OAK_PLANKS"],
+  "FENCE":["BRICK","COBBLESTONE","DARK_OAK_PLANKS","IRON","OAK_PLANKS","STONE_BRICK"],
+  "FENCE_GATE":["DARK_OAK_PLANKS","OAK_PLANKS","SPRUCE_PLANKS"],
+  "GRATE":["COPPER"],
+  "LANTERN":["COAL","SOUL"],
+  "PANE":["GLASS"],
+  "SLAB":["BRICK","COBBLESTONE","CUT_COPPER","DARK_OAK_PLANKS","DEEPSLATE_BRICK","DEEPSLATE_TILE","NETHER_BRICK","OAK_PLANKS","SMOOTH_STONE","SPRUCE_PLANKS","STONE","STONE_BRICK"],
+  "STAIRS":["BRICK","COBBLESTONE","CUT_COPPER","DARK_OAK_PLANKS","DEEPSLATE_BRICK","DEEPSLATE_TILE","NETHER_BRICK","OAK_PLANKS","SMOOTH_STONE","SPRUCE_PLANKS","STONE","STONE_BRICK"],
+  "TORCH":["COAL","REDSTONE","SOUL"],
+  "TRAPDOOR":["DARK_OAK_PLANKS","OAK_PLANKS","SPRUCE_PLANKS"],
+  "WALL_TORCH":["COAL","REDSTONE","SOUL"]
+};
+const SHAPE_FORM = {fullblock:'FULLBLOCK', slab:'SLAB', stairs:'STAIRS', trapdoor:'TRAPDOOR'};
+const formOf  = (v)=> v.s==='others' ? (OTHER_BY[v.ot]?OTHER_BY[v.ot].form:'') : (SHAPE_FORM[v.s]||'');
+const noMatOf = (v)=> v.s==='others' && OTHER_BY[v.ot] && !!OTHER_BY[v.ot].noMat;
+function matInfo(form, noMat){ const mats=FORM_MATS[form]||[];
+  if(mats.length===1) return {mode:'auto', mats, mat:mats[0]};        // 一意→自動確定（全form共通）
+  if(noMat) return mats.length>=2 ? {mode:'select', mats} : {mode:'none', mats};
+  return {mode:'role', mats};                                          // 材質forms＝役割/palette
+}
+const effMat = (v)=>{ const i=matInfo(formOf(v),noMatOf(v));
+  return i.mode==='role'?v.r : i.mode==='auto'?i.mat : i.mode==='select'?(i.mats.includes(v.om)?v.om:i.mats[0]) : null; };
+const curMatMode = ()=> matInfo(formOf({s:S.shape,ot:S.other}), noMatOf({s:S.shape,ot:S.other})).mode;
+const isNoMat = ()=> curMatMode()!=='role';   // 役割バーを隠す条件（role 以外＝auto/select/none）
 const mirHinge = (h)=> h==='left'?'right':(h==='right'?'left':h);   // W ミラーで hinge も左右反転
 
 /* three.js(右手系) ⇄ Minecraft/autobuilder(左手系) の橋渡し（v3.4）。
@@ -452,7 +481,9 @@ function makeInstShape(items, geometry, material){
   const m=new THREE.Matrix4(), q=new THREE.Quaternion(), pos=new THREE.Vector3(),
         scl=new THREE.Vector3(1,1,1), up=new THREE.Vector3(0,1,0), col=new THREE.Color();
   items.forEach((o,i)=>{ pos.set(o.p[0]+.5,o.p[1]+.5,o.p[2]+.5); q.setFromAxisAngle(up,o.v.f*Math.PI/2);
-    m.compose(pos,q,scl); im.setMatrixAt(i,m); col.setHex(roleColor(o.v.r)); im.setColorAt(i,col); });
+    m.compose(pos,q,scl); im.setMatrixAt(i,m);
+    const nonRole = matInfo(formOf(o.v),noMatOf(o.v)).mode!=='role';   // 役割以外(自動/選択/材質なし)は黒固定
+    col.setHex(nonRole ? 0x1f1f1f : roleColor(o.v.r)); im.setColorAt(i,col); });
   im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true;
   im.userData.items=items; return im;
 }
@@ -743,21 +774,21 @@ function buildJson(){
     const W=d.x;
     const arr=[...S.vox.entries()].map(([k,v])=>({p:k.split(',').map(Number),v:norm(v)}))
       .sort((a,b)=>a.p[2]-b.p[2]||a.p[1]-b.p[1]||b.p[0]-a.p[0]); // d(z) → h(y) → 出力W昇順(=x降順)
-    const recs=arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:mirW(p[0],W)},mat:v.r};
+    const recs=arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:mirW(p[0],W)}};
+      const em=effMat(v); if(em) rec.mat=em;                    // mat: role/自動確定(一意)/選択・none は省略
       if(v.s==='slab'){ rec.form='SLAB'; rec.type=v.h; }
       else if(v.s==='stairs'){ rec.form='STAIRS'; rec.facing=mirFac(FAC[v.f%4]); rec.half=v.h; }
       else if(v.s==='trapdoor'){ rec.form='TRAPDOOR'; rec.facing=mirFac(FAC[v.f%4]); rec.half=v.h; rec.open=v.o||'false'; }
       else if(v.s==='others'){ const t=OTHER_BY[v.ot]||OTHER_BY.door; rec.form=t.form;
-        if(t.mats) rec.mat=v.om||t.mats[0]; else if(t.mat) rec.mat=t.mat; else if(t.noMat) delete rec.mat;  // mat候補=選択/固定mat/noMat=省略
         if(t.props.includes('axis'))   rec.axis=v.ax||'VERTICAL';
         if(t.props.includes('facing')) rec.facing=mirFac(FAC[(v.f||0)%4]);
         if(t.props.includes('hinge'))  rec.hinge=mirHinge(v.hg||'left');
         if(t.props.includes('open'))   rec.open=v.o||'false';
         if(v.ot==='door'){ rec.half='lower';                    // ドアは lower＋upper の2レコードに展開
-          const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},mat:v.r,form:'DOOR',half:'upper'};
-          if(rec.facing) up.facing=rec.facing; if(rec.hinge) up.hinge=rec.hinge; if(rec.open) up.open=rec.open;
+          const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},form:'DOOR',half:'upper'}; if(em) up.mat=em;
+          if(rec.facing) up.facing=rec.facing; if(rec.hinge) up.hinge=rec.hinge;
           return '  '+JSON.stringify(rec)+',\n  '+JSON.stringify(up); } }
-      else { rec.form='FULLBLOCK'; rec.axis=v.ax||'VERTICAL'; rec.facing=mirFac(FAC[(v.f||0)%6]); }  // fullblock: form＋axis＋facing（該当ブロックのみMOD側で適用）
+      else { rec.form='FULLBLOCK'; rec.axis=v.ax||'VERTICAL'; rec.facing=mirFac(FAC[(v.f||0)%6]); }  // fullblock
       return '  '+JSON.stringify(rec); });
     return '{\n "name": '+JSON.stringify(name)+',\n "size": ['+d.z+', '+d.y+', '+d.x+'],\n'
       +' "blocks": [\n'+recs.join(',\n')+(recs.length?'\n':'')+' ]\n}';
@@ -832,7 +863,7 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
   const hasAxis   = isFull || oprops.includes('axis');
   const hasFacing = isFull || S.shape==='stairs' || S.shape==='trapdoor' || oprops.includes('facing');
   const facMod    = isFull ? 6 : 4;                           // full は6方向、他は水平4方向
-  const omats     = isOther ? OTHER_BY[S.other].mats : null;  // 松明の COAL/SOUL/REDSTONE 等
+  const selMats   = curMatMode()==='select' ? (FORM_MATS[formOf({s:S.shape,ot:S.other})]||[]) : null;  // 複数matの選択肢
   const hasHinge  = oprops.includes('hinge');
   const hasDhalf  = oprops.includes('dhalf');                 // ドアの upper/lower
   const hasLevel  = (S.shape==='slab'||S.shape==='stairs'||S.shape==='trapdoor'); // top/bottom
@@ -846,7 +877,8 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
     mkform(isOther?('others<br><small>'+otherLabel(OTHER_BY[S.other])+'</small>'):'others', isOther,
       ()=>{ S.shape='others'; openModal(); save(); renderShapeBar(); });   // クリックでモーダル→種類選択
     const mk=(label,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=label; b.onclick=onclick; del.appendChild(b); };
-    if(omats) mk('mat:'+S.omat, ()=>{ const i=omats.indexOf(S.omat); S.omat=omats[(i<0?0:i+1)%omats.length]; save(); renderShapeBar(); });
+    if(selMats){ if(!selMats.includes(S.omat)) S.omat=selMats[0];
+      mk('mat:'+S.omat, ()=>{ const i=selMats.indexOf(S.omat); S.omat=selMats[(i+1)%selMats.length]; save(); renderShapeBar(); }); }
     if(hasAxis) mk('axis:'+S.axis, ()=>{ S.axis=AXES[(AXES.indexOf(S.axis)+1)%AXES.length]; save(); renderShapeBar(); });
     if(hasFacing){ const fc=S.facing%facMod; mk('facing:'+FAC[fc], ()=>{ S.facing=(fc+1)%facMod; save(); renderShapeBar(); }); }
     if(hasHinge) mk('hinge:'+S.hinge, ()=>{ S.hinge=S.hinge==='left'?'right':'left'; save(); renderShapeBar(); });
@@ -967,7 +999,7 @@ function importJson(text){
         else if(fm==='STAIRS'){ s='stairs'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; }
         else if(fm==='TRAPDOOR'){ s='trapdoor'; f=FAC_I[mirFac(b.facing)]||0; h=b.half||'bottom'; o=String(b.open==null?'false':b.open); }
         else if(OTHER_BY_FORM[fm]){ s='others'; ot=OTHER_BY_FORM[fm]; const t=OTHER_BY[ot];
-          if(t.mats) om=b.mat||t.mats[0];
+          if(t.noMat && b.mat) om=b.mat;   // noMat種類は mat を選択値 om に
           if(t.props.includes('axis') && b.axis) ax=b.axis;
           if(t.props.includes('facing')) f=FAC_I[mirFac(b.facing)]||0;
           if(t.props.includes('hinge'))  hg=mirHinge(b.hinge||'left');
