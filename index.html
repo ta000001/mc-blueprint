@@ -176,7 +176,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.18';
+const APP_VERSION = '3.19';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -313,12 +313,16 @@ function buildGeos(){
     trapdoor_open:   boxAt(1,1,T,0,-0.5+T/2),   // 開＝facing の反対側(-z)に立つ縦板（half 非依存）
     stairs_bottom: mergeGeo(boxAt(1,0.5,1,-0.25,0), boxAt(1,0.5,0.5,0.25,-0.25)), // 高段=facingの反対(-z=BACK側)
     stairs_top:    mergeGeo(boxAt(1,0.5,1,0.25,0),  boxAt(1,0.5,0.5,-0.25,-0.25)),
-    other: boxAt(0.4,0.92,0.4,0,0),   // その他（ドア/松明等）の暫定プレースホルダ＝細い縦箱
+    other:    boxAt(0.4,0.92,0.4,0,0),                       // その他の汎用フォールバック
+    o_door:   boxAt(1,1,0.1875,0,-0.5+0.1875/2),             // ドア＝facing側(-z)の薄い縦板（全高・全幅）
+    o_torch:  boxAt(0.16,0.62,0.16,-0.19,0),                 // 松明(床)＝中央の細い棒
+    o_wtorch: boxAt(0.16,0.55,0.16,0.02,-0.36),              // 壁松明＝facing壁際(-z)の細い棒
   };
   geo = GEOS.full;
 }
+const OTHER_GEO = {door:'o_door', torch:'o_torch', wall_torch:'o_wtorch', soul_wall_torch:'o_wtorch'};
 const geoKey = (v)=> v.s==='full' ? 'full'
-  : v.s==='others' ? 'other'                              // その他は暫定形状（facing で回転）
+  : v.s==='others' ? (OTHER_GEO[v.ot]||'other')           // 種類別の見た目（facing で回転）
   : (v.s==='trapdoor' && v.o==='true') ? 'trapdoor_open'   // 開はhalf非依存で同一形状
   : v.s+'_'+v.h;
 
@@ -814,7 +818,7 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
     const mkform=(label,pressed,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.innerHTML=label;
       b.setAttribute('aria-pressed', pressed); b.onclick=onclick; fel.appendChild(b); };
     SHAPES.forEach(s=>mkform(s, S.shape===s, ()=>{ S.shape=s; save(); renderShapeBar(); }));
-    mkform(isOther?('その他<br><small>'+OTHER_BY[S.other].label+'</small>'):'その他', isOther,
+    mkform(isOther?('others<br><small>'+OTHER_BY[S.other].form+'</small>'):'others', isOther,
       ()=>{ S.shape='others'; openModal(); save(); renderShapeBar(); });   // クリックでモーダル→種類選択
     const mk=(label,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=label; b.onclick=onclick; del.appendChild(b); };
     if(hasAxis) mk('axis:'+S.axis, ()=>{ S.axis=AXES[(AXES.indexOf(S.axis)+1)%AXES.length]; save(); renderShapeBar(); });
@@ -826,7 +830,7 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
   });
 }
 function openModal(){ const g=$('#modal-grid'); if(!g) return; g.innerHTML='';
-  OTHERS.forEach(o=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=o.label;
+  OTHERS.forEach(o=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=o.form;
     b.setAttribute('aria-pressed', S.shape==='others'&&S.other===o.key);
     b.onclick=()=>{ S.other=o.key; S.shape='others'; closeModal(); save(); renderShapeBar(); }; g.appendChild(b); });
   $('#modal').classList.add('on');
