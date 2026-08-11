@@ -176,7 +176,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.22';
+const APP_VERSION = '3.23';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -209,15 +209,19 @@ const FAC = ['FRONT','RIGHT','BACK','LEFT','UP','DOWN'];   // facing（相対ト
 const FAC_I = {FRONT:0,RIGHT:1,BACK:2,LEFT:3,UP:4,DOWN:5};
 const AXES = ['VERTICAL','DEPTH','WIDTH'];                 // axis（相対軸 RelAxis, 原木/柱など）
 
-/* 「その他」で選ぶ種類。form＋その種類に適した方向プロパティ。まずはドア/松明。 */
+/* 「その他」で選ぶ種類。form＋固定mat＋方向プロパティ。松明系は COAL/SOUL/REDSTONE × TORCH/WALL_TORCH。 */
 const OTHERS = [
-  {key:'door',            form:'DOOR',            label:'ドア',        props:['facing','hinge']},
-  {key:'torch',           form:'TORCH',           label:'松明(床)',     props:[],         noMat:true},
-  {key:'wall_torch',      form:'WALL_TORCH',      label:'松明(壁)',     props:['facing'], noMat:true},
-  {key:'soul_wall_torch', form:'SOUL_WALL_TORCH', label:'魂の松明(壁)',  props:['facing'], noMat:true},
+  {key:'door',                form:'DOOR',       label:'ドア',         props:['facing','hinge']},
+  {key:'torch',               form:'TORCH',      mat:'COAL',     label:'松明(床)',     props:[],         noMat:true},
+  {key:'wall_torch',          form:'WALL_TORCH', mat:'COAL',     label:'松明(壁)',     props:['facing'], noMat:true},
+  {key:'soul_torch',          form:'TORCH',      mat:'SOUL',     label:'魂の松明(床)',  props:[],         noMat:true},
+  {key:'soul_wall_torch',     form:'WALL_TORCH', mat:'SOUL',     label:'魂の松明(壁)',  props:['facing'], noMat:true},
+  {key:'redstone_torch',      form:'TORCH',      mat:'REDSTONE', label:'RS松明(床)',    props:[],         noMat:true},
+  {key:'redstone_wall_torch', form:'WALL_TORCH', mat:'REDSTONE', label:'RS松明(壁)',    props:['facing'], noMat:true},
 ];
-const isNoMat = ()=> S.shape==='others' && OTHER_BY[S.other].noMat;   // 材質なし種類（役割/mat 不要）
+const isNoMat = ()=> S.shape==='others' && OTHER_BY[S.other].noMat;   // 役割選択不要（mat は固定 or 無し）
 const OTHER_BY      = Object.fromEntries(OTHERS.map(o=>[o.key,o]));
+const otherLabel = (o)=> o.mat ? o.mat+' '+o.form : o.form;          // 表示: 固定matあれば "MAT FORM"
 const OTHER_BY_FORM = Object.fromEntries(OTHERS.map(o=>[o.form,o.key]));
 const mirHinge = (h)=> h==='left'?'right':(h==='right'?'left':h);   // W ミラーで hinge も左右反転
 
@@ -328,7 +332,8 @@ function buildGeos(){
   };
   geo = GEOS.full;
 }
-const OTHER_GEO = {torch:'o_torch', wall_torch:'o_wtorch', soul_wall_torch:'o_wtorch'};
+const OTHER_GEO = {torch:'o_torch', soul_torch:'o_torch', redstone_torch:'o_torch',
+  wall_torch:'o_wtorch', soul_wall_torch:'o_wtorch', redstone_wall_torch:'o_wtorch'};
 const geoKey = (v)=> v.s==='fullblock' ? 'full'
   : v.s==='others' ? (v.ot==='door' ? 'o_door_'+(v.hg||'left') : (OTHER_GEO[v.ot]||'other'))  // 種類別の見た目（facing で回転）
   : (v.s==='trapdoor' && v.o==='true') ? 'trapdoor_open'   // 開はhalf非依存で同一形状
@@ -737,7 +742,7 @@ function buildJson(){
       else if(v.s==='stairs'){ rec.form='STAIRS'; rec.facing=mirFac(FAC[v.f%4]); rec.half=v.h; }
       else if(v.s==='trapdoor'){ rec.form='TRAPDOOR'; rec.facing=mirFac(FAC[v.f%4]); rec.half=v.h; rec.open=v.o||'false'; }
       else if(v.s==='others'){ const t=OTHER_BY[v.ot]||OTHER_BY.door; rec.form=t.form;
-        if(t.noMat) delete rec.mat;                             // 材質なし種類は mat を書かない
+        if(t.noMat){ if(t.mat) rec.mat=t.mat; else delete rec.mat; }  // 固定matあれば出力・無ければ mat 省略
         if(t.props.includes('facing')) rec.facing=mirFac(FAC[(v.f||0)%4]);
         if(t.props.includes('hinge'))  rec.hinge=mirHinge(v.hg||'left');
         if(t.props.includes('open'))   rec.open=v.o||'false';
@@ -830,7 +835,7 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
     const mkform=(label,pressed,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.innerHTML=label;
       b.setAttribute('aria-pressed', pressed); b.onclick=onclick; fel.appendChild(b); };
     SHAPES.forEach(s=>mkform(s, S.shape===s, ()=>{ S.shape=s; save(); renderShapeBar(); }));
-    mkform(isOther?('others<br><small>'+OTHER_BY[S.other].form+'</small>'):'others', isOther,
+    mkform(isOther?('others<br><small>'+otherLabel(OTHER_BY[S.other])+'</small>'):'others', isOther,
       ()=>{ S.shape='others'; openModal(); save(); renderShapeBar(); });   // クリックでモーダル→種類選択
     const mk=(label,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=label; b.onclick=onclick; del.appendChild(b); };
     if(hasAxis) mk('axis:'+S.axis, ()=>{ S.axis=AXES[(AXES.indexOf(S.axis)+1)%AXES.length]; save(); renderShapeBar(); });
@@ -843,7 +848,7 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
   renderRoles();   // 材質なし種類では役割バーを隠す
 }
 function openModal(){ const g=$('#modal-grid'); if(!g) return; g.innerHTML='';
-  OTHERS.forEach(o=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=o.form;
+  OTHERS.forEach(o=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=otherLabel(o);
     b.setAttribute('aria-pressed', S.shape==='others'&&S.other===o.key);
     b.onclick=()=>{ S.other=o.key; S.shape='others'; closeModal(); save(); renderShapeBar(); }; g.appendChild(b); });
   $('#modal').classList.add('on');
