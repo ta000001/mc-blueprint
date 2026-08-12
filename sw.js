@@ -1,4 +1,4 @@
-const CACHE = 'blueprint-v3.29';
+const CACHE = 'blueprint-v3.30';
 const ASSETS = [
   './',
   './index.html',
@@ -38,6 +38,17 @@ self.addEventListener('fetch', (e) => {
         caches.open(CACHE).then((c) => c.put('./index.html', copy)).catch(() => {});
         return res;
       }).catch(() => caches.match('./index.html').then((h) => h || caches.match('./')))
+    );
+    return;
+  }
+  // dict.json / form_dict.json は network-first（MOD から sync した最新を常に反映。オフラインのみキャッシュ）
+  if (/\/(dict|form_dict)\.json$/.test(new URL(req.url).pathname)) {
+    e.respondWith(
+      fetch(req).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        return res;
+      }).catch(() => caches.match(req))
     );
     return;
   }
