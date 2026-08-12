@@ -1,10 +1,12 @@
-const CACHE = 'blueprint-v3.28';
+const CACHE = 'blueprint-v3.29';
 const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png',
+  './dict.json',
+  './form_dict.json',
   'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'
 ];
 
