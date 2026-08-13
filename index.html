@@ -177,7 +177,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.31';
+const APP_VERSION = '3.32';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -230,7 +230,7 @@ function buildFormProps(classes){
     for(const pr of (r.properties||[])){ const cur=fp[f][pr.name]||[];
       for(const v of (pr.values||[])) if(!cur.includes(v)) cur.push(v); fp[f][pr.name]=cur; } }
   FORM_PROPS=fp; FORM_LIST=order;
-  const KNOWN=new Set(['facing','axis','half','type','hinge','open','hanging']);   // 実装済みハンドラ(allowlist)。face(BUTTON)は未実装→警告で顕在化
+  const KNOWN=new Set(['facing','axis','half','type','hinge','open','hanging','face']);   // 実装済みハンドラ(allowlist)
   const EXCLUDE=new Set(['waterlogged','powered','extended','triggered','signal_fire','lit','shape','in_wall','north','east','south','west','up']);
   const seen=new Set(); for(const f in fp) for(const n in fp[f]) seen.add(n);
   for(const n of seen) if(!KNOWN.has(n)&&!EXCLUDE.has(n)) console.warn('[form_dict] 未分類プロパティ:', n, '- ボタン化するか除外か要判断');
@@ -249,6 +249,7 @@ function formButtons(form){
     hanging: !!props.hanging,
     level:   !!props.type || hasHalfBtn,
     levelLabel: props.type ? 'type:' : 'half:',
+    face:    !!props.face,
     open:    !!props.open && (STATE_OPTIN.open||[]).includes(form),
     multiHalf,
   };
@@ -298,15 +299,15 @@ const mirFac = (tok)=> MIR_FAC[tok] || tok;
 
 const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'wall_main',
-  shape:'fullblock', facing:0, half:'bottom', open:'false', axis:'VERTICAL', other:'DOOR', hinge:'left', dhalf:'lower', omat:'COAL', hanging:'false',
+  shape:'fullblock', facing:0, half:'bottom', open:'false', axis:'VERTICAL', other:'DOOR', hinge:'left', dhalf:'lower', omat:'COAL', hanging:'false', face:'wall',
   view:'space', jsonMode:'layers', cell:20, hist:[], redo:[], manualZoom:false, dirHandle:null
 };
-const cur = ()=>({r:S.role, s:S.shape, f:S.facing, h:S.half, o:S.open, ax:S.axis, ot:S.other, hg:S.hinge, dh:S.dhalf, om:S.omat, hang:S.hanging});
-const sig = (v)=> v ? [v.r,v.s,v.f,v.h,v.o||'false',v.ax||'VERTICAL',v.ot||'DOOR',v.hg||'left',v.dh||'lower',v.om||'COAL',v.hang||'false'].join('|') : '';
+const cur = ()=>({r:S.role, s:S.shape, f:S.facing, h:S.half, o:S.open, ax:S.axis, ot:S.other, hg:S.hinge, dh:S.dhalf, om:S.omat, hang:S.hanging, fc:S.face});
+const sig = (v)=> v ? [v.r,v.s,v.f,v.h,v.o||'false',v.ax||'VERTICAL',v.ot||'DOOR',v.hg||'left',v.dh||'lower',v.om||'COAL',v.hang||'false',v.fc||'wall'].join('|') : '';
 const norm = (v)=>{
   const o = (typeof v==='string')
-    ? {r:v,s:'fullblock',f:0,h:'bottom',o:'false',ax:'VERTICAL',ot:'DOOR',hg:'left',dh:'lower',om:'COAL',hang:'false'}
-    : {ax:'VERTICAL',o:'false',ot:'DOOR',hg:'left',dh:'lower',om:'COAL',hang:'false',...v};
+    ? {r:v,s:'fullblock',f:0,h:'bottom',o:'false',ax:'VERTICAL',ot:'DOOR',hg:'left',dh:'lower',om:'COAL',hang:'false',fc:'wall'}
+    : {ax:'VERTICAL',o:'false',ot:'DOOR',hg:'left',dh:'lower',om:'COAL',hang:'false',fc:'wall',...v};
   if(OTHER_KEY2FORM[o.ot]) o.ot=OTHER_KEY2FORM[o.ot];   // 旧 other-key -> form 移行
   return o;
 };
@@ -815,6 +816,7 @@ function buildJson(){
       const form=formOf({s:v.s,ot:v.ot}); const B=formButtons(form); const fm=B.facing||4; rec.form=form;
       if(B.axis) rec.axis=v.ax||'VERTICAL';
       if(B.facing) rec.facing=mirFac(FAC[(v.f||0)%fm]);
+      if(B.face) rec.face=v.fc||'wall';
       if(B.hinge) rec.hinge=mirHinge(v.hg||'left');
       if(B.hanging) rec.hanging=v.hang||'false';
       if(B.level){ if(B.levelLabel==='type:') rec.type=v.h; else rec.half=v.h; }
@@ -909,6 +911,8 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
       mk('mat:'+S.omat, ()=>{ const i=selMats.indexOf(S.omat); S.omat=selMats[(i+1)%selMats.length]; save(); renderShapeBar(); }); }
     if(B.axis) mk('axis:'+S.axis, ()=>{ S.axis=AXES[(AXES.indexOf(S.axis)+1)%AXES.length]; save(); renderShapeBar(); });
     if(B.facing){ const fc=S.facing%facMod; mk('facing:'+FAC[fc], ()=>{ S.facing=(fc+1)%facMod; save(); renderShapeBar(); }); }
+    if(B.face){ const fv=(FORM_PROPS[form]&&FORM_PROPS[form].face)||['floor','wall','ceiling']; if(!fv.includes(S.face)) S.face=fv[0];
+      mk('face:'+S.face, ()=>{ S.face=fv[(fv.indexOf(S.face)+1)%fv.length]; save(); renderShapeBar(); }); }
     if(B.hinge) mk('hinge:'+S.hinge, ()=>{ S.hinge=S.hinge==='left'?'right':'left'; save(); renderShapeBar(); });
     if(B.hanging) mk('hanging:'+S.hanging, ()=>{ S.hanging=S.hanging==='true'?'false':'true'; save(); renderShapeBar(); });
     if(B.level) mk(B.levelLabel+S.half, ()=>{ S.half=S.half==='top'?'bottom':'top'; save(); renderShapeBar(); });
@@ -1021,20 +1025,21 @@ function importJson(text){
       const impW = (d.size && d.size[2]) ? d.size[2]
         : d.blocks.reduce((m,b)=>Math.max(m,(b.pos?b.pos.w:0)+1),1);
       d.blocks.forEach(b=>{ const p=b.pos; if(!p) return;
-        let f=0,h='bottom',o='false',ax='VERTICAL',hg='left',dh='lower',om='COAL',hang='false'; const fm=(b.form||'').toUpperCase();
+        let f=0,h='bottom',o='false',ax='VERTICAL',hg='left',dh='lower',om='COAL',hang='false',fc='wall'; const fm=(b.form||'').toUpperCase();
         if(b.half==='upper') return;   // 複数ブロック上半分は下半分(app 1セル)に集約
         const SF={FULLBLOCK:'fullblock',SLAB:'slab',STAIRS:'stairs',TRAPDOOR:'trapdoor'};
         const s = SF[fm] || 'others';
         const ot = SF[fm] ? 'DOOR' : fm;
         const B = formButtons(fm);
         if(B.facing) f=FAC_I[mirFac(b.facing)]||0;
+        if(B.face) fc=b.face||'wall';
         if(B.axis && b.axis) ax=b.axis;
         if(B.hinge) hg=mirHinge(b.hinge||'left');
         if(B.hanging) hang=String(b.hanging==null?'false':b.hanging);
         if(B.level) h = (B.levelLabel==='type:') ? (b.type||'bottom') : (b.half||'bottom');
         if(B.open) o=String(b.open==null?'false':b.open);
         if(noMatOf({s,ot}) && b.mat) om=b.mat;   // noMat種類は mat を選択値へ
-        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, f, h, o, ax, ot, hg, dh, om, hang}); });
+        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, f, h, o, ax, ot, hg, dh, om, hang, fc}); });
     }
     else if(Array.isArray(d.voxels))   // 旧形式（後方互換・ミラー前のアプリ内部座標）
       d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),{r:'wall_main',s:'fullblock',f:0,h:'bottom'}));
