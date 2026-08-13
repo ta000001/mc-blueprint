@@ -68,10 +68,14 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .vtoggle{font-size:10px;padding:3px 9px;border-radius:12px;border:1px solid var(--rule);
   background:rgba(0,0,0,.4);color:var(--dim);cursor:pointer}
 .vtoggle[aria-pressed="true"]{color:var(--brass);border-color:var(--brass-dim)}
-.hbadge{position:absolute;left:10px;top:10px;width:20px;height:20px;line-height:18px;text-align:center;
-  border-radius:50%;border:1px solid var(--rule);background:rgba(0,0,0,.4);color:var(--dim);font-size:12px;cursor:pointer;z-index:6}
-#inspect{position:absolute;right:10px;bottom:10px;max-width:calc(100% - 20px);font-size:11px;color:var(--brass);
-  display:none;font-family:ui-monospace,monospace;pointer-events:none;z-index:6;text-align:right;line-height:1.5;
+.hbadge{width:20px;height:20px;line-height:18px;text-align:center;
+  border-radius:50%;border:1px solid var(--rule);background:rgba(0,0,0,.4);color:var(--dim);font-size:12px;cursor:pointer}
+.vbottom{position:absolute;right:10px;bottom:10px;display:flex;gap:6px;z-index:6}
+.vbtn{width:34px;height:34px;font-size:17px;line-height:1;border-radius:8px;border:1px solid var(--rule);
+  background:rgba(0,0,0,.45);color:var(--chalk);cursor:pointer}
+.vbtn:disabled{opacity:.4}
+#inspect{position:absolute;left:10px;top:10px;max-width:calc(100% - 20px);font-size:11px;color:var(--brass);
+  display:none;font-family:ui-monospace,monospace;pointer-events:none;z-index:6;text-align:left;line-height:1.5;
   text-shadow:0 1px 3px rgba(0,0,0,0.95)}
 #inspect.on{display:block}
 .slider{display:flex;align-items:center;gap:8px;margin-top:10px}
@@ -126,13 +130,12 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </div>
 
 <section id="v-space">
-  <div id="space"><button class="hbadge" id="b-help" aria-label="操作方法">?</button><div class="vtoggles"><button class="vtoggle" id="b-info" aria-pressed="false">情報モード</button><button class="vtoggle" id="b-label" aria-pressed="false">ラベル</button></div><div id="inspect"></div></div>
+  <div id="space"><div id="inspect"></div><div class="vtoggles"><button class="vtoggle" id="b-label" aria-pressed="false">ラベル</button><button class="hbadge" id="b-help" aria-label="操作方法">?</button></div><div class="vbottom"><button class="vbtn" id="b-undo" aria-label="元に戻す">↶</button><button class="vbtn" id="b-redo" aria-label="進む" disabled>↷</button></div></div>
   <div class="slider"><span class="y" id="y3">H00</span><input id="plane" type="range" min="0" max="15" value="0" aria-label="作業面の高さ"></div>
   <div class="bar">
     <button class="btn" id="b-place" aria-pressed="true">置く</button>
     <button class="btn" id="b-break" aria-pressed="false">壊す</button>
-    <button class="btn" id="b-undo">元に戻す</button>
-    <button class="btn" id="b-redo" disabled>進む</button>
+    <button class="btn" id="b-info" aria-pressed="false">情報</button>
   </div>
   <div class="bar">
     <button class="btn" id="b-down">▼ 作業面を下げる</button>
@@ -220,7 +223,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.44';
+const APP_VERSION = '3.45';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -958,7 +961,7 @@ $('#b-redo').onclick = redo;
 $('#b-clear').onclick = ()=>{ pushHist(); S.vox=new Map(); changed(); renderGrid(); renderSpine(); };
 $('#b-place').onclick = ()=>setMode('place');
 $('#b-break').onclick = ()=>setMode('break');
-$('#b-info').onclick = ()=>setMode(S.mode==='info'?'place':'info');   // 右上トグル（情報⇔置く）
+$('#b-info').onclick = ()=>setMode('info');   // モードボタン（置く/壊す/情報）
 $('#b-help').onclick = ()=> $('#hmodal').classList.add('on');
 $('#hmodal').onclick = e=>{ if(e.target.id==='hmodal') $('#hmodal').classList.remove('on'); };
 function setMode(m){ S.mode=m;
