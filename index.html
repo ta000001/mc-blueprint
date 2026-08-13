@@ -177,7 +177,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.32';
+const APP_VERSION = '3.33';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -218,6 +218,8 @@ const AXES = ['VERTICAL','DEPTH','WIDTH'];                 // axis（相対軸 R
    others に出す form／各 form のプロパティボタンは form_dict から導出。ラベルは form 名（日本語不要）。 */
 const PRIMARY_SHAPES = ['FULLBLOCK','SLAB','STAIRS','TRAPDOOR'];
 const STATE_OPTIN = { open: ['TRAPDOOR'] };            // 既定 close 固定、ここに挙げた form だけ open ボタン
+const SHOW   = new Set(['facing','axis','half','type','hinge','open','hanging','face']);   // allowlist(実装済みハンドラ)
+const MIRROR = new Set(['facing','hinge']);            // 左右ミラー対象(I/O時に反転)。②で描画層へ移す予定
 const NOMAT_FORMS = ['TORCH','WALL_TORCH','LANTERN','CAMPFIRE','CHAIN'];
 const FORM_GEO = { TORCH:'o_torch', WALL_TORCH:'o_wtorch', LANTERN:'o_lantern', CAMPFIRE:'o_campfire', CHAIN:'o_chain', FENCE:'o_fence', FENCE_GATE:'o_fencegate' };
 const OTHER_KEY2FORM = { door:'DOOR', torch:'TORCH', wall_torch:'WALL_TORCH', lantern:'LANTERN', campfire:'CAMPFIRE', chain:'CHAIN', fence:'FENCE', fence_gate:'FENCE_GATE' };  // 旧 other-key → form 移行
@@ -230,29 +232,24 @@ function buildFormProps(classes){
     for(const pr of (r.properties||[])){ const cur=fp[f][pr.name]||[];
       for(const v of (pr.values||[])) if(!cur.includes(v)) cur.push(v); fp[f][pr.name]=cur; } }
   FORM_PROPS=fp; FORM_LIST=order;
-  const KNOWN=new Set(['facing','axis','half','type','hinge','open','hanging','face']);   // 実装済みハンドラ(allowlist)
+  const KNOWN=SHOW;   // 実装済みハンドラ(allowlist)
   const EXCLUDE=new Set(['waterlogged','powered','extended','triggered','signal_fire','lit','shape','in_wall','north','east','south','west','up']);
   const seen=new Set(); for(const f in fp) for(const n in fp[f]) seen.add(n);
   for(const n of seen) if(!KNOWN.has(n)&&!EXCLUDE.has(n)) console.warn('[form_dict] 未分類プロパティ:', n, '- ボタン化するか除外か要判断');
 }
-// form 内プロパティ + allowlist + 例外 から、その form に出すボタンを決める
-function formButtons(form){
-  const props = FORM_PROPS[form] || {};
-  const facing = props.facing || null;
-  const halfVals = props.half || null;
-  const multiHalf = !!(halfVals && halfVals.includes('upper'));   // upper/lower -> 複数ブロック自動（ボタン化しない）
-  const hasHalfBtn = !!(halfVals && !multiHalf);                  // top/bottom -> half ボタン
-  return {
-    axis:    !!props.axis,
-    facing:  facing ? facing.length : 0,                          // 0=なし / 4 / 6
-    hinge:   !!props.hinge,
-    hanging: !!props.hanging,
-    level:   !!props.type || hasHalfBtn,
-    levelLabel: props.type ? 'type:' : 'half:',
-    face:    !!props.face,
-    open:    !!props.open && (STATE_OPTIN.open||[]).includes(form),
-    multiHalf,
-  };
+// 汎用ハンドラ: form_dict + allowlist(SHOW) + 例外 から、出すプロパティを [{name,values}] で返す
+function isMultiHalf(form){ const p=FORM_PROPS[form]; return !!(p && (p.half||[]).includes('upper')); }  // half=upper/lower→複数ブロック
+function shownProps(form){
+  const p = FORM_PROPS[form] || {};
+  const order = ['facing','axis','half','type','hinge','hanging','face','open'];   // ボタン表示順
+  const out = [];
+  for(const name of order){
+    if(!(name in p) || !SHOW.has(name)) continue;
+    if(name==='half' && (p.half||[]).includes('upper')) continue;              // 複数ブロック→自動(非ボタン)
+    if(STATE_OPTIN[name] && !STATE_OPTIN[name].includes(form)) continue;        // 状態 opt-in(open→trapdoorのみ)
+    out.push({name, values:p[name]});
+  }
+  return out;
 }
 
 /* dict.json（block/form/mat 対応）を起動時に ./dict.json から fetch して読む（下記 loadDict）。
@@ -299,16 +296,24 @@ const mirFac = (tok)=> MIR_FAC[tok] || tok;
 
 const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'wall_main',
-  shape:'fullblock', facing:0, half:'bottom', open:'false', axis:'VERTICAL', other:'DOOR', hinge:'left', dhalf:'lower', omat:'COAL', hanging:'false', face:'wall',
+  shape:'fullblock', other:'DOOR', omat:'COAL',
+  props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
   view:'space', jsonMode:'layers', cell:20, hist:[], redo:[], manualZoom:false, dirHandle:null
 };
-const cur = ()=>({r:S.role, s:S.shape, f:S.facing, h:S.half, o:S.open, ax:S.axis, ot:S.other, hg:S.hinge, dh:S.dhalf, om:S.omat, hang:S.hanging, fc:S.face});
-const sig = (v)=> v ? [v.r,v.s,v.f,v.h,v.o||'false',v.ax||'VERTICAL',v.ot||'DOOR',v.hg||'left',v.dh||'lower',v.om||'COAL',v.hang||'false',v.fc||'wall'].join('|') : '';
+const cur = ()=>({r:S.role, s:S.shape, ot:S.other, om:S.omat, props:{...S.props}});
+const sig = (v)=>{ if(!v) return ''; const n=norm(v); return [n.r,n.s,n.ot,n.om,n.f,n.h,n.ax,n.hg,n.o,n.hang,n.fc].join('|'); };
 const norm = (v)=>{
-  const o = (typeof v==='string')
-    ? {r:v,s:'fullblock',f:0,h:'bottom',o:'false',ax:'VERTICAL',ot:'DOOR',hg:'left',dh:'lower',om:'COAL',hang:'false',fc:'wall'}
-    : {ax:'VERTICAL',o:'false',ot:'DOOR',hg:'left',dh:'lower',om:'COAL',hang:'false',fc:'wall',...v};
-  if(OTHER_KEY2FORM[o.ot]) o.ot=OTHER_KEY2FORM[o.ot];   // 旧 other-key -> form 移行
+  if(typeof v==='string') v={r:v};
+  let props = v.props;
+  if(!props){   // 旧個別フィールド -> props へ移行
+    props = {facing:FAC[v.f||0]||'FRONT', half:v.h||'bottom', type:v.h||'bottom', axis:v.ax||'VERTICAL',
+             hinge:v.hg||'left', open:v.o||'false', hanging:v.hang||'false', face:v.fc||'wall'};
+  }
+  props = {facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall', ...props};
+  let ot = v.ot || 'DOOR'; if(OTHER_KEY2FORM[ot]) ot=OTHER_KEY2FORM[ot];   // 旧 other-key -> form 移行
+  const o = {r:v.r||'wall_main', s:v.s||'fullblock', ot, om:v.om||'COAL', props};
+  o.f=FAC_I[props.facing]||0; o.h=(o.s==='slab'?props.type:props.half)||'bottom';   // 描画互換の派生フィールド
+  o.ax=props.axis; o.hg=props.hinge; o.o=props.open; o.hang=props.hanging; o.fc=props.face;
   return o;
 };
 
@@ -813,15 +818,10 @@ function buildJson(){
       .sort((a,b)=>a.p[2]-b.p[2]||a.p[1]-b.p[1]||b.p[0]-a.p[0]); // d(z) → h(y) → 出力W昇順(=x降順)
     const recs=arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:mirW(p[0],W)}};
       const em=effMat(v); if(em) rec.mat=em;                    // mat: role/自動確定(一意)/選択・none は省略
-      const form=formOf({s:v.s,ot:v.ot}); const B=formButtons(form); const fm=B.facing||4; rec.form=form;
-      if(B.axis) rec.axis=v.ax||'VERTICAL';
-      if(B.facing) rec.facing=mirFac(FAC[(v.f||0)%fm]);
-      if(B.face) rec.face=v.fc||'wall';
-      if(B.hinge) rec.hinge=mirHinge(v.hg||'left');
-      if(B.hanging) rec.hanging=v.hang||'false';
-      if(B.level){ if(B.levelLabel==='type:') rec.type=v.h; else rec.half=v.h; }
-      if(B.open) rec.open=v.o||'false';
-      if(B.multiHalf){ rec.half='lower';                        // upper/lower の form（ドア等）は2レコードに展開
+      const form=formOf({s:v.s,ot:v.ot}); rec.form=form;
+      for(const {name} of shownProps(form)){ let val=v.props[name];     // 汎用: 出すプロパティを素直に書く
+        if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); rec[name]=val; }
+      if(isMultiHalf(form)){ rec.half='lower';                          // upper/lower の form（ドア等）は2レコードに展開
         const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},form:form,half:'upper'}; if(em) up.mat=em;
         if(rec.facing) up.facing=rec.facing; if(rec.hinge) up.hinge=rec.hinge;
         return '  '+JSON.stringify(rec)+',\n  '+JSON.stringify(up); }
@@ -895,8 +895,6 @@ function setTool(t){ S.tool=t;
 function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他）／ 方向系（行2・種類に適したもののみ）
   const isOther = (S.shape==='others');
   const form    = formOf({s:S.shape, ot:S.other});
-  const B       = formButtons(form);
-  const facMod  = B.facing || 4;
   const selMats = curMatMode()==='select' ? (FORM_MATS[form]||[]) : null;  // 複数matの選択肢
   [['form-space','dir-space'],['form-plan','dir-plan']].forEach(([fid,did])=>{
     const fel=$('#'+fid), del=$('#'+did); if(!fel||!del) return;
@@ -909,14 +907,10 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
     const mk=(label,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=label; b.onclick=onclick; del.appendChild(b); };
     if(selMats){ if(!selMats.includes(S.omat)) S.omat=selMats[0];
       mk('mat:'+S.omat, ()=>{ const i=selMats.indexOf(S.omat); S.omat=selMats[(i+1)%selMats.length]; save(); renderShapeBar(); }); }
-    if(B.axis) mk('axis:'+S.axis, ()=>{ S.axis=AXES[(AXES.indexOf(S.axis)+1)%AXES.length]; save(); renderShapeBar(); });
-    if(B.facing){ const fc=S.facing%facMod; mk('facing:'+FAC[fc], ()=>{ S.facing=(fc+1)%facMod; save(); renderShapeBar(); }); }
-    if(B.face){ const fv=(FORM_PROPS[form]&&FORM_PROPS[form].face)||['floor','wall','ceiling']; if(!fv.includes(S.face)) S.face=fv[0];
-      mk('face:'+S.face, ()=>{ S.face=fv[(fv.indexOf(S.face)+1)%fv.length]; save(); renderShapeBar(); }); }
-    if(B.hinge) mk('hinge:'+S.hinge, ()=>{ S.hinge=S.hinge==='left'?'right':'left'; save(); renderShapeBar(); });
-    if(B.hanging) mk('hanging:'+S.hanging, ()=>{ S.hanging=S.hanging==='true'?'false':'true'; save(); renderShapeBar(); });
-    if(B.level) mk(B.levelLabel+S.half, ()=>{ S.half=S.half==='top'?'bottom':'top'; save(); renderShapeBar(); });
-    if(B.open)  mk('open:'+S.open, ()=>{ S.open=S.open==='true'?'false':'true'; save(); renderShapeBar(); });
+    for(const {name,values} of shownProps(form)){          // 汎用: form_dict の値を巡回する1ループ
+      if(!values.includes(S.props[name])) S.props[name]=values[0];
+      mk(name+':'+S.props[name], ()=>{ const i=values.indexOf(S.props[name]); S.props[name]=values[(i+1)%values.length]; save(); renderShapeBar(); });
+    }
   });
   renderRoles();   // 材質なし種類では役割バーを隠す
 }
@@ -1025,21 +1019,15 @@ function importJson(text){
       const impW = (d.size && d.size[2]) ? d.size[2]
         : d.blocks.reduce((m,b)=>Math.max(m,(b.pos?b.pos.w:0)+1),1);
       d.blocks.forEach(b=>{ const p=b.pos; if(!p) return;
-        let f=0,h='bottom',o='false',ax='VERTICAL',hg='left',dh='lower',om='COAL',hang='false',fc='wall'; const fm=(b.form||'').toUpperCase();
+        const fm=(b.form||'').toUpperCase();
         if(b.half==='upper') return;   // 複数ブロック上半分は下半分(app 1セル)に集約
         const SF={FULLBLOCK:'fullblock',SLAB:'slab',STAIRS:'stairs',TRAPDOOR:'trapdoor'};
-        const s = SF[fm] || 'others';
-        const ot = SF[fm] ? 'DOOR' : fm;
-        const B = formButtons(fm);
-        if(B.facing) f=FAC_I[mirFac(b.facing)]||0;
-        if(B.face) fc=b.face||'wall';
-        if(B.axis && b.axis) ax=b.axis;
-        if(B.hinge) hg=mirHinge(b.hinge||'left');
-        if(B.hanging) hang=String(b.hanging==null?'false':b.hanging);
-        if(B.level) h = (B.levelLabel==='type:') ? (b.type||'bottom') : (b.half||'bottom');
-        if(B.open) o=String(b.open==null?'false':b.open);
-        if(noMatOf({s,ot}) && b.mat) om=b.mat;   // noMat種類は mat を選択値へ
-        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, f, h, o, ax, ot, hg, dh, om, hang, fc}); });
+        const s = SF[fm] || 'others', ot = SF[fm] ? 'DOOR' : fm;
+        const props = {facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall'};
+        for(const {name} of shownProps(fm)){ if(b[name]==null) continue;   // 汎用: 出すプロパティを素直に読む
+          let val=b[name]; if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); props[name]=String(val); }
+        const om = (noMatOf({s,ot}) && b.mat) ? b.mat : 'COAL';
+        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, ot, om, props}); });
     }
     else if(Array.isArray(d.voxels))   // 旧形式（後方互換・ミラー前のアプリ内部座標）
       d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),{r:'wall_main',s:'fullblock',f:0,h:'bottom'}));
