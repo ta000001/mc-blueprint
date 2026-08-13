@@ -37,7 +37,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #vmodal .panel,#hmodal .panel{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:16px 20px;min-width:180px;max-width:88%}
 #vmodal h3,#hmodal h3{margin:0 0 10px;font-size:13px;color:var(--brass)}
 #vmodal .vrow{font-size:12px;color:var(--brass);letter-spacing:.04em;line-height:1.9;font-family:ui-monospace,monospace}
-#hmodal .hrow{font-size:12px;color:var(--dim);line-height:1.85}
+#hmodal .hrow{font-size:12px;color:var(--dim);line-height:1.9}
+#hmodal .hgrp{margin-bottom:10px}
 #hmodal b{color:var(--brass)}
 .dims{display:flex;gap:6px;align-items:center;margin-left:auto}
 .dims label{font-size:10px;color:var(--dim)}
@@ -124,7 +125,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </div>
 
 <section id="v-space">
-  <div id="space"><button class="hbadge" id="b-help" aria-label="操作方法">?</button><div class="vtoggles"><button class="vtoggle" id="b-info" aria-pressed="false">情報</button><button class="vtoggle" id="b-label" aria-pressed="false">ラベル</button></div><div id="inspect"></div></div>
+  <div id="space"><button class="hbadge" id="b-help" aria-label="操作方法">?</button><div class="vtoggles"><button class="vtoggle" id="b-info" aria-pressed="false">情報モード</button><button class="vtoggle" id="b-label" aria-pressed="false">ラベル</button></div><div id="inspect"></div></div>
   <div class="slider"><span class="y" id="y3">H00</span><input id="plane" type="range" min="0" max="15" value="0" aria-label="作業面の高さ"></div>
   <div class="bar">
     <button class="btn" id="b-place" aria-pressed="true">置く</button>
@@ -193,14 +194,29 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 <div id="modal"><div class="panel"><h3>種類を選択</h3><div class="grid" id="modal-grid"></div></div></div>
 <div id="vmodal"><div class="panel"><h3>バージョン情報</h3><div id="vmodal-body"></div></div></div>
 <div id="hmodal"><div class="panel"><h3>操作方法</h3>
-  <div class="hrow">1本指 = 編集(面上)/移動(面外) / 2本指 = 拡大・回転</div>
-  <div class="hrow">タップ/ドラッグ = <b id="hud-mode">置く</b></div>
-  <div class="hrow">原点(0,0,0)=手前・下・左　<span style="color:#ff8a8a">赤=W→</span> <span style="color:#7ad79a">緑=H↑</span> <span style="color:#8aa8ff">青=D奥</span></div>
+  <div class="hgrp">
+    <div class="hrow"><b>指操作</b></div>
+    <div class="hrow">・1本指（面の上）＝ 編集</div>
+    <div class="hrow">・1本指（面の外）＝ 視点移動</div>
+    <div class="hrow">・2本指 ＝ 拡大・回転</div>
+    <div class="hrow">・タップ / ドラッグ（矩形）＝ 現在のモードを実行</div>
+    <div class="hrow">・ダブルタップ ＝ 削除</div>
+  </div>
+  <div class="hgrp">
+    <div class="hrow"><b>モード</b></div>
+    <div class="hrow">・置く … ブロックを配置</div>
+    <div class="hrow">・壊す … ブロックを削除</div>
+    <div class="hrow">・情報モード … ブロックをタップすると form / mat / 向き を右下に表示</div>
+  </div>
+  <div class="hgrp">
+    <div class="hrow"><b>軸</b>　原点(0,0,0) ＝ 手前・下・左</div>
+    <div class="hrow"><span style="color:#ff8a8a">赤 = W →</span>　<span style="color:#7ad79a">緑 = H ↑</span>　<span style="color:#8aa8ff">青 = D 奥</span></div>
+  </div>
 </div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.40';
+const APP_VERSION = '3.41';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -945,7 +961,7 @@ function setMode(m){ S.mode=m;
   $('#b-place').setAttribute('aria-pressed', m==='place');
   $('#b-break').setAttribute('aria-pressed', m==='break');
   $('#b-info').setAttribute('aria-pressed', m==='info');
-  $('#hud-mode').textContent = m==='break'?'壊す':(m==='info'?'情報':'置く');
+  const hm=$('#hud-mode'); if(hm) hm.textContent = m==='break'?'壊す':(m==='info'?'情報モード':'置く');
   if(m!=='info') $('#inspect').classList.remove('on'); }
 function showInfo(v){   // 案1: タップしたブロックの form/mat/向き を表示
   const form=formOf(v), parts=['form='+form];
