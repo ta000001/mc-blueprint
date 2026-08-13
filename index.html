@@ -32,11 +32,13 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .sub{font-size:11px;color:var(--dim);letter-spacing:.08em}
 .ver{font-size:11px;color:var(--brass);border:1px solid var(--brass-dim);border-radius:50%;
   width:18px;height:18px;line-height:16px;text-align:center;cursor:pointer;flex:none;align-self:center}
-#vmodal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:60}
-#vmodal.on{display:flex}
-#vmodal .panel{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:16px 20px;min-width:180px}
-#vmodal h3{margin:0 0 10px;font-size:13px;color:var(--brass)}
+#vmodal,#hmodal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:60}
+#vmodal.on,#hmodal.on{display:flex}
+#vmodal .panel,#hmodal .panel{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:16px 20px;min-width:180px;max-width:88%}
+#vmodal h3,#hmodal h3{margin:0 0 10px;font-size:13px;color:var(--brass)}
 #vmodal .vrow{font-size:12px;color:var(--brass);letter-spacing:.04em;line-height:1.9;font-family:ui-monospace,monospace}
+#hmodal .hrow{font-size:12px;color:var(--dim);line-height:1.85}
+#hmodal b{color:var(--brass)}
 .dims{display:flex;gap:6px;align-items:center;margin-left:auto}
 .dims label{font-size:10px;color:var(--dim)}
 .dims input{width:38px;background:var(--panel);border:1px solid var(--rule);
@@ -60,12 +62,15 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #space canvas{display:block;width:100%;height:100%}
 .hud{position:absolute;left:10px;top:10px;pointer-events:none;font-size:10px;color:var(--dim);line-height:1.6}
 .hud b{color:var(--brass);font-weight:600}
-.vtoggle{position:absolute;top:10px;right:10px;font-size:10px;padding:3px 9px;border-radius:12px;
-  border:1px solid var(--rule);background:rgba(0,0,0,.4);color:var(--dim);z-index:6;cursor:pointer}
+.vtoggles{position:absolute;top:10px;right:10px;display:flex;gap:6px;z-index:6}
+.vtoggle{font-size:10px;padding:3px 9px;border-radius:12px;border:1px solid var(--rule);
+  background:rgba(0,0,0,.4);color:var(--dim);cursor:pointer}
 .vtoggle[aria-pressed="true"]{color:var(--brass);border-color:var(--brass-dim)}
-#inspect{position:absolute;left:10px;bottom:10px;max-width:calc(100% - 20px);font-size:11px;color:var(--brass);
-  background:rgba(0,0,0,.55);border:1px solid var(--brass-dim);border-radius:6px;padding:4px 8px;display:none;
-  font-family:ui-monospace,monospace;pointer-events:none;z-index:6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hbadge{position:absolute;left:10px;top:10px;width:20px;height:20px;line-height:18px;text-align:center;
+  border-radius:50%;border:1px solid var(--rule);background:rgba(0,0,0,.4);color:var(--dim);font-size:12px;cursor:pointer;z-index:6}
+#inspect{position:absolute;right:10px;bottom:10px;max-width:calc(100% - 20px);font-size:11px;color:var(--brass);
+  display:none;font-family:ui-monospace,monospace;pointer-events:none;z-index:6;text-align:right;line-height:1.5;
+  text-shadow:0 1px 3px rgba(0,0,0,0.95)}
 #inspect.on{display:block}
 .slider{display:flex;align-items:center;gap:8px;margin-top:10px}
 .slider input{flex:1;accent-color:#D4A93C;height:26px}
@@ -119,12 +124,11 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </div>
 
 <section id="v-space">
-  <div id="space"><div class="hud"><div>1本指 = 編集(面上)/移動(面外) / 2本指 = 拡大・回転</div><div>タップ/ドラッグ = <b id="hud-mode">置く</b></div><div>∟ 原点(0,0,0)=手前・下・左　<span style="color:#ff8a8a">赤=W→</span> <span style="color:#7ad79a">緑=H↑</span> <span style="color:#8aa8ff">青=D奥</span></div></div><button class="vtoggle" id="b-label" aria-pressed="false">ラベル</button><div id="inspect"></div></div>
+  <div id="space"><button class="hbadge" id="b-help" aria-label="操作方法">?</button><div class="vtoggles"><button class="vtoggle" id="b-info" aria-pressed="false">情報</button><button class="vtoggle" id="b-label" aria-pressed="false">ラベル</button></div><div id="inspect"></div></div>
   <div class="slider"><span class="y" id="y3">H00</span><input id="plane" type="range" min="0" max="15" value="0" aria-label="作業面の高さ"></div>
   <div class="bar">
     <button class="btn" id="b-place" aria-pressed="true">置く</button>
     <button class="btn" id="b-break" aria-pressed="false">壊す</button>
-    <button class="btn" id="b-info" aria-pressed="false">情報</button>
     <button class="btn" id="b-undo">元に戻す</button>
     <button class="btn" id="b-redo" disabled>進む</button>
   </div>
@@ -188,10 +192,15 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 <div id="status"></div>
 <div id="modal"><div class="panel"><h3>種類を選択</h3><div class="grid" id="modal-grid"></div></div></div>
 <div id="vmodal"><div class="panel"><h3>バージョン情報</h3><div id="vmodal-body"></div></div></div>
+<div id="hmodal"><div class="panel"><h3>操作方法</h3>
+  <div class="hrow">1本指 = 編集(面上)/移動(面外) / 2本指 = 拡大・回転</div>
+  <div class="hrow">タップ/ドラッグ = <b id="hud-mode">置く</b></div>
+  <div class="hrow">原点(0,0,0)=手前・下・左　<span style="color:#ff8a8a">赤=W→</span> <span style="color:#7ad79a">緑=H↑</span> <span style="color:#8aa8ff">青=D奥</span></div>
+</div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.39';
+const APP_VERSION = '3.40';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -929,7 +938,9 @@ $('#b-redo').onclick = redo;
 $('#b-clear').onclick = ()=>{ pushHist(); S.vox=new Map(); changed(); renderGrid(); renderSpine(); };
 $('#b-place').onclick = ()=>setMode('place');
 $('#b-break').onclick = ()=>setMode('break');
-$('#b-info').onclick = ()=>setMode('info');
+$('#b-info').onclick = ()=>setMode(S.mode==='info'?'place':'info');   // 右上トグル（情報⇔置く）
+$('#b-help').onclick = ()=> $('#hmodal').classList.add('on');
+$('#hmodal').onclick = e=>{ if(e.target.id==='hmodal') $('#hmodal').classList.remove('on'); };
 function setMode(m){ S.mode=m;
   $('#b-place').setAttribute('aria-pressed', m==='place');
   $('#b-break').setAttribute('aria-pressed', m==='break');
@@ -941,7 +952,7 @@ function showInfo(v){   // 案1: タップしたブロックの form/mat/向き 
   const mi=matInfo(form,noMatOf(v));
   if(mi.mode==='role') parts.push('role='+v.r); else { const em=effMat(v); if(em) parts.push('mat='+em); }
   for(const {name} of shownProps(form)) if(v.props[name]!=null) parts.push(name+'='+v.props[name]);
-  $('#inspect').textContent=parts.join('  '); $('#inspect').classList.add('on'); }
+  $('#inspect').innerHTML=parts.join('<br>'); $('#inspect').classList.add('on'); }   // 項目毎に改行（右下詰め）
 
 $('#p-draw').onclick=()=>setTool('draw');
 $('#p-erase').onclick=()=>setTool('erase');
