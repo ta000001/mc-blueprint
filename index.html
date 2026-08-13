@@ -191,7 +191,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.38';
+const APP_VERSION = '3.39';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -467,7 +467,7 @@ function initThree(){
   outlineGhostMat = new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.11});
   hingeMat        = new THREE.MeshBasicMaterial({color:0x9aa7b0});                                 // open trapdoor の蝶番(開閉軸)＝棒
   hingeGhostMat   = new THREE.MeshBasicMaterial({color:0x9aa7b0, transparent:true, opacity:0.3});
-  HINGE_GEO       = new THREE.BoxGeometry(1, 0.06, 0.06);   // 幅方向に伸びる細い棒＝蝶番
+  HINGE_GEO       = new THREE.BoxGeometry(1, 0.12, 0.12);   // 蝶番(開閉軸)＝ドアの蝶番バーと同じ太さ
   orientMat       = new THREE.LineBasicMaterial({color:0xffd24a, transparent:true, opacity:0.9});  // full の facing＝正面に×
   orientGhostMat  = new THREE.LineBasicMaterial({color:0xffd24a, transparent:true, opacity:0.3});
   axisFaceMat      = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.22, depthWrite:false, side:THREE.DoubleSide}); // axis の貫く2面を薄く
@@ -561,13 +561,15 @@ const rotY=(px,py,pz,f)=>{ const c=[1,0,-1,0][f&3], s=[0,1,0,-1][f&3];   // +Y �
 function makeHingeRods(entries, material){   // trapdoor の蝶番(開閉軸)を棒で（開閉問わず／half=bottom→下端 / top→上端、facing で回転）
   const im=new THREE.InstancedMesh(HINGE_GEO, material, entries.length); im.count=entries.length;
   const m=new THREE.Matrix4(), q=new THREE.Quaternion(), pos=new THREE.Vector3(),
-        scl=new THREE.Vector3(1,1,1), up=new THREE.Vector3(0,1,0);
+        scl=new THREE.Vector3(1,1,1), up=new THREE.Vector3(0,1,0), col=new THREE.Color();
   entries.forEach((o,i)=>{ const y=o.v.h==='top'?0.5:-0.5;         // 蝶番の高さ（板の外面 -z の下/上エッジ）
     const off=rotY(0,y,-0.5,o.v.f);
     pos.set(o.p[0]+0.5+off[0], o.p[1]+0.5+off[1], o.p[2]+0.5+off[2]);
     q.setFromAxisAngle(up, o.v.f*Math.PI/2);                        // 幅方向の棒を facing に回す
-    m.compose(pos,q,scl); im.setMatrixAt(i,m); });
-  im.instanceMatrix.needsUpdate=true; return im;
+    m.compose(pos,q,scl); im.setMatrixAt(i,m);
+    const nonRole=matInfo(formOf(o.v),noMatOf(o.v)).mode!=='role'; // ドアの蝶番と同じくブロック色（役割色/黒）
+    col.setHex(nonRole?0x1f1f1f:roleColor(o.v.r)); im.setColorAt(i,col); });
+  im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true; return im;
 }
 // full の facing：正面(=facing方向)の面に× を描く（全方向・FRONT=手前 -z）
 const FDIR=[[0,0,-1],[1,0,0],[0,0,1],[-1,0,0],[0,1,0],[0,-1,0]]; // FRONT/RIGHT/BACK/LEFT/UP/DOWN → three.js方向
@@ -645,8 +647,8 @@ function syncVox(){
   for(const gk in above){ const im=makeInstShape(above[gk],GEOS[gk],ghostMat); scene.add(im); ghostMeshes.push(im); }
   if(belowCells.length){ const o=makeOutline(belowCells,outlineMat); scene.add(o); outlineMeshes.push(o); }
   if(aboveCells.length){ const o=makeOutline(aboveCells,outlineGhostMat); scene.add(o); outlineMeshes.push(o); }
-  if(belowTrap.length){ const h=makeHingeRods(belowTrap,hingeMat); scene.add(h); editMeshes.push(h); }
-  if(aboveTrap.length){ const h=makeHingeRods(aboveTrap,hingeGhostMat); scene.add(h); ghostMeshes.push(h); }
+  if(belowTrap.length){ const h=makeHingeRods(belowTrap,mat); scene.add(h); editMeshes.push(h); }
+  if(aboveTrap.length){ const h=makeHingeRods(aboveTrap,ghostMat); scene.add(h); ghostMeshes.push(h); }
   if(belowFull.length){ const o=makeOrient(belowFull,orientMat); if(o){ scene.add(o); outlineMeshes.push(o); }
     const af=makeAxisFaces(belowFull,axisFaceMat); if(af){ scene.add(af); outlineMeshes.push(af); } }
   if(aboveFull.length){ const o=makeOrient(aboveFull,orientGhostMat); if(o){ scene.add(o); outlineMeshes.push(o); }
