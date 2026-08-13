@@ -220,7 +220,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.43';
+const APP_VERSION = '3.44';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -810,7 +810,7 @@ function bindGestures(el){
     } else {                                   // 作業面
       const x=Math.floor(hit.point.x), z=Math.floor(hit.point.z);
       if(mode==='break') remove(x,S.layer,z);  // 平面セルの削除（ダブルタップ削除）
-      else place(x,S.layer,z);
+      else if(mode!=='info') place(x,S.layer,z);   // 情報モードは空セルタップで置かない
     }
   }
 }
