@@ -52,7 +52,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .btn[disabled]{opacity:.35}
 #space{position:relative;width:100%;height:56vh;min-height:300px;background:var(--panel);
   border:1px solid var(--rule);border-radius:4px;overflow:hidden;touch-action:none}
-#space canvas{display:block;width:100%;height:100%;transform:scaleX(-1)}
+#space canvas{display:block;width:100%;height:100%}
 .hud{position:absolute;left:10px;top:10px;pointer-events:none;font-size:10px;color:var(--dim);line-height:1.6}
 .hud b{color:var(--brass);font-weight:600}
 .slider{display:flex;align-items:center;gap:8px;margin-top:10px}
@@ -177,7 +177,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.34';
+const APP_VERSION = '3.33';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -219,7 +219,7 @@ const AXES = ['VERTICAL','DEPTH','WIDTH'];                 // axis（相対軸 R
 const PRIMARY_SHAPES = ['FULLBLOCK','SLAB','STAIRS','TRAPDOOR'];
 const STATE_OPTIN = { open: ['TRAPDOOR'] };            // 既定 close 固定、ここに挙げた form だけ open ボタン
 const SHOW   = new Set(['facing','axis','half','type','hinge','open','hanging','face']);   // allowlist(実装済みハンドラ)
-// ミラーは描画層へ移設：3D=canvas を CSS scaleX(-1)＋入力x反転 / 2D=グリッド左右反転。data と JSON は MOD ネイティブ（mir* 不使用）
+const MIRROR = new Set(['facing','hinge']);            // 左右ミラー対象(I/O時に反転)。②で描画層へ移す予定
 const NOMAT_FORMS = ['TORCH','WALL_TORCH','LANTERN','CAMPFIRE','CHAIN'];
 const FORM_GEO = { TORCH:'o_torch', WALL_TORCH:'o_wtorch', LANTERN:'o_lantern', CAMPFIRE:'o_campfire', CHAIN:'o_chain', FENCE:'o_fence', FENCE_GATE:'o_fencegate' };
 const OTHER_KEY2FORM = { door:'DOOR', torch:'TORCH', wall_torch:'WALL_TORCH', lantern:'LANTERN', campfire:'CAMPFIRE', chain:'CHAIN', fence:'FENCE', fence_gate:'FENCE_GATE' };  // 旧 other-key → form 移行
@@ -644,7 +644,7 @@ function bindGestures(el){
 
   function planeCell(cx,cy){          // 作業面（緑）のセル {x,z} or null
     const r=el.getBoundingClientRect();
-    ndc.set(-(((cx-r.left)/r.width)*2-1), -((cy-r.top)/r.height)*2+1);
+    ndc.set(((cx-r.left)/r.width)*2-1, -((cy-r.top)/r.height)*2+1);
     ray.setFromCamera(ndc,camera);
     const hit = planeObj ? ray.intersectObject(planeObj,false)[0] : null;
     if(!hit) return null;
@@ -719,7 +719,7 @@ function bindGestures(el){
   function doTap(cx,cy,mode){
     mode = mode || S.mode;
     const r=el.getBoundingClientRect();
-    ndc.set(-(((cx-r.left)/r.width)*2-1), -((cy-r.top)/r.height)*2+1);
+    ndc.set(((cx-r.left)/r.width)*2-1, -((cy-r.top)/r.height)*2+1);
     ray.setFromCamera(ndc,camera);
     const targets=editMeshes.filter(m=>m.count).slice(); if(planeObj) targets.push(planeObj);
     const hit=ray.intersectObjects(targets,false)[0]; if(!hit) return;
@@ -767,7 +767,7 @@ function renderGrid(){
   const g=$('#grid'), d=S.dims, f=document.createDocumentFragment();
   g.style.gridTemplateColumns='repeat('+d.x+','+S.cell+'px)';
   g.innerHTML='';
-  for(let z=0;z<d.z;z++) for(let x=d.x-1;x>=0;x--){   // W を逆順に並べて左右反転（3Dの画像反転と整合）
+  for(let z=0;z<d.z;z++) for(let x=0;x<d.x;x++){
     const c=document.createElement('div');
     c.className='cell'; c.dataset.x=x; c.dataset.z=z;
     const v=S.vox.get(K(x,S.layer,z));
@@ -816,12 +816,13 @@ function buildJson(){
     const W=d.x;
     const arr=[...S.vox.entries()].map(([k,v])=>({p:k.split(',').map(Number),v:norm(v)}))
       .sort((a,b)=>a.p[2]-b.p[2]||a.p[1]-b.p[1]||b.p[0]-a.p[0]); // d(z) → h(y) → 出力W昇順(=x降順)
-    const recs=arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:p[0]}};
+    const recs=arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:mirW(p[0],W)}};
       const em=effMat(v); if(em) rec.mat=em;                    // mat: role/自動確定(一意)/選択・none は省略
       const form=formOf({s:v.s,ot:v.ot}); rec.form=form;
-      for(const {name} of shownProps(form)) rec[name]=v.props[name];    // 汎用: 素直に書く（MOD ネイティブ・ミラーは描画層）
+      for(const {name} of shownProps(form)){ let val=v.props[name];     // 汎用: 出すプロパティを素直に書く
+        if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); rec[name]=val; }
       if(isMultiHalf(form)){ rec.half='lower';                          // upper/lower の form（ドア等）は2レコードに展開
-        const up={pos:{d:p[2],h:p[1]+1,w:p[0]},form:form,half:'upper'}; if(em) up.mat=em;
+        const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},form:form,half:'upper'}; if(em) up.mat=em;
         if(rec.facing) up.facing=rec.facing; if(rec.hinge) up.hinge=rec.hinge;
         return '  '+JSON.stringify(rec)+',\n  '+JSON.stringify(up); }
       return '  '+JSON.stringify(rec); });
@@ -1023,15 +1024,16 @@ function importJson(text){
         const SF={FULLBLOCK:'fullblock',SLAB:'slab',STAIRS:'stairs',TRAPDOOR:'trapdoor'};
         const s = SF[fm] || 'others', ot = SF[fm] ? 'DOOR' : fm;
         const props = {facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall'};
-        for(const {name} of shownProps(fm)) if(b[name]!=null) props[name]=String(b[name]);   // 汎用: 素直に読む（MOD ネイティブ）
+        for(const {name} of shownProps(fm)){ if(b[name]==null) continue;   // 汎用: 出すプロパティを素直に読む
+          let val=b[name]; if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); props[name]=String(val); }
         const om = (noMatOf({s,ot}) && b.mat) ? b.mat : 'COAL';
-        set.set(K(p.w,p.h,p.d), {r:b.mat||'wall_main', s, ot, om, props}); });
+        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, ot, om, props}); });
     }
     else if(Array.isArray(d.voxels))   // 旧形式（後方互換・ミラー前のアプリ内部座標）
       d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),{r:'wall_main',s:'fullblock',f:0,h:'bottom'}));
     else if(d.layers)
       Object.keys(d.layers).forEach(y=>d.layers[y].forEach((row,z)=>{
-        [...row].forEach((ch,x)=>{ if(ch!=='.') set.set(K(x,+y,z),{r:'wall_main',s:'fullblock',f:0,h:'bottom'}); }); }));
+        [...row].forEach((ch,x)=>{ if(ch!=='.') set.set(K(mirW(x,row.length),+y,z),{r:'wall_main',s:'fullblock',f:0,h:'bottom'}); }); }));
     let nd = null;
     if(d.size) nd = Array.isArray(d.voxels)     // 旧 voxels は [x,y,z]、新(blocks/layers)は [d,h,w]
       ? {x:d.size[0], y:d.size[1], z:d.size[2]}
