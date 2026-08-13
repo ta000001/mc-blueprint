@@ -60,6 +60,13 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #space canvas{display:block;width:100%;height:100%}
 .hud{position:absolute;left:10px;top:10px;pointer-events:none;font-size:10px;color:var(--dim);line-height:1.6}
 .hud b{color:var(--brass);font-weight:600}
+.vtoggle{position:absolute;top:10px;right:10px;font-size:10px;padding:3px 9px;border-radius:12px;
+  border:1px solid var(--rule);background:rgba(0,0,0,.4);color:var(--dim);z-index:6;cursor:pointer}
+.vtoggle[aria-pressed="true"]{color:var(--brass);border-color:var(--brass-dim)}
+#inspect{position:absolute;left:10px;bottom:10px;max-width:calc(100% - 20px);font-size:11px;color:var(--brass);
+  background:rgba(0,0,0,.55);border:1px solid var(--brass-dim);border-radius:6px;padding:4px 8px;display:none;
+  font-family:ui-monospace,monospace;pointer-events:none;z-index:6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#inspect.on{display:block}
 .slider{display:flex;align-items:center;gap:8px;margin-top:10px}
 .slider input{flex:1;accent-color:#D4A93C;height:26px}
 .y{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;font-size:22px;line-height:1;color:var(--brass)}
@@ -112,11 +119,12 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </div>
 
 <section id="v-space">
-  <div id="space"><div class="hud"><div>1本指 = 編集(面上)/移動(面外) / 2本指 = 拡大・回転</div><div>タップ/ドラッグ = <b id="hud-mode">置く</b></div><div>∟ 原点(0,0,0)=手前・下・左　<span style="color:#ff8a8a">赤=W→</span> <span style="color:#7ad79a">緑=H↑</span> <span style="color:#8aa8ff">青=D奥</span></div></div></div>
+  <div id="space"><div class="hud"><div>1本指 = 編集(面上)/移動(面外) / 2本指 = 拡大・回転</div><div>タップ/ドラッグ = <b id="hud-mode">置く</b></div><div>∟ 原点(0,0,0)=手前・下・左　<span style="color:#ff8a8a">赤=W→</span> <span style="color:#7ad79a">緑=H↑</span> <span style="color:#8aa8ff">青=D奥</span></div></div><button class="vtoggle" id="b-label" aria-pressed="false">ラベル</button><div id="inspect"></div></div>
   <div class="slider"><span class="y" id="y3">H00</span><input id="plane" type="range" min="0" max="15" value="0" aria-label="作業面の高さ"></div>
   <div class="bar">
     <button class="btn" id="b-place" aria-pressed="true">置く</button>
     <button class="btn" id="b-break" aria-pressed="false">壊す</button>
+    <button class="btn" id="b-info" aria-pressed="false">情報</button>
     <button class="btn" id="b-undo">元に戻す</button>
     <button class="btn" id="b-redo" disabled>進む</button>
   </div>
@@ -124,7 +132,6 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="b-down">▼ 作業面を下げる</button>
     <button class="btn" id="b-up">▲ 作業面を上げる</button>
     <button class="btn" id="b-fit">視点をリセット</button>
-    <button class="btn" id="b-label" aria-pressed="false">ラベル</button>
   </div>
   <div class="bar" id="form-space"></div>
   <div class="bar" id="dir-space"></div>
@@ -184,7 +191,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.37';
+const APP_VERSION = '3.38';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -603,7 +610,7 @@ function makeAxisFaces(entries, material){
 }
 /* ---- form ラベル（トグル・案3）: form 名の短ラベルをブロック上にスプライトで重畳。FULLBLOCK は多数派なので省略 ---- */
 let labelMeshes=[];
-const FORM_LABEL={SLAB:'slab',STAIRS:'stair',TRAPDOOR:'trap',DOOR:'door',FENCE:'fence',FENCE_GATE:'gate',BUTTON:'btn',PANE:'pane',GRATE:'grate',TORCH:'torch',WALL_TORCH:'wtorch',LANTERN:'lantern',CAMPFIRE:'fire',CHAIN:'chain',POPPY:'poppy',AIR:'air'};
+const FORM_LABEL={DOOR:'door',FENCE:'fence',FENCE_GATE:'gate',BUTTON:'btn',PANE:'pane',GRATE:'grate',TORCH:'torch',WALL_TORCH:'wtorch',LANTERN:'lantern',CAMPFIRE:'fire',CHAIN:'chain',POPPY:'poppy',AIR:'air'};   // others のみ（fullblock/slab/stairs/trapdoor は省略）
 const _labelMat={};
 function labelMat(txt){
   if(_labelMat[txt]) return _labelMat[txt];
@@ -694,11 +701,11 @@ function bindGestures(el){
     if(pts.size===1){
       const now=Date.now();
       const isDbl = lastUp && now-lastUp.t<130 && Math.hypot(e.clientX-lastUp.x,e.clientY-lastUp.y)<22;
-      const gmode = isDbl ? 'break' : S.mode;      // ダブルクリック/タップ＝削除
+      const gmode = (S.mode==='info') ? 'info' : (isDbl ? 'break' : S.mode);   // 情報モードはダブルでも壊さない
       tap={id:e.pointerId,x:e.clientX,y:e.clientY,t:now,mode:gmode,dbl:!!isDbl};
       drag=null;
-      // 編集ドラッグ開始（マウスは左のみ／タッチは1本指）。作業面上で始めたら矩形。
-      if(!(e.pointerType==='mouse' && e.button!==0)){
+      // 編集ドラッグ開始（マウスは左のみ／タッチは1本指）。作業面上で始めたら矩形。情報モードは矩形なし。
+      if(!(e.pointerType==='mouse' && e.button!==0) && gmode!=='info'){
         const c=planeCell(e.clientX,e.clientY);
         if(c) drag={mode:gmode,a:c,b:c};           // ダブル時は削除範囲
       }
@@ -734,6 +741,8 @@ function bindGestures(el){
       const x=was.x, y=was.y;
       if(tap.mode==='break'){
         doTap(x,y,'break'); lastUp=null;    // 削除は即時（ダブル/壊すモード）
+      } else if(tap.mode==='info'){
+        doTap(x,y,'info'); lastUp=null;      // 情報＝即時インスペクト
       } else {                              // 置く単発はダブル判定のため遅延（ダブルなら次のdownで取消）
         lastUp={x,y,t:Date.now()};
         clearTimeout(pendingPlace);
@@ -762,6 +771,7 @@ function bindGestures(el){
     if(hit.object!==planeObj){
       const im=hit.object, o=im.userData.items[hit.instanceId]; if(!o) return; const p=o.p;
       if(mode==='break') remove(p[0],p[1],p[2]);
+      else if(mode==='info') showInfo(o.v);
       else { const m4=new THREE.Matrix4(); im.getMatrixAt(hit.instanceId,m4);
         const nm=new THREE.Matrix3().getNormalMatrix(m4);
         const n=hit.face.normal.clone().applyMatrix3(nm).normalize();
@@ -917,10 +927,19 @@ $('#b-redo').onclick = redo;
 $('#b-clear').onclick = ()=>{ pushHist(); S.vox=new Map(); changed(); renderGrid(); renderSpine(); };
 $('#b-place').onclick = ()=>setMode('place');
 $('#b-break').onclick = ()=>setMode('break');
+$('#b-info').onclick = ()=>setMode('info');
 function setMode(m){ S.mode=m;
   $('#b-place').setAttribute('aria-pressed', m==='place');
   $('#b-break').setAttribute('aria-pressed', m==='break');
-  $('#hud-mode').textContent = m==='break'?'壊す':'置く'; }
+  $('#b-info').setAttribute('aria-pressed', m==='info');
+  $('#hud-mode').textContent = m==='break'?'壊す':(m==='info'?'情報':'置く');
+  if(m!=='info') $('#inspect').classList.remove('on'); }
+function showInfo(v){   // 案1: タップしたブロックの form/mat/向き を表示
+  const form=formOf(v), parts=['form='+form];
+  const mi=matInfo(form,noMatOf(v));
+  if(mi.mode==='role') parts.push('role='+v.r); else { const em=effMat(v); if(em) parts.push('mat='+em); }
+  for(const {name} of shownProps(form)) if(v.props[name]!=null) parts.push(name+'='+v.props[name]);
+  $('#inspect').textContent=parts.join('  '); $('#inspect').classList.add('on'); }
 
 $('#p-draw').onclick=()=>setTool('draw');
 $('#p-erase').onclick=()=>setTool('erase');
