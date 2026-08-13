@@ -31,10 +31,12 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   font-size:22px;letter-spacing:-.02em;line-height:1;margin:0}
 .sub{font-size:11px;color:var(--dim);letter-spacing:.08em}
 .ver{font-size:11px;color:var(--brass);border:1px solid var(--brass-dim);border-radius:50%;
-  width:18px;height:18px;line-height:16px;text-align:center;cursor:pointer;flex:none;position:relative;align-self:center}
-.ver-tip{position:absolute;top:24px;left:0;white-space:nowrap;font-size:10px;color:var(--brass);letter-spacing:.06em;
-  background:var(--panel);border:1px solid var(--brass-dim);border-radius:4px;padding:3px 7px;z-index:30;display:none}
-.ver.on .ver-tip{display:block}
+  width:18px;height:18px;line-height:16px;text-align:center;cursor:pointer;flex:none;align-self:center}
+#vmodal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:60}
+#vmodal.on{display:flex}
+#vmodal .panel{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:16px 20px;min-width:180px}
+#vmodal h3{margin:0 0 10px;font-size:13px;color:var(--brass)}
+#vmodal .vrow{font-size:12px;color:var(--brass);letter-spacing:.04em;line-height:1.9;font-family:ui-monospace,monospace}
 .dims{display:flex;gap:6px;align-items:center;margin-left:auto}
 .dims label{font-size:10px;color:var(--dim)}
 .dims input{width:38px;background:var(--panel);border:1px solid var(--rule);
@@ -94,7 +96,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </head>
 <body>
 <div class="head">
-  <h1>設計図</h1><span class="sub">VOXEL / MC</span><span class="ver" id="ver" role="button" tabindex="0" aria-label="バージョン情報">?<span class="ver-tip" id="ver-tip"></span></span>
+  <h1>設計図</h1><span class="sub">VOXEL / MC</span><span class="ver" id="ver" role="button" tabindex="0" aria-label="バージョン情報">?</span>
   <div class="dims">
     <label>D<input id="dz" type="number" min="1" max="64" value="16"></label>
     <label>H<input id="dy" type="number" min="1" max="64" value="16"></label>
@@ -177,10 +179,11 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <div id="status"></div>
 <div id="modal"><div class="panel"><h3>種類を選択</h3><div class="grid" id="modal-grid"></div></div></div>
+<div id="vmodal"><div class="panel"><h3>バージョン情報</h3><div id="vmodal-body"></div></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.35';
+const APP_VERSION = '3.36';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1076,14 +1079,19 @@ addEventListener('resize',()=>{ if(S.view==='plan'&&!S.manualZoom) renderGrid();
 document.addEventListener('dblclick', e=>e.preventDefault(), {passive:false});
 
 /* ---------- boot ---------- */
-$('#ver-tip').textContent = 'app v'+APP_VERSION;                      // ? バッジのツールチップ（タップで表示）
-$('#ver').onclick = ()=> $('#ver').classList.toggle('on');
+function fillVer(){ $('#vmodal-body').innerHTML =                     // ? バッジ→モーダルで3行縦表示
+  '<div class="vrow">app v'+APP_VERSION+'</div>'+
+  '<div class="vrow">dict v'+(DICT_VERSION??'?')+'</div>'+
+  '<div class="vrow">form_dict v'+(FORM_DICT_VERSION??'?')+'</div>'; }
+fillVer();
+$('#ver').onclick = ()=> $('#vmodal').classList.add('on');
+$('#vmodal').onclick = e=>{ if(e.target.id==='vmodal') $('#vmodal').classList.remove('on'); };  // 背景タップで閉じる
 load();
 $('#dx').value=S.dims.x; $('#dy').value=S.dims.y; $('#dz').value=S.dims.z;
 $('#plane').max=S.dims.y-1; $('#ymax').textContent='/ '+(S.dims.y-1);
 initThree(); buildFloor(); buildOrigin(); buildPlane(); frameCamera();
 loadDict().then(()=>{
-  $('#ver-tip').textContent = 'app v'+APP_VERSION+' / dict v'+(DICT_VERSION??'?')+' / form_dict v'+(FORM_DICT_VERSION??'?');
+  fillVer();
   syncVox();
   $('#tot').textContent=S.vox.size; setLayer(0); setView('space'); renderRoles(); renderShapeBar();
 }).catch(err=>{ console.error(err); status('dict.json を読み込めません（初回はオンライン必須）'); });
