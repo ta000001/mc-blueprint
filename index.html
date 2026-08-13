@@ -216,7 +216,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.41';
+const APP_VERSION = '3.42';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -986,7 +986,7 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
     fel.innerHTML=''; del.innerHTML='';
     const mkform=(label,pressed,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.innerHTML=label;
       b.setAttribute('aria-pressed', pressed); b.onclick=onclick; fel.appendChild(b); };
-    SHAPES.forEach(s=>mkform(s, S.shape===s, ()=>{ S.shape=s; save(); renderShapeBar(); }));
+    SHAPES.forEach(s=>mkform(SHAPE_FORM[s], S.shape===s, ()=>{ S.shape=s; save(); renderShapeBar(); }));  // 聖典 form（大文字）で表示
     mkform(isOther?('others<br><small>'+S.other+'</small>'):'others', isOther,
       ()=>{ S.shape='others'; openModal(); save(); renderShapeBar(); });   // クリックでモーダル→種類選択
     const mk=(label,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=label; b.onclick=onclick; del.appendChild(b); };
