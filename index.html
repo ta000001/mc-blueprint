@@ -38,6 +38,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #vmodal h3,#hmodal h3{margin:0 0 10px;font-size:13px;color:var(--brass)}
 #vmodal .vrow{font-size:12px;color:var(--brass);letter-spacing:.04em;line-height:1.9;font-family:ui-monospace,monospace}
 #hmodal .hrow{font-size:12px;color:var(--dim);line-height:1.9}
+#hmodal .hnote{padding-left:1.1em;font-size:11px;color:var(--dim);opacity:.8;line-height:1.7}
 #hmodal .hgrp{margin-bottom:10px}
 #hmodal b{color:var(--brass)}
 .dims{display:flex;gap:6px;align-items:center;margin-left:auto}
@@ -206,7 +207,10 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <div class="hrow"><b>モード</b></div>
     <div class="hrow">・置く … ブロックを配置</div>
     <div class="hrow">・壊す … ブロックを削除</div>
-    <div class="hrow">・情報モード … ブロックをタップすると form / mat / 向き を右下に表示</div>
+    <div class="hrow">・情報モード … ブロックをタップ → その form / mat / 向き を右下に表示</div>
+    <div class="hnote">タップした1個の情報を表示。別のブロックをタップすると切替。空セルのタップは無反応。</div>
+    <div class="hnote">できないこと：置く／壊す／ドラッグの矩形配置／ダブルタップ削除（＝編集は無効）。</div>
+    <div class="hnote">できること：視点の拡大・回転・移動、作業面の上下、他モードへの切替。</div>
   </div>
   <div class="hgrp">
     <div class="hrow"><b>軸</b>　原点(0,0,0) ＝ 手前・下・左</div>
@@ -216,7 +220,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.42';
+const APP_VERSION = '3.43';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
