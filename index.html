@@ -215,8 +215,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </div><!-- /place-root -->
 
 <div id="palette-root" class="hidden">
-  <div class="palname"><span>palette 名</span><input id="pal-name" value="palette-01" aria-label="palette の名前"></div>
-  <div class="palname"><span>structure 名</span><input id="struct-name" value="structure-01" aria-label="structure の名前"></div>
+  <div class="palname"><span>palette :</span><input id="pal-name" value="palette-01" aria-label="palette の名前"></div>
+  <div class="palname"><span>structure :</span><input id="struct-name" value="structure-01" aria-label="structure の名前"></div>
   <div class="bar" style="margin-top:0">
     <button class="btn" id="pal-load">place を読み込む</button>
     <button class="btn" id="pal-load-pal">palette を読み込む</button>
@@ -258,7 +258,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.56';
+const APP_VERSION = '3.57';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
