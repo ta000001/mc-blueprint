@@ -223,7 +223,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.48';
+const APP_VERSION = '3.49';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -893,7 +893,7 @@ function buildJson(){
 function renderJson(){
   $('#json').value = buildJson();
   $('#j-note').textContent = S.jsonMode==='layers'
-    ? 'layers のキーが H。各要素が1行（D）で、文字の位置が W。# がブロック、. が空。size は [D,H,W]。'
+    ? 'layers のキーが H。各要素が1行（D）で、文字の位置が W。# がブロック、. が空。size は [D,H,W]。⚠ layers は位置のみ保存＝form/mat/向きは失われ、読込で全て fullblock になります。形を保つには blocks を使ってください。'
     : 'blocks は structure 準拠。pos は d=奥/h=上/w=左右、mat=役割(色)。palette 側で 役割→dict の mat に対応づける。size は [D,H,W]。';
 }
 
