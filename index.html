@@ -220,13 +220,15 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="bar" style="margin-top:0">
     <button class="btn" id="pal-load">place を読み込む</button>
     <button class="btn" id="pal-load-pal">palette を読み込む</button>
+    <button class="btn" id="pal-loadstruct">structure を読み込む</button>
     <button class="btn" id="pal-save">palette を保存</button>
     <button class="btn" id="pal-struct">structure を保存</button>
   </div>
-  <p class="note">place の JSON(blocks) を読み込むと、使われているスロットが form 別に並びます。各スロットに mat を割り当てて保存してください。palette の読み込みは任意（既存の割当を復元）。place に無いスロットは place 優先で無視します。「structure を保存」で place＋palette を合成（slot→mat 解決）した structure を出力します。</p>
+  <p class="note">place の JSON(blocks) を読み込むと、使われているスロットが form 別に並びます。各スロットに mat を割り当てて保存してください。palette の読み込みは任意（既存の割当を復元）。place に無いスロットは place 優先で無視します。「structure を保存」で place＋palette を合成（slot→mat 解決）した structure を出力します。「structure を読み込む」は逆に structure を place＋palette へ分解して取り込みます（form 毎に mat を FORM_n へ採番）。</p>
   <div id="pal-list"></div>
   <input id="pal-file" type="file" accept="application/json,.json" class="hidden">
   <input id="pal-file2" type="file" accept="application/json,.json" class="hidden">
+  <input id="pal-file3" type="file" accept="application/json,.json" class="hidden">
 </div>
 
 <div id="status"></div>
@@ -258,7 +260,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.57';
+const APP_VERSION = '3.58';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1228,6 +1230,27 @@ function buildStructure(){   // place(S.vox の slot) + palette(slot→mat) を�
   const nm=($('#struct-name').value.trim())||'structure';
   return {json:structJson(nm, recs), missing:[...missing]};
 }
+function importStructure(text){   // structure(mat 済み) → place(slot) + palette(slot→mat) に分解して取り込む（保存の逆）
+  try{ const d=JSON.parse(text);
+    if(!Array.isArray(d.blocks)){ status('structure ではありません（blocks が必要）'); return; }
+    const matSlot={}, formCount={}, pal={};        // form 毎に distinct mat を FORM_1.. へ採番
+    for(const b of d.blocks){
+      const form=(b.form||'FULLBLOCK').toUpperCase();
+      const mat=(b.mat!=null?b.mat:(b.slot!=null?b.slot:form+'_1'));
+      const key=form+'|'+mat;
+      if(!(key in matSlot)){ const n=(formCount[form]=(formCount[form]||0)+1); const slot=form+'_'+n;
+        matSlot[key]=slot;
+        const looksSlot=/_\d+$/.test(String(mat)) && FORM_LIST.includes(roleForm(mat));  // mat が slot 名(未割当)なら空に
+        pal[slot]= looksSlot ? '' : mat; }
+      b.slot=matSlot[key];                          // importJson が slot を優先採用するよう書換え
+    }
+    importJson(JSON.stringify(d));                   // 本体(S.vox)へ slot ベースで取り込み（dims/name も処理）
+    S.pal.map=pal; renderPalList();
+    if(d.name) $('#struct-name').value=d.name;
+    const overflow=Object.values(formCount).some(c=>c>10);
+    status('structure を読み込みました（スロット '+Object.keys(pal).length+' 種・palette 復元）'+(overflow?' ※一部 form でスロット10超':''));
+  }catch(e){ status('このファイルは読み込めません'); }
+}
 function palImportPalette(text){   // 既存 palette を任意で復元。place 未読込なら全採用、読込済みなら place のスロットのみ採用（place優先）
   try{ const d=JSON.parse(text); const pal=(d&&d.palette&&typeof d.palette==='object')?d.palette:{};
     const placeLoaded=Object.keys(S.pal.map).length>0; const extra=[];
@@ -1245,6 +1268,8 @@ $('#pal-load').onclick=()=>$('#pal-file').click();
 $('#pal-file').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ palImport(r.result); e.target.value=''; }; r.readAsText(f); };
 $('#pal-load-pal').onclick=()=>$('#pal-file2').click();
 $('#pal-file2').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ palImportPalette(r.result); e.target.value=''; }; r.readAsText(f); };
+$('#pal-loadstruct').onclick=()=>$('#pal-file3').click();
+$('#pal-file3').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ importStructure(r.result); e.target.value=''; }; r.readAsText(f); };
 $('#pal-save').onclick=()=>{
   const map={}; for(const k of Object.keys(S.pal.map)) if(S.pal.map[k]) map[k]=S.pal.map[k];   // 未割当は除外
   const text=JSON.stringify({name:$('#pal-name').value, palette:map}, null, 1);
