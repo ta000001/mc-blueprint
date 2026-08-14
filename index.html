@@ -217,15 +217,19 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <section id="v-json" class="hidden">
   <div class="bar" style="margin-top:0">
-    <button class="btn" id="j-layers" aria-pressed="false">層グリッド</button>
-    <button class="btn" id="j-voxels" aria-pressed="true">レコード</button>
-    <button class="btn" id="j-apply">✓ 反映</button>
-    <button class="btn" id="j-copy">コピー</button>
     <button class="btn" id="j-dl">保存</button>
     <button class="btn" id="j-imp">読み込み</button>
     <button class="btn" id="j-dir">📁 保存先</button>
   </div>
+  <div class="bar">
+    <button class="btn" id="j-layers" aria-pressed="false">層グリッド</button>
+    <button class="btn" id="j-voxels" aria-pressed="true">レコード</button>
+  </div>
   <textarea id="json" spellcheck="false"></textarea>
+  <div class="bar">
+    <button class="btn" id="j-apply">✓ 反映</button>
+    <button class="btn" id="j-copy">コピー</button>
+  </div>
   <p class="note" id="dirlabel"></p>
   <p class="note" id="j-note"></p>
   <input id="file" type="file" accept="application/json,.json" class="hidden">
@@ -289,7 +293,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.68';
+const APP_VERSION = '3.69';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
