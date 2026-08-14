@@ -219,8 +219,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </div><!-- /place-root -->
 
 <div id="palette-root" class="hidden">
-  <div class="palname"><span>palette :</span><input id="pal-name" value="palette-01" aria-label="palette の名前"></div>
-  <div class="palname"><span>structure :</span><input id="struct-name" value="structure-01" aria-label="structure の名前"></div>
+  <div class="palname"><span>palette</span><input id="pal-name" value="palette-01" aria-label="palette の名前"></div>
+  <div class="palname"><span>structure</span><input id="struct-name" value="structure-01" aria-label="structure の名前"></div>
   <div class="palbar"><span class="palbar-t">load</span>
     <button class="btn" id="pal-load" title="place を読み込む">place</button>
     <button class="btn" id="pal-load-pal" title="palette を読み込む">palette</button>
@@ -230,7 +230,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="pal-save" title="palette を保存">palette</button>
     <button class="btn" id="pal-struct" title="structure を保存">structure</button>
   </div>
-  <p class="palhelp"><span class="ver" id="pal-help" role="button" tabindex="0" aria-label="使い方">?</span><span>使い方</span></p>
+  <p class="palhelp"><span class="ver" id="pal-help" role="button" tabindex="0" aria-label="使い方">?</span></p>
   <div id="pal-list"></div>
   <input id="pal-file" type="file" accept="application/json,.json" class="hidden">
   <input id="pal-file2" type="file" accept="application/json,.json" class="hidden">
@@ -274,7 +274,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.60';
+const APP_VERSION = '3.61';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
