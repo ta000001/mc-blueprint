@@ -31,4 +31,27 @@ foreach ($f in @("dict.json", "form_dict.json")) {
     Copy-Item $from (Join-Path $PSScriptRoot $f) -Force
     Write-Host "synced $f  <-  $from"
 }
+
+# Optional: names_ja.json (MAT -> Japanese name). Generated in-game by /abtest exporttex.
+$namesFrom = Join-Path $src "names_ja.json"
+if (Test-Path $namesFrom) {
+    Copy-Item $namesFrom (Join-Path $PSScriptRoot "names_ja.json") -Force
+    Write-Host "synced names_ja.json  <-  $namesFrom"
+} else {
+    Write-Host "skip names_ja.json (run /abtest exporttex in-game to generate)"
+}
+
+# Optional: block face textures (data/master/blocktex/*.png) -> assets/blocks/.
+$master = Split-Path $src -Parent
+$texSrc = Join-Path $master "blocktex"
+if (Test-Path $texSrc) {
+    $texDst = Join-Path $PSScriptRoot "assets\blocks"
+    if (-not (Test-Path $texDst)) { New-Item -ItemType Directory -Path $texDst -Force | Out-Null }
+    $pngs = Get-ChildItem $texSrc -Filter *.png -ErrorAction SilentlyContinue
+    foreach ($p in $pngs) { Copy-Item $p.FullName (Join-Path $texDst $p.Name) -Force }
+    Write-Host "synced $($pngs.Count) block textures  <-  $texSrc"
+} else {
+    Write-Host "skip blocktex (run /abtest exporttex in-game to generate)"
+}
+
 Write-Host "done. index.html fetches ./dict.json at startup. Check the version display."
