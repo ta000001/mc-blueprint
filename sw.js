@@ -1,4 +1,4 @@
-const CACHE = 'blueprint-v3.30';
+const CACHE = 'blueprint-v3.63';
 const ASSETS = [
   './',
   './index.html',
@@ -31,9 +31,9 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   const isDoc = req.mode === 'navigate' || req.destination === 'document';
   if (isDoc) {
-    // HTML は network-first：オンラインなら常に最新を返し、失敗時のみキャッシュへ
+    // HTML は network-first。HTTP キャッシュも避けて常に最新を取得（no-store）。失敗時のみキャッシュへ。
     e.respondWith(
-      fetch(req).then((res) => {
+      fetch(new Request(req.url, {cache: 'no-store'})).then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put('./index.html', copy)).catch(() => {});
         return res;
@@ -41,10 +41,10 @@ self.addEventListener('fetch', (e) => {
     );
     return;
   }
-  // dict.json / form_dict.json は network-first（MOD から sync した最新を常に反映。オフラインのみキャッシュ）
-  if (/\/(dict|form_dict)\.json$/.test(new URL(req.url).pathname)) {
+  // dict / form_dict / names_ja は network-first（MOD から sync した最新を常に反映。オフラインのみキャッシュ）
+  if (/\/(dict|form_dict|names_ja)\.json$/.test(new URL(req.url).pathname)) {
     e.respondWith(
-      fetch(req).then((res) => {
+      fetch(new Request(req.url, {cache: 'no-store'})).then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
         return res;
