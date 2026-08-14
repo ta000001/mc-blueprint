@@ -1,4 +1,4 @@
-const CACHE = 'blueprint-v3.67';
+const CACHE = 'blueprint-v3.68';
 const ASSETS = [
   './',
   './index.html',
@@ -52,13 +52,13 @@ self.addEventListener('fetch', (e) => {
     );
     return;
   }
-  // 静的資産（three.js / icon / manifest）は cache-first
+  // 静的資産（three.js / icon / manifest / assets/blocks の画像）は cache-first。
+  // 200 以外（404 等）はキャッシュしない＝配信遅延中の 404 でキャッシュが汚染されるのを防ぐ。
   e.respondWith(
     caches.match(req).then((hit) =>
       hit ||
       fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {}); }
         return res;
       })
     )

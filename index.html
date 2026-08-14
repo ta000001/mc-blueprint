@@ -289,7 +289,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.67';
+const APP_VERSION = '3.68';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1364,10 +1364,10 @@ $('#pal-struct').onclick=()=>{   // place(S.vox) + palette(S.pal.map) を合成�
 /* ---------- boot ---------- */
 function fillVer(){ $('#vmodal-body').innerHTML =                     // ? バッジ→モーダルで各版を縦表示
   '<div class="vrow">app v'+APP_VERSION+'</div>'+
-  '<div class="vrow">dict '+(DICT_VERSION??'?')+'</div>'+
-  '<div class="vrow">form_dict '+(FORM_DICT_VERSION??'?')+'</div>'+
-  '<div class="vrow">names_ja '+(NAMES_JA_VERSION??'?')+'</div>'+
-  '<div class="vrow">blocktex '+(BLOCKTEX_VERSION??'?')+'</div>'; }
+  '<div class="vrow">dict v'+(DICT_VERSION??'?')+'</div>'+
+  '<div class="vrow">form_dict v'+(FORM_DICT_VERSION??'?')+'</div>'+
+  '<div class="vrow">names_ja v'+(NAMES_JA_VERSION??'?')+'</div>'+
+  '<div class="vrow">blocktex v'+(BLOCKTEX_VERSION??'?')+'</div>'; }
 fillVer();
 $('#ver').onclick = ()=> $('#vmodal').classList.add('on');
 $('#vmodal').onclick = e=>{ if(e.target.id==='vmodal') $('#vmodal').classList.remove('on'); };  // 背景タップで閉じる
