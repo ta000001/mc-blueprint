@@ -224,7 +224,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="j-imp">読み込み</button>
     <button class="btn" id="j-dir">📁 保存先</button>
   </div>
-  <div class="tabs">
+  <div class="tabs" style="margin:12px 0 2px">
     <button id="j-voxels" aria-selected="true">レコード</button>
     <button id="j-layers" aria-selected="false">層グリッド</button>
   </div>
@@ -296,7 +296,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.71';
+const APP_VERSION = '3.72';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
