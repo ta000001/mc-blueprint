@@ -47,6 +47,8 @@ $texSrc = Join-Path $master "blocktex"
 if (Test-Path $texSrc) {
     $texDst = Join-Path $PSScriptRoot "assets\blocks"
     if (-not (Test-Path $texDst)) { New-Item -ItemType Directory -Path $texDst -Force | Out-Null }
+    # Clear stale pngs first (key scheme may change, e.g. MAT.png -> block_id.png).
+    Get-ChildItem $texDst -Filter *.png -ErrorAction SilentlyContinue | Remove-Item -Force
     $pngs = Get-ChildItem $texSrc -Filter *.png -ErrorAction SilentlyContinue
     foreach ($p in $pngs) { Copy-Item $p.FullName (Join-Path $texDst $p.Name) -Force }
     Write-Host "synced $($pngs.Count) block textures  <-  $texSrc"
