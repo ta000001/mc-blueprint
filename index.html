@@ -41,6 +41,15 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #hmodal .hnote{padding-left:1.1em;font-size:11px;color:var(--dim);opacity:.8;line-height:1.7}
 #hmodal .hgrp{margin-bottom:10px}
 #hmodal b{color:var(--brass)}
+.topmode{display:flex;gap:2px;background:var(--panel);padding:3px;border-radius:5px;margin-bottom:12px}
+.topmode button{flex:1;background:transparent;border:none;color:var(--dim);padding:8px;border-radius:4px;font-size:13px;cursor:pointer;letter-spacing:.04em}
+.topmode button[aria-pressed="true"]{background:var(--panel2);color:var(--brass)}
+#pal-list{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+#pal-list .pal-form{font-size:11px;color:var(--brass);margin:8px 0 2px;letter-spacing:.06em}
+#pal-list .pal-row{display:flex;align-items:center;gap:8px}
+#pal-list .pal-sw{width:16px;height:16px;border-radius:3px;flex:none;border:1px solid var(--rule)}
+#pal-list .pal-slot{font-size:12px;font-family:ui-monospace,monospace;color:var(--chalk);min-width:120px}
+#pal-list .pal-sel{flex:1;background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:6px;font-size:12px}
 .dims{display:flex;gap:6px;align-items:center;margin-left:auto}
 .dims label{font-size:10px;color:var(--dim)}
 .dims input{width:38px;background:var(--panel);border:1px solid var(--rule);
@@ -113,6 +122,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </style>
 </head>
 <body>
+<div class="topmode"><button id="m-place" aria-pressed="true">place</button><button id="m-palette" aria-pressed="false">palette</button></div>
+<div id="place-root">
 <div class="head">
   <h1>設計図</h1><span class="sub">VOXEL / MC</span><span class="ver" id="ver" role="button" tabindex="0" aria-label="バージョン情報">?</span>
   <div class="dims">
@@ -193,6 +204,19 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <p class="note" id="j-note"></p>
   <input id="file" type="file" accept="application/json,.json" class="hidden">
 </section>
+</div><!-- /place-root -->
+
+<div id="palette-root" class="hidden">
+  <div class="head"><h1>palette</h1><span class="sub">スロット → mat 対応表</span></div>
+  <input id="pal-name" value="palette-01" aria-label="palette の名前">
+  <div class="bar" style="margin-top:0">
+    <button class="btn" id="pal-load">place を読み込む</button>
+    <button class="btn" id="pal-save">palette を保存</button>
+  </div>
+  <p class="note">place の JSON(blocks) を読み込むと、使われているスロットが form 別に並びます。各スロットに mat を割り当てて保存してください。</p>
+  <div id="pal-list"></div>
+  <input id="pal-file" type="file" accept="application/json,.json" class="hidden">
+</div>
 
 <div id="status"></div>
 <div id="modal"><div class="panel"><h3>種類を選択</h3><div class="grid" id="modal-grid"></div></div></div>
@@ -223,7 +247,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.51';
+const APP_VERSION = '3.52';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -315,7 +339,8 @@ const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'FULLBLOCK_1',
   shape:'fullblock', other:'DOOR', roleCount:{},
   props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
-  view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirHandle:null, labels:false
+  view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirHandle:null, labels:false,
+  top:'place', pal:{map:{}}
 };
 const cur = ()=>({r:S.role, s:S.shape, ot:S.other, props:{...S.props}});
 const sig = (v)=>{ if(!v) return ''; const n=norm(v); return [n.r,n.s,n.ot,n.f,n.h,n.ax,n.hg,n.o,n.hang,n.fc].join('|'); };
@@ -1141,6 +1166,53 @@ addEventListener('resize',()=>{ if(S.view==='plan'&&!S.manualZoom) renderGrid();
 ['gesturestart','gesturechange','gestureend'].forEach(ev=>
   document.addEventListener(ev, e=>e.preventDefault(), {passive:false}));
 document.addEventListener('dblclick', e=>e.preventDefault(), {passive:false});
+
+/* ---------- 最上位モード place / palette ---------- */
+function setTop(mode){ S.top=mode;
+  $('#place-root').classList.toggle('hidden', mode!=='place');
+  $('#palette-root').classList.toggle('hidden', mode!=='palette');
+  $('#m-place').setAttribute('aria-pressed', mode==='place');
+  $('#m-palette').setAttribute('aria-pressed', mode==='palette');
+  if(mode==='palette') renderPalList();
+}
+$('#m-place').onclick=()=>setTop('place');
+$('#m-palette').onclick=()=>setTop('palette');
+
+/* ---------- palette モード：スロット→mat 対応表 ---------- */
+function formMats(form){ const set=new Set(); for(const e of DICT_ENTRIES){ if(e.form===form && e.mat) set.add(e.mat); } return [...set].sort(); }  // dict からその form の mat 一覧
+function renderPalList(){
+  const el=$('#pal-list'); if(!el) return; el.innerHTML='';
+  const slots=Object.keys(S.pal.map).sort((a,b)=>{ const fa=roleForm(a),fb=roleForm(b); return fa!==fb ? (fa<fb?-1:1) : (a<b?-1:1); });
+  if(!slots.length){ el.innerHTML='<p class="note">（place を読み込むとスロットが並びます）</p>'; return; }
+  let curForm=null;
+  for(const slot of slots){ const form=roleForm(slot);
+    if(form!==curForm){ curForm=form; const h=document.createElement('div'); h.className='pal-form'; h.textContent=form; el.appendChild(h); }
+    const row=document.createElement('div'); row.className='pal-row';
+    const sw=document.createElement('span'); sw.className='pal-sw'; sw.style.background=roleHex(slot); row.appendChild(sw);
+    const lab=document.createElement('span'); lab.className='pal-slot'; lab.textContent=slot; row.appendChild(lab);
+    const sel=document.createElement('select'); sel.className='pal-sel';
+    const none=document.createElement('option'); none.value=''; none.textContent='(未割当)'; sel.appendChild(none);
+    for(const m of formMats(form)){ const o=document.createElement('option'); o.value=m; o.textContent=m; if(S.pal.map[slot]===m) o.selected=true; sel.appendChild(o); }
+    sel.onchange=()=>{ S.pal.map[slot]=sel.value; };
+    row.appendChild(sel); el.appendChild(row);
+  }
+}
+function palImport(text){
+  try{ const d=JSON.parse(text); const blocks=Array.isArray(d.blocks)?d.blocks:[]; let n=0;
+    for(const b of blocks){ const slot=b.slot||b.mat; if(slot){ n++; if(!(slot in S.pal.map)) S.pal.map[slot]=''; } }
+    status('place を読み込みました（スロット '+Object.keys(S.pal.map).length+' 種）'); renderPalList();
+  }catch(e){ status('このファイルは読み込めません'); }
+}
+$('#pal-load').onclick=()=>$('#pal-file').click();
+$('#pal-file').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ palImport(r.result); e.target.value=''; }; r.readAsText(f); };
+$('#pal-save').onclick=()=>{
+  const map={}; for(const k of Object.keys(S.pal.map)) if(S.pal.map[k]) map[k]=S.pal.map[k];   // 未割当は除外
+  const text=JSON.stringify({name:$('#pal-name').value, palette:map}, null, 1);
+  const fname=($('#pal-name').value||'palette')+'.json';
+  const b=new Blob([text],{type:'application/json'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download=fname; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  status('palette を保存しました（'+Object.keys(map).length+' 件）');
+};
 
 /* ---------- boot ---------- */
 function fillVer(){ $('#vmodal-body').innerHTML =                     // ? バッジ→モーダルで3行縦表示
