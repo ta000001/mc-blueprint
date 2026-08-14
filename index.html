@@ -223,7 +223,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.50';
+const APP_VERSION = '3.51';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -868,12 +868,12 @@ function buildJson(mode){
     const arr=[...S.vox.entries()].map(([k,v])=>({p:k.split(',').map(Number),v:norm(v)}))
       .sort((a,b)=>a.p[2]-b.p[2]||a.p[1]-b.p[1]||b.p[0]-a.p[0]); // d(z) → h(y) → 出力W昇順(=x降順)
     const recs=arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:mirW(p[0],W)}};
-      rec.mat=v.r;                    // mat: role/自動確定(一意)/選択・none は省略
+      rec.slot=v.r;                   // slot（スロット＝FORM_n）。palette 側で slot→具体mat に解決
       const form=formOf({s:v.s,ot:v.ot}); rec.form=form;
       for(const {name} of shownProps(form)){ let val=v.props[name];     // 汎用: 出すプロパティを素直に書く
         if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); rec[name]=val; }
       if(isMultiHalf(form)){ rec.half='lower';                          // upper/lower の form（ドア等）は2レコードに展開
-        const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},form:form,half:'upper'}; up.mat=v.r;
+        const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},form:form,half:'upper'}; up.slot=v.r;
         if(rec.facing) up.facing=rec.facing; if(rec.hinge) up.hinge=rec.hinge;
         return '  '+JSON.stringify(rec)+',\n  '+JSON.stringify(up); }
       return '  '+JSON.stringify(rec); });
@@ -895,7 +895,7 @@ function renderJson(){
   $('#json').value = buildJson();
   $('#j-note').textContent = S.jsonMode==='layers'
     ? 'layers のキーが H。各要素が1行（D）で、文字の位置が W。# がブロック、. が空。size は [D,H,W]。⚠ layers は位置のみ保存＝form/mat/向きは失われ、読込で全て fullblock になります。形を保つには blocks を使ってください。'
-    : 'blocks は structure 準拠。pos は d=奥/h=上/w=左右、mat=役割(色)。palette 側で 役割→dict の mat に対応づける。size は [D,H,W]。';
+    : 'blocks は structure 準拠。pos は d=奥/h=上/w=左右、slot=スロット(役割・色)。palette 側で slot→具体 mat に対応づける。size は [D,H,W]。';
 }
 
 /* ---------- view switching ---------- */
@@ -943,7 +943,7 @@ function setMode(m){ S.mode=m;
   if(m!=='info') $('#inspect').classList.remove('on'); }
 function showInfo(v){   // 案1: タップしたブロックの form/mat/向き を表示
   const form=formOf(v), parts=['form='+form];
-  parts.push('role(mat)='+v.r);
+  parts.push('slot='+v.r);
   for(const {name} of shownProps(form)) if(v.props[name]!=null) parts.push(name+'='+v.props[name]);
   $('#inspect').innerHTML=parts.join('<br>'); $('#inspect').classList.add('on'); }   // 項目毎に改行（右下詰め）
 
@@ -996,11 +996,11 @@ function renderRoles(){   // 役割バー：現在 form の役割 FORM_1.. の�
       b.onclick=()=>{ S.role=role; save(); renderRoles(); };
       el.appendChild(b);
     }
-    if(n<10){ const p=document.createElement('button'); p.className='btn'; p.textContent='＋'; p.title='役割を追加';
+    if(n<10){ const p=document.createElement('button'); p.className='btn'; p.textContent='＋'; p.title='スロットを追加';
       p.onclick=()=>{ S.roleCount[form]=Math.min(10, roleCountFor(form)+1); save(); renderRoles(); };
       el.appendChild(p);
     }
-    { const c=document.createElement('button'); c.className='btn'; c.textContent='↻'; c.title='未使用の役割ボタンを整理（既定数まで）';
+    { const c=document.createElement('button'); c.className='btn'; c.textContent='↻'; c.title='未使用のスロットを整理（既定数まで）';
       c.onclick=()=>{ cleanupRoles(form); save(); renderRoles(); }; el.appendChild(c); }
   });
 }
@@ -1097,7 +1097,7 @@ function importJson(text){
         const props = {facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall'};
         for(const {name} of shownProps(fm)){ if(b[name]==null) continue;   // 汎用: 出すプロパティを素直に読む
           let val=b[name]; if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); props[name]=String(val); }
-        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||(fm||'FULLBLOCK')+'_1', s, ot, props}); });
+        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.slot||b.mat||(fm||'FULLBLOCK')+'_1', s, ot, props}); });   // slot 優先・旧 mat も後方互換
     }
     else if(Array.isArray(d.voxels))   // 旧形式（後方互換・ミラー前のアプリ内部座標）
       d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),{r:'wall_main',s:'fullblock',f:0,h:'bottom'}));
