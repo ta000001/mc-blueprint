@@ -48,8 +48,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #pal-list .pal-form{font-size:11px;color:var(--brass);margin:8px 0 2px;letter-spacing:.06em}
 #pal-list .pal-row{display:flex;align-items:center;gap:8px}
 #pal-list .pal-sw{width:16px;height:16px;border-radius:3px;flex:none;border:1px solid var(--rule)}
-#pal-list .pal-slot{font-size:12px;font-family:ui-monospace,monospace;color:var(--chalk);min-width:120px}
-#pal-list .pal-sel{flex:1;background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:6px;font-size:12px}
+#pal-list .pal-slot{font-size:12px;font-family:ui-monospace,monospace;color:var(--chalk);flex:none;min-width:100px}
+#pal-list .pal-sel{flex:1;min-width:0;background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:6px;font-size:12px}
 .dims{display:flex;gap:6px;align-items:center;margin-left:auto}
 .dims label{font-size:10px;color:var(--dim)}
 .dims input{width:38px;background:var(--panel);border:1px solid var(--rule);
@@ -247,7 +247,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.52';
+const APP_VERSION = '3.53';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1182,7 +1182,10 @@ $('#m-palette').onclick=()=>setTop('palette');
 function formMats(form){ const set=new Set(); for(const e of DICT_ENTRIES){ if(e.form===form && e.mat) set.add(e.mat); } return [...set].sort(); }  // dict からその form の mat 一覧
 function renderPalList(){
   const el=$('#pal-list'); if(!el) return; el.innerHTML='';
-  const slots=Object.keys(S.pal.map).sort((a,b)=>{ const fa=roleForm(a),fb=roleForm(b); return fa!==fb ? (fa<fb?-1:1) : (a<b?-1:1); });
+  const formRank=f=>{ const i=FORM_LIST.indexOf(f); return i<0?9999:i; };   // form_dict の並び順
+  const slots=Object.keys(S.pal.map).sort((a,b)=>{ const fa=roleForm(a),fb=roleForm(b);
+    if(fa!==fb) return (formRank(fa)-formRank(fb)) || (fa<fb?-1:1);
+    return (parseInt(a.split('_').pop())||0)-(parseInt(b.split('_').pop())||0); });   // form内は番号順
   if(!slots.length){ el.innerHTML='<p class="note">（place を読み込むとスロットが並びます）</p>'; return; }
   let curForm=null;
   for(const slot of slots){ const form=roleForm(slot);
