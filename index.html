@@ -55,9 +55,12 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .dims input{width:38px;background:var(--panel);border:1px solid var(--rule);
   color:var(--chalk);font-family:inherit;font-size:12px;padding:4px;text-align:center;
   border-radius:3px;outline:none}
-#name,#pal-name{background:transparent;border:none;border-bottom:1px solid var(--rule);
+#name,#pal-name,#struct-name{background:transparent;border:none;border-bottom:1px solid var(--rule);
   color:var(--chalk);font-family:inherit;font-size:12px;padding:3px 2px;width:100%;
   max-width:190px;outline:none;margin-bottom:12px}
+.palname{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+.palname span{font-size:10px;color:var(--dim);min-width:64px}
+.palname input{margin-bottom:0}
 .apphead{display:flex;align-items:center;gap:8px;margin-bottom:12px}
 .appname{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   font-size:20px;letter-spacing:-.02em;line-height:1;color:var(--chalk)}
@@ -212,7 +215,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </div><!-- /place-root -->
 
 <div id="palette-root" class="hidden">
-  <input id="pal-name" value="palette-01" aria-label="palette の名前">
+  <div class="palname"><span>palette 名</span><input id="pal-name" value="palette-01" aria-label="palette の名前"></div>
+  <div class="palname"><span>structure 名</span><input id="struct-name" value="structure-01" aria-label="structure の名前"></div>
   <div class="bar" style="margin-top:0">
     <button class="btn" id="pal-load">place を読み込む</button>
     <button class="btn" id="pal-load-pal">palette を読み込む</button>
@@ -254,7 +258,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.55';
+const APP_VERSION = '3.56';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1221,7 +1225,8 @@ function palImport(text){   // place を本体(S.vox)へ読み込み、使用ス
 function buildStructure(){   // place(S.vox の slot) + palette(slot→mat) を合成した structure。未割当スロットは missing に集約
   const pal=S.pal.map||{}, missing=new Set();
   const recs=blockRecs(slot=>{ const m=pal[slot]; if(!m) missing.add(slot); return {mat:m||slot}; });
-  return {json:structJson($('#name').value, recs), missing:[...missing]};
+  const nm=($('#struct-name').value.trim())||'structure';
+  return {json:structJson(nm, recs), missing:[...missing]};
 }
 function palImportPalette(text){   // 既存 palette を任意で復元。place 未読込なら全採用、読込済みなら place のスロットのみ採用（place優先）
   try{ const d=JSON.parse(text); const pal=(d&&d.palette&&typeof d.palette==='object')?d.palette:{};
@@ -1251,7 +1256,7 @@ $('#pal-save').onclick=()=>{
 $('#pal-struct').onclick=()=>{   // place(S.vox) + palette(S.pal.map) を合成して structure を保存
   if(!S.vox.size){ status('place が空です（先に place を作成/読み込み）'); return; }
   const {json,missing}=buildStructure();
-  const fname=(($('#name').value)||'structure')+'.json';
+  const fname=(($('#struct-name').value.trim())||'structure')+'.json';
   const b=new Blob([json],{type:'application/json'}); const a=document.createElement('a');
   a.href=URL.createObjectURL(b); a.download=fname; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   status(missing.length
