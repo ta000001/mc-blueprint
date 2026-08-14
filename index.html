@@ -136,12 +136,13 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .matrow{display:flex;align-items:center;gap:10px;padding:8px 6px;border:none;border-bottom:1px solid var(--rule);background:transparent;cursor:pointer;text-align:left;width:100%}
 .matrow.on{background:var(--panel)}
 .matphys{font-family:ui-monospace,monospace;font-size:12px;color:var(--chalk);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.matja{font-size:11px;color:var(--dim);margin-left:auto;text-align:right;white-space:nowrap;flex:none}
+.matja{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mattop{display:flex;align-items:baseline;gap:8px;min-width:0}
 .matthumb{width:24px;height:24px;flex:none;border:1px solid var(--rule);border-radius:3px;overflow:hidden;background:var(--panel)}
 .matthumb img{width:100%;height:100%;image-rendering:pixelated;display:block}
 .matthumb.noimg{background:repeating-conic-gradient(var(--rule) 0% 25%,transparent 0% 50%) 0/8px 8px}
 .pal-pick{display:flex;align-items:center;gap:8px;flex:1;min-width:0;background:var(--panel);border:1px solid var(--rule);border-radius:4px;padding:5px 8px;cursor:pointer;text-align:left}
-.pal-pick-t{display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden}
+.pal-pick-t{display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-width:0;overflow:hidden}
 .mp-phys{font-family:ui-monospace,monospace;font-size:12px;color:var(--chalk);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mp-ja{font-size:11px;color:var(--dim);white-space:nowrap}
 .mp-none{font-size:12px;color:var(--dim)}
@@ -296,7 +297,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.72';
+const APP_VERSION = '3.73';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1260,10 +1261,12 @@ function openMatPicker(slot, form){   // mat 選択モーダル：物理名・�
     const key=matKey(form, mat);
     r.appendChild(matThumb(key));
     const txt=document.createElement('span'); txt.className='mattext';
-    const p=document.createElement('span'); p.className='matphys'; p.textContent=mat||'(未割当)'; txt.appendChild(p);
-    if(key){ const bl=document.createElement('span'); bl.className='matblock'; bl.textContent=key; txt.appendChild(bl); }  // 具体 block id
+    const top=document.createElement('span'); top.className='mattop';                                    // 上段: mat物理名 + block物理名
+    const p=document.createElement('span'); p.className='matphys'; p.textContent=mat||'(未割当)'; top.appendChild(p);
+    if(key){ const bl=document.createElement('span'); bl.className='matblock'; bl.textContent=key; top.appendChild(bl); }
+    txt.appendChild(top);
+    const j=document.createElement('span'); j.className='matja'; j.textContent=matJa(key); txt.appendChild(j);  // 下段: 和名
     r.appendChild(txt);
-    const j=document.createElement('span'); j.className='matja'; j.textContent=matJa(key); r.appendChild(j);
     r.onclick=()=>{ S.pal.map[slot]=mat; closeMatPicker(); renderPalList(); };
     return r; };
   list.appendChild(mkRow(''));                                  // (未割当)
@@ -1289,9 +1292,8 @@ function renderPalList(){
     const pick=document.createElement('button'); pick.className='pal-pick';
     pick.appendChild(matThumb(curKey));
     const t=document.createElement('span'); t.className='pal-pick-t';
-    if(cur){ const ph=document.createElement('span'); ph.className='mp-phys'; ph.textContent=cur; t.appendChild(ph);
-      if(curKey){ const bl=document.createElement('span'); bl.className='mp-block'; bl.textContent=curKey; t.appendChild(bl); }  // 具体 block id
-      const ja=matJa(curKey); if(ja){ const js=document.createElement('span'); js.className='mp-ja'; js.textContent=ja; t.appendChild(js); } }
+    if(cur){ const ph=document.createElement('span'); ph.className='mp-phys'; ph.textContent=curKey||cur; t.appendChild(ph);  // block物理名
+      const ja=matJa(curKey); if(ja){ const js=document.createElement('span'); js.className='mp-ja'; js.textContent=ja; t.appendChild(js); } }  // その下に和名
     else { const nn=document.createElement('span'); nn.className='mp-none'; nn.textContent='(未割当)'; t.appendChild(nn); }
     pick.appendChild(t);
     pick.onclick=()=>openMatPicker(slot, form);
