@@ -289,7 +289,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.63';
+const APP_VERSION = '3.64';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -355,17 +355,17 @@ let DICT_VERSION = null;
 let FORM_DICT_VERSION = null;   // form_dict.json の version（表示用・アプリ本体は未使用）
 let NAMES_JA = {};              // MAT -> 和名（names_ja.json・任意・MOD /abtest exporttex 生成）
 async function loadDict(){
-  const res = await fetch('./dict.json', {cache:'no-cache'});
+  const res = await fetch('./dict.json?v='+APP_VERSION, {cache:'no-cache'});
   if(!res.ok) throw new Error('dict.json HTTP '+res.status);
   const j = await res.json();
   DICT_ENTRIES = Array.isArray(j) ? j : (j.entries||[]);
   DICT_VERSION = (j && j.version!=null) ? j.version : null;
   // form_dict.json はアプリ未使用だが version 表示のため取得（失敗は無視）
-  try { const r2 = await fetch('./form_dict.json', {cache:'no-cache'});
+  try { const r2 = await fetch('./form_dict.json?v='+APP_VERSION, {cache:'no-cache'});
         if(r2.ok){ const j2 = await r2.json(); FORM_DICT_VERSION = (j2 && j2.version!=null) ? j2.version : null; buildFormProps(j2.classes); } }
   catch(_){}
   // names_ja.json（MAT→和名・任意）。無ければ和名なしで動作。
-  try { const r3 = await fetch('./names_ja.json', {cache:'no-cache'});
+  try { const r3 = await fetch('./names_ja.json?v='+APP_VERSION, {cache:'no-cache'});
         if(r3.ok){ const j3 = await r3.json(); NAMES_JA = (j3 && j3.names) ? j3.names : (j3||{}); } }
   catch(_){}
 }
