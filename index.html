@@ -217,8 +217,9 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="pal-load">place を読み込む</button>
     <button class="btn" id="pal-load-pal">palette を読み込む</button>
     <button class="btn" id="pal-save">palette を保存</button>
+    <button class="btn" id="pal-struct">structure を保存</button>
   </div>
-  <p class="note">place の JSON(blocks) を読み込むと、使われているスロットが form 別に並びます。各スロットに mat を割り当てて保存してください。palette の読み込みは任意（既存の割当を復元）。place に無いスロットは place 優先で無視します。</p>
+  <p class="note">place の JSON(blocks) を読み込むと、使われているスロットが form 別に並びます。各スロットに mat を割り当てて保存してください。palette の読み込みは任意（既存の割当を復元）。place に無いスロットは place 優先で無視します。「structure を保存」で place＋palette を合成（slot→mat 解決）した structure を出力します。</p>
   <div id="pal-list"></div>
   <input id="pal-file" type="file" accept="application/json,.json" class="hidden">
   <input id="pal-file2" type="file" accept="application/json,.json" class="hidden">
@@ -253,7 +254,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.54';
+const APP_VERSION = '3.55';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -890,27 +891,29 @@ function renderGrid(){
 })();
 
 /* ---------- json ---------- */
+function blockRecs(fieldFn){   // S.vox を structure レコード(1行文字列)配列へ。fieldFn(slot)=slot/mat 等のフィールドを付与
+  const W=S.dims.x;
+  const arr=[...S.vox.entries()].map(([k,v])=>({p:k.split(',').map(Number),v:norm(v)}))
+    .sort((a,b)=>a.p[2]-b.p[2]||a.p[1]-b.p[1]||b.p[0]-a.p[0]); // d(z) → h(y) → 出力W昇順(=x降順)
+  return arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:mirW(p[0],W)}};
+    Object.assign(rec, fieldFn(v.r));                                  // slot（place）または mat（structure）
+    const form=formOf({s:v.s,ot:v.ot}); rec.form=form;
+    for(const {name} of shownProps(form)){ let val=v.props[name];      // 汎用: 出すプロパティを素直に書く
+      if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); rec[name]=val; }
+    if(isMultiHalf(form)){ rec.half='lower';                           // upper/lower の form（ドア等）は2レコードに展開
+      const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},form:form,half:'upper'}; Object.assign(up, fieldFn(v.r));
+      if(rec.facing) up.facing=rec.facing; if(rec.hinge) up.hinge=rec.hinge;
+      return '  '+JSON.stringify(rec)+',\n  '+JSON.stringify(up); }
+    return '  '+JSON.stringify(rec); });
+}
+function structJson(name, recs){ const d=S.dims;   // structure(size=[D,H,W]) の外枠
+  return '{\n "name": '+JSON.stringify(name)+',\n "size": ['+d.z+', '+d.y+', '+d.x+'],\n'
+    +' "blocks": [\n'+recs.join(',\n')+(recs.length?'\n':'')+' ]\n}';
+}
 function buildJson(mode){
   mode = mode || S.jsonMode;
   const d=S.dims, name=$('#name').value;
-  if(mode==='blocks'){
-    // structure(d,h,w) 準拠のレコード。x→w, y→h, z→d。1レコード1行。
-    const W=d.x;
-    const arr=[...S.vox.entries()].map(([k,v])=>({p:k.split(',').map(Number),v:norm(v)}))
-      .sort((a,b)=>a.p[2]-b.p[2]||a.p[1]-b.p[1]||b.p[0]-a.p[0]); // d(z) → h(y) → 出力W昇順(=x降順)
-    const recs=arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:mirW(p[0],W)}};
-      rec.slot=v.r;                   // slot（スロット＝FORM_n）。palette 側で slot→具体mat に解決
-      const form=formOf({s:v.s,ot:v.ot}); rec.form=form;
-      for(const {name} of shownProps(form)){ let val=v.props[name];     // 汎用: 出すプロパティを素直に書く
-        if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); rec[name]=val; }
-      if(isMultiHalf(form)){ rec.half='lower';                          // upper/lower の form（ドア等）は2レコードに展開
-        const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},form:form,half:'upper'}; up.slot=v.r;
-        if(rec.facing) up.facing=rec.facing; if(rec.hinge) up.hinge=rec.hinge;
-        return '  '+JSON.stringify(rec)+',\n  '+JSON.stringify(up); }
-      return '  '+JSON.stringify(rec); });
-    return '{\n "name": '+JSON.stringify(name)+',\n "size": ['+d.z+', '+d.y+', '+d.x+'],\n'
-      +' "blocks": [\n'+recs.join(',\n')+(recs.length?'\n':'')+' ]\n}';
-  }
+  if(mode==='blocks') return structJson(name, blockRecs(slot=>({slot})));   // slot（palette 側で mat 解決）
   const c=counts(), layers={};
   for(let y=0;y<d.y;y++){
     if(!c[y]) continue;
@@ -1179,7 +1182,7 @@ function setTop(mode){ S.top=mode;
   $('#palette-root').classList.toggle('hidden', mode!=='palette');
   $('#m-place').setAttribute('aria-pressed', mode==='place');
   $('#m-palette').setAttribute('aria-pressed', mode==='palette');
-  if(mode==='palette') renderPalList();
+  if(mode==='palette'){ palSyncFromVox(); renderPalList(); }
 }
 $('#m-place').onclick=()=>setTop('place');
 $('#m-palette').onclick=()=>setTop('palette');
@@ -1206,11 +1209,19 @@ function renderPalList(){
     row.appendChild(sel); el.appendChild(row);
   }
 }
-function palImport(text){
-  try{ const d=JSON.parse(text); const blocks=Array.isArray(d.blocks)?d.blocks:[]; let n=0;
-    for(const b of blocks){ const slot=b.slot||b.mat; if(slot){ n++; if(!(slot in S.pal.map)) S.pal.map[slot]=''; } }
-    status('place を読み込みました（スロット '+Object.keys(S.pal.map).length+' 種）'); renderPalList();
-  }catch(e){ status('このファイルは読み込めません'); }
+function palSyncFromVox(){   // 現在の place(S.vox) の使用スロットを pal に反映。既存割当は保持・place に無いスロットは place優先で除去
+  const used=new Set(); for(const [,v] of S.vox) used.add(norm(v).r);
+  for(const s of used) if(!(s in S.pal.map)) S.pal.map[s]='';
+  for(const s of Object.keys(S.pal.map)) if(!used.has(s)) delete S.pal.map[s];
+}
+function palImport(text){   // place を本体(S.vox)へ読み込み、使用スロットを pal-list へ（place が単一ソース）
+  importJson(text); palSyncFromVox(); renderPalList();
+  status('place を読み込みました（スロット '+Object.keys(S.pal.map).length+' 種）');
+}
+function buildStructure(){   // place(S.vox の slot) + palette(slot→mat) を合成した structure。未割当スロットは missing に集約
+  const pal=S.pal.map||{}, missing=new Set();
+  const recs=blockRecs(slot=>{ const m=pal[slot]; if(!m) missing.add(slot); return {mat:m||slot}; });
+  return {json:structJson($('#name').value, recs), missing:[...missing]};
 }
 function palImportPalette(text){   // 既存 palette を任意で復元。place 未読込なら全採用、読込済みなら place のスロットのみ採用（place優先）
   try{ const d=JSON.parse(text); const pal=(d&&d.palette&&typeof d.palette==='object')?d.palette:{};
@@ -1236,6 +1247,16 @@ $('#pal-save').onclick=()=>{
   const b=new Blob([text],{type:'application/json'}); const a=document.createElement('a');
   a.href=URL.createObjectURL(b); a.download=fname; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   status('palette を保存しました（'+Object.keys(map).length+' 件）');
+};
+$('#pal-struct').onclick=()=>{   // place(S.vox) + palette(S.pal.map) を合成して structure を保存
+  if(!S.vox.size){ status('place が空です（先に place を作成/読み込み）'); return; }
+  const {json,missing}=buildStructure();
+  const fname=(($('#name').value)||'structure')+'.json';
+  const b=new Blob([json],{type:'application/json'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download=fname; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  status(missing.length
+    ? '⚠ structure 保存: 未割当スロット '+missing.length+' 件（'+missing.slice(0,3).join(', ')+(missing.length>3?'…':'')+'）は slot 名のまま出力。palette で mat を割り当ててください'
+    : 'structure を保存しました（place+palette 合成）');
 };
 
 /* ---------- boot ---------- */
