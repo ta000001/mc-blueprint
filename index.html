@@ -289,7 +289,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.65';
+const APP_VERSION = '3.66';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -354,6 +354,8 @@ let DICT_ENTRIES = [];   // loadDict() が ./dict.json から投入（ここに�
 let DICT_VERSION = null;
 let FORM_DICT_VERSION = null;   // form_dict.json の version（表示用・アプリ本体は未使用）
 let NAMES_JA = {};              // block_id -> 和名（names_ja.json・任意・MOD /abtest exporttex 生成）
+let NAMES_JA_VERSION = null;    // names_ja.json の version（[番号](yyyymmdd)）
+let BLOCKTEX_VERSION = null;    // blocktex.json の version（[番号](yyyymmdd)）
 let BLOCK_BY_FORMMAT = {};      // 'FORM|MAT' -> block_id（画像/和名は block id キー。form 毎に別ブロック）
 function buildBlockIndex(){ BLOCK_BY_FORMMAT={}; for(const e of DICT_ENTRIES){ if(e.mat && e.block) BLOCK_BY_FORMMAT[e.form+'|'+e.mat]=String(e.block).replace(/:/g,'__'); } }
 async function loadDict(){
@@ -369,7 +371,11 @@ async function loadDict(){
   catch(_){}
   // names_ja.json（MAT→和名・任意）。無ければ和名なしで動作。
   try { const r3 = await fetch('./names_ja.json?v='+APP_VERSION, {cache:'no-cache'});
-        if(r3.ok){ const j3 = await r3.json(); NAMES_JA = (j3 && j3.names) ? j3.names : (j3||{}); } }
+        if(r3.ok){ const j3 = await r3.json(); NAMES_JA = (j3 && j3.names) ? j3.names : (j3||{}); NAMES_JA_VERSION = (j3 && j3.version!=null) ? j3.version : null; } }
+  catch(_){}
+  // blocktex.json（画像群の version のみ・任意）
+  try { const r4 = await fetch('./blocktex.json?v='+APP_VERSION, {cache:'no-cache'});
+        if(r4.ok){ const j4 = await r4.json(); BLOCKTEX_VERSION = (j4 && j4.version!=null) ? j4.version : null; } }
   catch(_){}
 }
 const SHAPE_FORM = {fullblock:'FULLBLOCK', slab:'SLAB', stairs:'STAIRS', trapdoor:'TRAPDOOR'};
@@ -1356,10 +1362,12 @@ $('#pal-struct').onclick=()=>{   // place(S.vox) + palette(S.pal.map) を合成�
 };
 
 /* ---------- boot ---------- */
-function fillVer(){ $('#vmodal-body').innerHTML =                     // ? バッジ→モーダルで3行縦表示
+function fillVer(){ $('#vmodal-body').innerHTML =                     // ? バッジ→モーダルで各版を縦表示
   '<div class="vrow">app v'+APP_VERSION+'</div>'+
-  '<div class="vrow">dict v'+(DICT_VERSION??'?')+'</div>'+
-  '<div class="vrow">form_dict v'+(FORM_DICT_VERSION??'?')+'</div>'; }
+  '<div class="vrow">dict '+(DICT_VERSION??'?')+'</div>'+
+  '<div class="vrow">form_dict '+(FORM_DICT_VERSION??'?')+'</div>'+
+  '<div class="vrow">names_ja '+(NAMES_JA_VERSION??'?')+'</div>'+
+  '<div class="vrow">blocktex '+(BLOCKTEX_VERSION??'?')+'</div>'; }
 fillVer();
 $('#ver').onclick = ()=> $('#vmodal').classList.add('on');
 $('#vmodal').onclick = e=>{ if(e.target.id==='vmodal') $('#vmodal').classList.remove('on'); };  // 背景タップで閉じる

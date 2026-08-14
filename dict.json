@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": "[1](20260815)",
   "_comment": "block <-> (mat, form) 単一ソース辞書。フルブロックは form=FULLBLOCK・識別はmat。派生(STAIRS/SLAB/DOOR等)はベースフルのmat＋形form。材質なしは mat 省略。",
   "entries": [
     {"block":"oak_planks","form":"FULLBLOCK","mat":"OAK_PLANKS"},

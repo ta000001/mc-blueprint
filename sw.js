@@ -1,4 +1,4 @@
-const CACHE = 'blueprint-v3.65';
+const CACHE = 'blueprint-v3.66';
 const ASSETS = [
   './',
   './index.html',
@@ -41,8 +41,8 @@ self.addEventListener('fetch', (e) => {
     );
     return;
   }
-  // dict / form_dict / names_ja は network-first（MOD から sync した最新を常に反映。オフラインのみキャッシュ）
-  if (/\/(dict|form_dict|names_ja)\.json$/.test(new URL(req.url).pathname)) {
+  // dict / form_dict / names_ja / blocktex は network-first（MOD から sync した最新を常に反映。オフラインのみキャッシュ）
+  if (/\/(dict|form_dict|names_ja|blocktex)\.json$/.test(new URL(req.url).pathname)) {
     e.respondWith(
       fetch(new Request(req.url, {cache: 'no-store'})).then((res) => {
         const copy = res.clone();

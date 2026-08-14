@@ -41,9 +41,9 @@ if (Test-Path $namesFrom) {
     Write-Host "skip names_ja.json (run /abtest exporttex in-game to generate)"
 }
 
-# Optional: block face textures (data/master/blocktex/*.png) -> assets/blocks/.
-$master = Split-Path $src -Parent
-$texSrc = Join-Path $master "blocktex"
+# Optional: block face textures (data/master/block/blocktex/*.png) -> assets/blocks/,
+# plus the version-only file blocktex/version.json -> ./blocktex.json.
+$texSrc = Join-Path $src "blocktex"
 if (Test-Path $texSrc) {
     $texDst = Join-Path $PSScriptRoot "assets\blocks"
     if (-not (Test-Path $texDst)) { New-Item -ItemType Directory -Path $texDst -Force | Out-Null }
@@ -52,6 +52,11 @@ if (Test-Path $texSrc) {
     $pngs = Get-ChildItem $texSrc -Filter *.png -ErrorAction SilentlyContinue
     foreach ($p in $pngs) { Copy-Item $p.FullName (Join-Path $texDst $p.Name) -Force }
     Write-Host "synced $($pngs.Count) block textures  <-  $texSrc"
+    $texVer = Join-Path $texSrc "version.json"
+    if (Test-Path $texVer) {
+        Copy-Item $texVer (Join-Path $PSScriptRoot "blocktex.json") -Force
+        Write-Host "synced blocktex.json  <-  $texVer"
+    }
 } else {
     Write-Host "skip blocktex (run /abtest exporttex in-game to generate)"
 }
