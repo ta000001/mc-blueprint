@@ -187,7 +187,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="bar" id="dir-space"></div>
   <div class="bar" id="roles-space"></div>
   <div class="bar"><button class="btn" id="b-clear">すべて消去</button></div>
-  <p class="note">緑の面が作業面。タップで1個、<b>ドラッグで矩形</b>配置。<b>ダブルタップ/クリックで削除</b>、ダブル→ドラッグで削除範囲。作業面より上の層は半透明で編集不可。色＝役割（place の mat）。合計 <span id="tot">0</span> ブロック。</p>
+  <p class="note">合計 <span id="tot">0</span> ブロック。（操作方法は右上の <b>?</b> ）</p>
 </section>
 
 <section id="v-plan" class="hidden">
@@ -290,6 +290,13 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <div class="hnote">できること：視点の拡大・回転・移動、作業面の上下、他モードへの切替。</div>
   </div>
   <div class="hgrp">
+    <div class="hrow"><b>作業面・表示</b></div>
+    <div class="hrow">・緑の面が作業面。作業面より上の層は半透明で編集不可。</div>
+    <div class="hrow">・タップで1個、ドラッグで矩形配置。</div>
+    <div class="hrow">・ダブルタップ/クリックで削除、ダブル→ドラッグで削除範囲。</div>
+    <div class="hrow">・色＝役割（place の mat）。</div>
+  </div>
+  <div class="hgrp">
     <div class="hrow"><b>軸</b>　原点(0,0,0) ＝ 手前・下・左</div>
     <div class="hrow"><span style="color:#ff8a8a">赤 = W →</span>　<span style="color:#7ad79a">緑 = H ↑</span>　<span style="color:#8aa8ff">青 = D 奥</span></div>
   </div>
@@ -297,7 +304,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.73';
+const APP_VERSION = '3.74';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
