@@ -223,7 +223,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.46';
+const APP_VERSION = '3.47';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -350,6 +350,7 @@ function load(){
     if(Array.isArray(d.voxels)) S.vox = new Map(d.voxels.map(([k,v])=>[k, norm(v)]));
     if(d.role) S.role = d.role;
     if(d.roleCount) S.roleCount = d.roleCount;
+    for(const f in S.roleCount) cleanupRoles(f);   // 読み込み時も未使用役割を整理（既定数は維持）
   }catch(e){}
 }
 function status(m){ $('#status').textContent = m; clearTimeout(status._t);
@@ -941,7 +942,7 @@ function setMode(m){ S.mode=m;
   if(m!=='info') $('#inspect').classList.remove('on'); }
 function showInfo(v){   // 案1: タップしたブロックの form/mat/向き を表示
   const form=formOf(v), parts=['form='+form];
-  parts.push('role='+v.r);
+  parts.push('role(mat)='+v.r);
   for(const {name} of shownProps(form)) if(v.props[name]!=null) parts.push(name+'='+v.props[name]);
   $('#inspect').innerHTML=parts.join('<br>'); $('#inspect').classList.add('on'); }   // 項目毎に改行（右下詰め）
 
@@ -978,7 +979,10 @@ function openModal(){ const g=$('#modal-grid'); if(!g) return; g.innerHTML='';
   $('#modal').classList.add('on');
 }
 function closeModal(){ $('#modal').classList.remove('on'); }
-function roleCountFor(form){ return S.roleCount[form] || (PRIMARY_SHAPES.includes(form)?2:1); }  // 既定 others=1 / 主要形=2
+const defaultRoleCount = (form)=> PRIMARY_SHAPES.includes(form)?2:1;   // 既定 others=1 / 主要形=2
+function roleCountFor(form){ return S.roleCount[form] || defaultRoleCount(form); }
+function usedRoleMax(form){ let mx=0; S.vox.forEach(v=>{ const r=norm(v).r; if(roleForm(r)===form){ const num=parseInt(String(r).split('_').pop(),10)||0; if(num>mx) mx=num; } }); return mx; }  // その form で使用中の最大役割番号
+function cleanupRoles(form){ S.roleCount[form] = Math.max(defaultRoleCount(form), usedRoleMax(form)); }  // 未使用（末尾）を整理・既定数は下回らない
 function renderRoles(){   // 役割バー：現在 form の役割 FORM_1.. のみ表示。＋で10まで。form/番号から動的生成
   const form = formOf({s:S.shape, ot:S.other});
   if(roleForm(S.role)!==form) S.role = form+'_1';                 // form 切替時は既定役割へ
@@ -995,6 +999,8 @@ function renderRoles(){   // 役割バー：現在 form の役割 FORM_1.. の�
       p.onclick=()=>{ S.roleCount[form]=Math.min(10, roleCountFor(form)+1); save(); renderRoles(); };
       el.appendChild(p);
     }
+    { const c=document.createElement('button'); c.className='btn'; c.textContent='↻'; c.title='未使用の役割ボタンを整理（既定数まで）';
+      c.onclick=()=>{ cleanupRoles(form); save(); renderRoles(); }; el.appendChild(c); }
   });
 }
 
