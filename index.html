@@ -180,8 +180,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <section id="v-json" class="hidden">
   <div class="bar" style="margin-top:0">
-    <button class="btn" id="j-layers" aria-pressed="true">層グリッド</button>
-    <button class="btn" id="j-voxels" aria-pressed="false">レコード</button>
+    <button class="btn" id="j-layers" aria-pressed="false">層グリッド</button>
+    <button class="btn" id="j-voxels" aria-pressed="true">レコード</button>
     <button class="btn" id="j-apply">✓ 反映</button>
     <button class="btn" id="j-copy">コピー</button>
     <button class="btn" id="j-dl">保存</button>
@@ -223,7 +223,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.49';
+const APP_VERSION = '3.50';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -315,7 +315,7 @@ const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'FULLBLOCK_1',
   shape:'fullblock', other:'DOOR', roleCount:{},
   props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
-  view:'space', jsonMode:'layers', cell:20, hist:[], redo:[], manualZoom:false, dirHandle:null, labels:false
+  view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirHandle:null, labels:false
 };
 const cur = ()=>({r:S.role, s:S.shape, ot:S.other, props:{...S.props}});
 const sig = (v)=>{ if(!v) return ''; const n=norm(v); return [n.r,n.s,n.ot,n.f,n.h,n.ax,n.hg,n.o,n.hang,n.fc].join('|'); };
@@ -859,9 +859,10 @@ function renderGrid(){
 })();
 
 /* ---------- json ---------- */
-function buildJson(){
+function buildJson(mode){
+  mode = mode || S.jsonMode;
   const d=S.dims, name=$('#name').value;
-  if(S.jsonMode==='blocks'){
+  if(mode==='blocks'){
     // structure(d,h,w) 準拠のレコード。x→w, y→h, z→d。1レコード1行。
     const W=d.x;
     const arr=[...S.vox.entries()].map(([k,v])=>({p:k.split(',').map(Number),v:norm(v)}))
@@ -1065,7 +1066,7 @@ async function pickDir(){
 $('#j-dir').onclick=pickDir;
 
 $('#j-dl').onclick=async()=>{
-  const text=buildJson(), fname=($('#name').value||'blueprint')+'.json';
+  const text=buildJson('blocks'), fname=($('#name').value||'blueprint')+'.json';   // 保存は常に blocks（形/mat/向きを保持）
   if(S.dirHandle){
     try{
       if(await ensurePerm(S.dirHandle)){
