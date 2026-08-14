@@ -1,5 +1,5 @@
 {
-  "version": "[3](20260815)",
+  "version": "3(20260815)",
   "_comment": "block クラス × form → 保有 blockstate プロパティ一覧。registry から機械生成（このファイルは手編集禁止＝runData で上書き）。粒度は block クラス（form とは 1:1 でない）。1クラスが複数 form を持つ場合はレコードを分割（例 IronBarsBlock→FENCE/PANE）。form は dict.json 由来（同一クラスの未登録ブロックはその form に吸収）。dict に無い＝建材語彙外は form=\"unregistered\"。properties は {name,values}。回転系(facing/axis)の values は autobuild 相対トークン(FRONT/RIGHT/BACK/LEFT/UP/DOWN・DEPTH/WIDTH/VERTICAL)、他はバニラ値。【変更方法】仕様(フィールド/ソート順/form解決)は生成器 BlockClassReportProvider.java、form 割り当ては dict.json を直し、/gradlew runData で再生成→version を上げる。【単一ソース】正典は MOD。mc-blueprint はコピー（sync-from-mod.ps1 で一方向反映）・編集禁止。詳細は rules/single-source.md。",
   "classes": [
     {"form":"FULLBLOCK","blockClass":"AmethystBlock","properties":[],"exampleBlocks":["amethyst_block"]},
