@@ -223,7 +223,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.47';
+const APP_VERSION = '3.48';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -350,7 +350,7 @@ function load(){
     if(Array.isArray(d.voxels)) S.vox = new Map(d.voxels.map(([k,v])=>[k, norm(v)]));
     if(d.role) S.role = d.role;
     if(d.roleCount) S.roleCount = d.roleCount;
-    for(const f in S.roleCount) cleanupRoles(f);   // 読み込み時も未使用役割を整理（既定数は維持）
+    try{ const fs=new Set(Object.keys(S.roleCount)); S.vox.forEach(v=>fs.add(roleForm(norm(v).r))); fs.forEach(f=>{ if(f) cleanupRoles(f); }); }catch(_){}   // 読み込み時も未使用役割を整理（vox使用中の form も対象）
   }catch(e){}
 }
 function status(m){ $('#status').textContent = m; clearTimeout(status._t);
@@ -872,7 +872,7 @@ function buildJson(){
       for(const {name} of shownProps(form)){ let val=v.props[name];     // 汎用: 出すプロパティを素直に書く
         if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); rec[name]=val; }
       if(isMultiHalf(form)){ rec.half='lower';                          // upper/lower の form（ドア等）は2レコードに展開
-        const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},form:form,half:'upper'}; if(em) up.mat=em;
+        const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},form:form,half:'upper'}; up.mat=v.r;
         if(rec.facing) up.facing=rec.facing; if(rec.hinge) up.hinge=rec.hinge;
         return '  '+JSON.stringify(rec)+',\n  '+JSON.stringify(up); }
       return '  '+JSON.stringify(rec); });
