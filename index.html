@@ -221,9 +221,9 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="j-imp">読み込み</button>
     <button class="btn" id="j-dir">📁 保存先</button>
   </div>
-  <div class="bar">
-    <button class="btn" id="j-layers" aria-pressed="false">層グリッド</button>
-    <button class="btn" id="j-voxels" aria-pressed="true">レコード</button>
+  <div class="tabs">
+    <button id="j-voxels" aria-selected="true">レコード</button>
+    <button id="j-layers" aria-selected="false">層グリッド</button>
   </div>
   <textarea id="json" spellcheck="false"></textarea>
   <div class="bar">
@@ -293,7 +293,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.69';
+const APP_VERSION = '3.70';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1111,9 +1111,9 @@ $('#p-out').onclick=()=>{ pushHist(); const d=S.dims;
   changed(); renderGrid(); renderSpine(); };
 
 $('#j-layers').onclick=()=>{ S.jsonMode='layers';
-  $('#j-layers').setAttribute('aria-pressed',true); $('#j-voxels').setAttribute('aria-pressed',false); renderJson(); };
+  $('#j-layers').setAttribute('aria-selected',true); $('#j-voxels').setAttribute('aria-selected',false); renderJson(); };
 $('#j-voxels').onclick=()=>{ S.jsonMode='blocks';
-  $('#j-layers').setAttribute('aria-pressed',false); $('#j-voxels').setAttribute('aria-pressed',true); renderJson(); };
+  $('#j-layers').setAttribute('aria-selected',false); $('#j-voxels').setAttribute('aria-selected',true); renderJson(); };
 $('#j-apply').onclick=()=>{ importJson($('#json').value); };   // テキスト直接編集を model へ反映（importJson が pushHist=undo可）
 $('#j-copy').onclick=async()=>{
   try{ await navigator.clipboard.writeText(buildJson()); status('JSONをコピーしました'); }
