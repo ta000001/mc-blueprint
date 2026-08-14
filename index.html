@@ -223,33 +223,16 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.45';
+const APP_VERSION = '3.46';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
 
 /* 役割（色）＝place の mat。palette 側で 役割→dict mat を対応づける */
-const ROLES = [
-  {k:'wall_main', jp:'壁主',   c:0xC0533F},
-  {k:'wall_sub',  jp:'壁副',   c:0xD98C5A},
-  {k:'roof_main', jp:'屋根主', c:0x3F63B0},
-  {k:'roof_sub',  jp:'屋根副', c:0x5A86D0},
-  {k:'base_main', jp:'土台主', c:0x8A8F94},
-  {k:'base_sub',  jp:'土台副', c:0xB2B6BA},
-  {k:'floor',     jp:'床',     c:0x4E9A5A},
-  {k:'frame',     jp:'柱梁',   c:0x6B4A2F},
-  {k:'window',    jp:'窓',     c:0x5AB6D0},
-  {k:'door',      jp:'ドア',   c:0xB8862F},
-  {k:'accent1',   jp:'装飾1',  c:0x9B5AC0},
-  {k:'accent2',   jp:'装飾2',  c:0xC05A9B},
-  {k:'accent3',   jp:'装飾3',  c:0xC0A03F},
-  {k:'accent4',   jp:'装飾4',  c:0x5AC0A0},
-  {k:'accent5',   jp:'装飾5',  c:0xC06A3F},
-  {k:'accent6',   jp:'装飾6',  c:0x7A8A3F},
-];
-const ROLE_C = Object.fromEntries(ROLES.map(r=>[r.k,r.c]));
-const roleColor = (role)=> (role in ROLE_C) ? ROLE_C[role] : ROLES[0].c;
-const roleHex = (role)=> '#'+roleColor(role).toString(16).padStart(6,'0');
+const ROLE_COLORS = [0xC0533F,0x3F63B0,0x4E9A5A,0xB8862F,0x9B5AC0,0x5AB6D0,0xC05A9B,0xC0A03F,0x5AC0A0,0x8A8F94];  // 役割番号1〜10の色
+const roleForm  = (role)=> String(role).replace(/_\d+$/,'');                 // 'FULLBLOCK_2' -> 'FULLBLOCK'
+const roleColor = (role)=>{ const n=parseInt(String(role).split('_').pop(),10); return ROLE_COLORS[(((n||1)-1)%10+10)%10]; };
+const roleHex   = (role)=> '#'+roleColor(role).toString(16).padStart(6,'0');
 
 const SHAPES = ['fullblock','slab','stairs','trapdoor'];   // 形（MOD form: FULLBLOCK/SLAB/STAIRS/TRAPDOOR）
 const FAC = ['FRONT','RIGHT','BACK','LEFT','UP','DOWN'];   // facing（相対トークン, full は6方向）
@@ -266,7 +249,6 @@ const PRIMARY_SHAPES = ['FULLBLOCK','SLAB','STAIRS','TRAPDOOR'];
 const STATE_OPTIN = { open: ['TRAPDOOR'] };            // 既定 close 固定、ここに挙げた form だけ open ボタン
 const SHOW   = new Set(['facing','axis','half','type','hinge','open','hanging','face']);   // allowlist(実装済みハンドラ)
 const MIRROR = new Set(['facing','hinge']);            // 左右ミラー対象(I/O時に反転)。②で描画層へ移す予定
-const NOMAT_FORMS = ['TORCH','WALL_TORCH','LANTERN','CAMPFIRE','CHAIN'];
 const FORM_GEO = { TORCH:'o_torch', WALL_TORCH:'o_wtorch', LANTERN:'o_lantern', CAMPFIRE:'o_campfire', CHAIN:'o_chain', FENCE:'o_fence', FENCE_GATE:'o_fencegate',
                    BUTTON:'o_button', PANE:'o_pane', GRATE:'o_grate', POPPY:'o_poppy', AIR:'o_air' };
 const OTHER_KEY2FORM = { door:'DOOR', torch:'TORCH', wall_torch:'WALL_TORCH', lantern:'LANTERN', campfire:'CAMPFIRE', chain:'CHAIN', fence:'FENCE', fence_gate:'FENCE_GATE' };  // 旧 other-key → form 移行
@@ -305,15 +287,12 @@ function shownProps(form){
 let DICT_ENTRIES = [];   // loadDict() が ./dict.json から投入（ここに直書きしない）
 let DICT_VERSION = null;
 let FORM_DICT_VERSION = null;   // form_dict.json の version（表示用・アプリ本体は未使用）
-let FORM_MATS = {};      // DICT_ENTRIES から buildFormMats() で導出
-function buildFormMats(){ const m={}; for(const e of DICT_ENTRIES){ (m[e.form]??=[]); if(e.mat && !m[e.form].includes(e.mat)) m[e.form].push(e.mat); } for(const f in m) m[f].sort(); return m; }  // form→mat一覧を導出
 async function loadDict(){
   const res = await fetch('./dict.json', {cache:'no-cache'});
   if(!res.ok) throw new Error('dict.json HTTP '+res.status);
   const j = await res.json();
   DICT_ENTRIES = Array.isArray(j) ? j : (j.entries||[]);
   DICT_VERSION = (j && j.version!=null) ? j.version : null;
-  FORM_MATS = buildFormMats();
   // form_dict.json はアプリ未使用だが version 表示のため取得（失敗は無視）
   try { const r2 = await fetch('./form_dict.json', {cache:'no-cache'});
         if(r2.ok){ const j2 = await r2.json(); FORM_DICT_VERSION = (j2 && j2.version!=null) ? j2.version : null; buildFormProps(j2.classes); } }
@@ -321,16 +300,7 @@ async function loadDict(){
 }
 const SHAPE_FORM = {fullblock:'FULLBLOCK', slab:'SLAB', stairs:'STAIRS', trapdoor:'TRAPDOOR'};
 const formOf  = (v)=> v.s==='others' ? (v.ot||'') : (SHAPE_FORM[v.s]||'');   // v.ot は form 文字列
-const noMatOf = (v)=> NOMAT_FORMS.includes(formOf(v));
-function matInfo(form, noMat){ const mats=FORM_MATS[form]||[];
-  if(mats.length===1) return {mode:'auto', mats, mat:mats[0]};        // 一意→自動確定（全form共通）
-  if(noMat) return mats.length>=2 ? {mode:'select', mats} : {mode:'none', mats};
-  return {mode:'role', mats};                                          // 材質forms＝役割/palette
-}
-const effMat = (v)=>{ const i=matInfo(formOf(v),noMatOf(v));
-  return i.mode==='role'?v.r : i.mode==='auto'?i.mat : i.mode==='select'?(i.mats.includes(v.om)?v.om:i.mats[0]) : null; };
-const curMatMode = ()=> matInfo(formOf({s:S.shape,ot:S.other}), noMatOf({s:S.shape,ot:S.other})).mode;
-const isNoMat = ()=> curMatMode()!=='role';   // 役割バーを隠す条件（role 以外＝auto/select/none）
+// mat auto/select は撤去。全 form が form 別役割（FORM_n）方式（A案・2026-08-14）
 const mirHinge = (h)=> h==='left'?'right':(h==='right'?'left':h);   // W ミラーで hinge も左右反転
 
 /* three.js(右手系) ⇄ Minecraft/autobuilder(左手系) の橋渡し（v3.4）。
@@ -342,13 +312,13 @@ const MIR_FAC = {FRONT:'FRONT', RIGHT:'LEFT', BACK:'BACK', LEFT:'RIGHT'};
 const mirFac = (tok)=> MIR_FAC[tok] || tok;
 
 const S = {
-  dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'wall_main',
-  shape:'fullblock', other:'DOOR', omat:'COAL',
+  dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'FULLBLOCK_1',
+  shape:'fullblock', other:'DOOR', roleCount:{},
   props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
   view:'space', jsonMode:'layers', cell:20, hist:[], redo:[], manualZoom:false, dirHandle:null, labels:false
 };
-const cur = ()=>({r:S.role, s:S.shape, ot:S.other, om:S.omat, props:{...S.props}});
-const sig = (v)=>{ if(!v) return ''; const n=norm(v); return [n.r,n.s,n.ot,n.om,n.f,n.h,n.ax,n.hg,n.o,n.hang,n.fc].join('|'); };
+const cur = ()=>({r:S.role, s:S.shape, ot:S.other, props:{...S.props}});
+const sig = (v)=>{ if(!v) return ''; const n=norm(v); return [n.r,n.s,n.ot,n.f,n.h,n.ax,n.hg,n.o,n.hang,n.fc].join('|'); };
 const norm = (v)=>{
   if(typeof v==='string') v={r:v};
   let props = v.props;
@@ -358,7 +328,7 @@ const norm = (v)=>{
   }
   props = {facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall', ...props};
   let ot = v.ot || 'DOOR'; if(OTHER_KEY2FORM[ot]) ot=OTHER_KEY2FORM[ot];   // 旧 other-key -> form 移行
-  const o = {r:v.r||'wall_main', s:v.s||'fullblock', ot, om:v.om||'COAL', props};
+  const o = {r:v.r||'FULLBLOCK_1', s:v.s||'fullblock', ot, props};
   o.f=FAC_I[props.facing]||0; o.h=(o.s==='slab'?props.type:props.half)||'bottom';   // 描画互換の派生フィールド
   o.ax=props.axis; o.hg=props.hinge; o.o=props.open; o.hang=props.hanging; o.fc=props.face;
   return o;
@@ -367,7 +337,7 @@ const norm = (v)=>{
 /* ---------- persistence ---------- */
 function save(){
   try{ localStorage.setItem('blueprint:current', JSON.stringify({
-    dims:S.dims, name:$('#name').value, voxels:[...S.vox.entries()], role:S.role
+    dims:S.dims, name:$('#name').value, voxels:[...S.vox.entries()], role:S.role, roleCount:S.roleCount
   })); }catch(e){}
 }
 function load(){
@@ -379,6 +349,7 @@ function load(){
     if(d.name) $('#name').value = d.name;
     if(Array.isArray(d.voxels)) S.vox = new Map(d.voxels.map(([k,v])=>[k, norm(v)]));
     if(d.role) S.role = d.role;
+    if(d.roleCount) S.roleCount = d.roleCount;
   }catch(e){}
 }
 function status(m){ $('#status').textContent = m; clearTimeout(status._t);
@@ -576,8 +547,7 @@ function makeInstShape(items, geometry, material){
         scl=new THREE.Vector3(1,1,1), up=new THREE.Vector3(0,1,0), col=new THREE.Color();
   items.forEach((o,i)=>{ pos.set(o.p[0]+.5,o.p[1]+.5,o.p[2]+.5); q.setFromAxisAngle(up,o.v.f*Math.PI/2);
     m.compose(pos,q,scl); im.setMatrixAt(i,m);
-    const nonRole = matInfo(formOf(o.v),noMatOf(o.v)).mode!=='role';   // 役割以外(自動/選択/材質なし)は黒固定
-    col.setHex(nonRole ? 0x1f1f1f : roleColor(o.v.r)); im.setColorAt(i,col); });
+    col.setHex(roleColor(o.v.r)); im.setColorAt(i,col); });
   im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true;
   im.userData.items=items; return im;
 }
@@ -599,8 +569,7 @@ function makeHingeRods(entries, material){   // trapdoor の蝶番(開閉軸)を
     pos.set(o.p[0]+0.5+off[0], o.p[1]+0.5+off[1], o.p[2]+0.5+off[2]);
     q.setFromAxisAngle(up, o.v.f*Math.PI/2);                        // 幅方向の棒を facing に回す
     m.compose(pos,q,scl); im.setMatrixAt(i,m);
-    const nonRole=matInfo(formOf(o.v),noMatOf(o.v)).mode!=='role'; // ドアの蝶番と同じくブロック色（役割色/黒）
-    col.setHex(nonRole?0x1f1f1f:roleColor(o.v.r)); im.setColorAt(i,col); });
+    col.setHex(roleColor(o.v.r)); im.setColorAt(i,col); });
   im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true; return im;
 }
 // full の facing：正面(=facing方向)の面に× を描く（全方向・FRONT=手前 -z）
@@ -897,7 +866,7 @@ function buildJson(){
     const arr=[...S.vox.entries()].map(([k,v])=>({p:k.split(',').map(Number),v:norm(v)}))
       .sort((a,b)=>a.p[2]-b.p[2]||a.p[1]-b.p[1]||b.p[0]-a.p[0]); // d(z) → h(y) → 出力W昇順(=x降順)
     const recs=arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:mirW(p[0],W)}};
-      const em=effMat(v); if(em) rec.mat=em;                    // mat: role/自動確定(一意)/選択・none は省略
+      rec.mat=v.r;                    // mat: role/自動確定(一意)/選択・none は省略
       const form=formOf({s:v.s,ot:v.ot}); rec.form=form;
       for(const {name} of shownProps(form)){ let val=v.props[name];     // 汎用: 出すプロパティを素直に書く
         if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); rec[name]=val; }
@@ -972,8 +941,7 @@ function setMode(m){ S.mode=m;
   if(m!=='info') $('#inspect').classList.remove('on'); }
 function showInfo(v){   // 案1: タップしたブロックの form/mat/向き を表示
   const form=formOf(v), parts=['form='+form];
-  const mi=matInfo(form,noMatOf(v));
-  if(mi.mode==='role') parts.push('role='+v.r); else { const em=effMat(v); if(em) parts.push('mat='+em); }
+  parts.push('role='+v.r);
   for(const {name} of shownProps(form)) if(v.props[name]!=null) parts.push(name+'='+v.props[name]);
   $('#inspect').innerHTML=parts.join('<br>'); $('#inspect').classList.add('on'); }   // 項目毎に改行（右下詰め）
 
@@ -987,7 +955,6 @@ function setTool(t){ S.tool=t;
 function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他）／ 方向系（行2・種類に適したもののみ）
   const isOther = (S.shape==='others');
   const form    = formOf({s:S.shape, ot:S.other});
-  const selMats = curMatMode()==='select' ? (FORM_MATS[form]||[]) : null;  // 複数matの選択肢
   [['form-space','dir-space'],['form-plan','dir-plan']].forEach(([fid,did])=>{
     const fel=$('#'+fid), del=$('#'+did); if(!fel||!del) return;
     fel.innerHTML=''; del.innerHTML='';
@@ -997,8 +964,6 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
     mkform(isOther?('others<br><small>'+S.other+'</small>'):'others', isOther,
       ()=>{ S.shape='others'; openModal(); save(); renderShapeBar(); });   // クリックでモーダル→種類選択
     const mk=(label,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=label; b.onclick=onclick; del.appendChild(b); };
-    if(selMats){ if(!selMats.includes(S.omat)) S.omat=selMats[0];
-      mk('mat:'+S.omat, ()=>{ const i=selMats.indexOf(S.omat); S.omat=selMats[(i+1)%selMats.length]; save(); renderShapeBar(); }); }
     for(const {name,values} of shownProps(form)){          // 汎用: form_dict の値を巡回する1ループ
       if(!values.includes(S.props[name])) S.props[name]=values[0];
       mk(name+':'+S.props[name], ()=>{ const i=values.indexOf(S.props[name]); S.props[name]=values[(i+1)%values.length]; save(); renderShapeBar(); });
@@ -1013,16 +978,23 @@ function openModal(){ const g=$('#modal-grid'); if(!g) return; g.innerHTML='';
   $('#modal').classList.add('on');
 }
 function closeModal(){ $('#modal').classList.remove('on'); }
-function renderRoles(){   // 役割（色）選択バーを立体・平面へ描画（材質なし種類では非表示）
-  const hide = isNoMat();
-  ['roles-space','roles-plan'].forEach(id=>{ const el=$('#'+id); if(!el) return; el.innerHTML=''; el.style.display=hide?'none':'';
-    if(hide) return;
-    ROLES.forEach(r=>{ const b=document.createElement('button'); b.className='btn';
-      b.textContent=r.k; const on=S.role===r.k;   // 物理名（役割キー）を表示
-      b.style.borderColor=roleHex(r.k); b.style.background=on?roleHex(r.k):''; b.style.color=on?'#10171A':'';
+function roleCountFor(form){ return S.roleCount[form] || (PRIMARY_SHAPES.includes(form)?2:1); }  // 既定 others=1 / 主要形=2
+function renderRoles(){   // 役割バー：現在 form の役割 FORM_1.. のみ表示。＋で10まで。form/番号から動的生成
+  const form = formOf({s:S.shape, ot:S.other});
+  if(roleForm(S.role)!==form) S.role = form+'_1';                 // form 切替時は既定役割へ
+  const n = Math.min(10, roleCountFor(form));
+  ['roles-space','roles-plan'].forEach(id=>{ const el=$('#'+id); if(!el) return; el.innerHTML=''; el.style.display='';
+    for(let i=1;i<=n;i++){ const role=form+'_'+i, on=S.role===role;
+      const b=document.createElement('button'); b.className='btn'; b.textContent=role;
+      b.style.borderColor=roleHex(role); b.style.background=on?roleHex(role):''; b.style.color=on?'#10171A':'';
       b.setAttribute('aria-pressed',on);
-      b.onclick=()=>{ S.role=r.k; save(); renderRoles(); };
-      el.appendChild(b); });
+      b.onclick=()=>{ S.role=role; save(); renderRoles(); };
+      el.appendChild(b);
+    }
+    if(n<10){ const p=document.createElement('button'); p.className='btn'; p.textContent='＋'; p.title='役割を追加';
+      p.onclick=()=>{ S.roleCount[form]=Math.min(10, roleCountFor(form)+1); save(); renderRoles(); };
+      el.appendChild(p);
+    }
   });
 }
 
@@ -1118,8 +1090,7 @@ function importJson(text){
         const props = {facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall'};
         for(const {name} of shownProps(fm)){ if(b[name]==null) continue;   // 汎用: 出すプロパティを素直に読む
           let val=b[name]; if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); props[name]=String(val); }
-        const om = (noMatOf({s,ot}) && b.mat) ? b.mat : 'COAL';
-        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||'wall_main', s, ot, om, props}); });
+        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.mat||(fm||'FULLBLOCK')+'_1', s, ot, props}); });
     }
     else if(Array.isArray(d.voxels))   // 旧形式（後方互換・ミラー前のアプリ内部座標）
       d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),{r:'wall_main',s:'fullblock',f:0,h:'bottom'}));
