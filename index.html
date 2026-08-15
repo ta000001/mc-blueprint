@@ -305,7 +305,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.76';
+const APP_VERSION = '3.77';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -511,7 +511,7 @@ function buildGeos(){
     full: new THREE.BoxGeometry(1,1,1),
     slab_bottom: boxAt(1,0.5,1,-0.25,0), slab_top: boxAt(1,0.5,1,0.25,0),
     trapdoor_bottom: boxAt(1,T,1,-0.5+T/2,0), trapdoor_top: boxAt(1,T,1,0.5-T/2,0),
-    trapdoor_open:   boxAt(1,1,T,0,-0.5+T/2),   // 開＝facing の反対側(-z)に立つ縦板（half 非依存）
+    trapdoor_open:   boxAt(1,1,T,0,0.5-T/2),   // 開＝facing 側(+z)に立つ縦板（MC準拠・door とは逆／half 非依存）
     stairs_bottom: mergeGeo(boxAt(1,0.5,1,-0.25,0), boxAt(1,0.5,0.5,0.25,-0.25)), // 高段=facingの反対(-z=BACK側)
     stairs_top:    mergeGeo(boxAt(1,0.5,1,0.25,0),  boxAt(1,0.5,0.5,-0.25,-0.25)),
     other:    boxAt(0.4,0.92,0.4,0,0),                       // その他の汎用フォールバック
@@ -662,8 +662,8 @@ function makeHingeRods(entries, material){   // trapdoor の蝶番(開閉軸)を
   const im=new THREE.InstancedMesh(HINGE_GEO, material, entries.length); im.count=entries.length;
   const m=new THREE.Matrix4(), q=new THREE.Quaternion(), pos=new THREE.Vector3(),
         scl=new THREE.Vector3(1,1,1), up=new THREE.Vector3(0,1,0), col=new THREE.Color();
-  entries.forEach((o,i)=>{ const y=o.v.h==='top'?0.5:-0.5;         // 蝶番の高さ（板の外面 -z の下/上エッジ）
-    const off=rotY(0,y,-0.5,o.v.f);
+  entries.forEach((o,i)=>{ const y=o.v.h==='top'?0.5:-0.5;         // 蝶番の高さ（板の外面 +z=facing側 の下/上エッジ）
+    const off=rotY(0,y,0.5,o.v.f);
     pos.set(o.p[0]+0.5+off[0], o.p[1]+0.5+off[1], o.p[2]+0.5+off[2]);
     q.setFromAxisAngle(up, o.v.f*Math.PI/2);                        // 幅方向の棒を facing に回す
     m.compose(pos,q,scl); im.setMatrixAt(i,m);
