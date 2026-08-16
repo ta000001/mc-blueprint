@@ -71,8 +71,9 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .ldradio input{width:20px;height:20px}
 .ldrows{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
 .ldrow{display:flex;align-items:center;gap:10px;min-width:0}
-.ldrow .btn{flex:none;min-width:160px}
-.ldfn{flex:1;min-width:0;font-size:11px;color:var(--brass);font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ldrow .btn{flex:none;min-width:96px}
+.ldfn{flex:1;min-width:0;font-size:11px;color:var(--brass);font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid var(--rule);border-radius:4px;padding:7px 8px;background:var(--panel)}
+.ldfn:empty::after{content:'\00a0'}
 .appname{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   font-size:20px;letter-spacing:-.02em;line-height:1;color:var(--chalk)}
 .namerow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
@@ -319,21 +320,21 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="ldgrp">
     <label class="ldradio"><input type="radio" name="ldmode" value="pp" checked></label>
     <div class="ldrows">
-      <div class="ldrow"><button class="btn" id="pal-load">place を読み込む</button><span class="ldfn" id="fn-place"></span></div>
-      <div class="ldrow"><button class="btn" id="pal-load-pal">palette を読み込む</button><span class="ldfn" id="fn-palette"></span></div>
+      <div class="ldrow"><button class="btn" id="pal-load">place</button><span class="ldfn" id="fn-place"></span></div>
+      <div class="ldrow"><button class="btn" id="pal-load-pal">palette</button><span class="ldfn" id="fn-palette"></span></div>
     </div>
   </div>
   <div class="ldgrp">
     <label class="ldradio"><input type="radio" name="ldmode" value="st"></label>
     <div class="ldrows">
-      <div class="ldrow"><button class="btn" id="pal-loadstruct">structure を読み込む</button><span class="ldfn" id="fn-structure"></span></div>
+      <div class="ldrow"><button class="btn" id="pal-loadstruct">structure</button><span class="ldfn" id="fn-structure"></span></div>
     </div>
   </div>
 </div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.84';
+const APP_VERSION = '3.85';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
