@@ -133,7 +133,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .cell[data-on="1"]{background:var(--brass);box-shadow:inset -2px -2px 0 rgba(0,0,0,.22)}
 .readout{display:flex;align-items:baseline;gap:8px;margin:0 0 8px}
 .readout .c{margin-left:auto;font-size:11px;color:var(--dim)}
-#json{width:100%;height:300px;background:var(--panel);border:1px solid var(--rule);color:var(--chalk);
+#json,#pal-json{width:100%;height:300px;background:var(--panel);border:1px solid var(--rule);color:var(--chalk);
   font-family:inherit;font-size:11px;line-height:1.5;padding:10px;border-radius:4px;white-space:pre;outline:none}
 .note{font-size:10px;color:var(--dim);line-height:1.6;margin:8px 0 0}
 #status{font-size:10px;color:var(--verdigris);min-height:14px;margin-top:8px}
@@ -249,8 +249,22 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </div><!-- /place-root -->
 
 <div id="palette-root" class="hidden">
-  <p class="palhelp"><span class="ver" id="pal-help" role="button" tabindex="0" aria-label="使い方">?</span></p>
-  <div id="pal-list"></div>
+  <div class="tabs">
+    <button id="pv-list" aria-selected="true">一覧</button>
+    <button id="pv-json" aria-selected="false">JSON</button>
+  </div>
+  <section id="pv-list-sec">
+    <p class="palhelp"><span class="ver" id="pal-help" role="button" tabindex="0" aria-label="使い方">?</span></p>
+    <div id="pal-list"></div>
+  </section>
+  <section id="pv-json-sec" class="hidden">
+    <textarea id="pal-json" spellcheck="false"></textarea>
+    <div class="bar">
+      <button class="btn" id="pal-apply">✓ 反映</button>
+      <button class="btn" id="pal-copy">コピー</button>
+    </div>
+    <p class="note">palette は slot→mat の対応表。テキストを編集して「反映」で取り込みます（{ "palette": { "slot": "mat" } }）。</p>
+  </section>
   <input id="pal-file" type="file" accept="application/json,.json" class="hidden">
   <input id="pal-file2" type="file" accept="application/json,.json" class="hidden">
   <input id="pal-file3" type="file" accept="application/json,.json" class="hidden">
@@ -332,7 +346,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.89';
+const APP_VERSION = '3.90';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1412,6 +1426,32 @@ function updateLdMode(){   // ラジオ：place・palette / structure のどち�
 }
 document.querySelectorAll('input[name=ldmode]').forEach(r=>r.onchange=updateLdMode);
 updateLdMode();
+
+// palette の 一覧 / JSON タブ（place の JSON ビューと同様）
+function renderPalJson(){
+  const map={}; for(const k of Object.keys(S.pal.map)) if(S.pal.map[k]) map[k]=S.pal.map[k];
+  $('#pal-json').value = JSON.stringify({name:$('#pal-name').value, palette:map}, null, 1);
+}
+function setPalView(v){
+  $('#pv-list-sec').classList.toggle('hidden', v!=='list');
+  $('#pv-json-sec').classList.toggle('hidden', v!=='json');
+  $('#pv-list').setAttribute('aria-selected', v==='list');
+  $('#pv-json').setAttribute('aria-selected', v==='json');
+  if(v==='json') renderPalJson(); else renderPalList();
+}
+$('#pv-list').onclick=()=>setPalView('list');
+$('#pv-json').onclick=()=>setPalView('json');
+$('#pal-apply').onclick=()=>{   // テキスト編集を S.pal.map へ反映
+  try{ const d=JSON.parse($('#pal-json').value); const pal=(d&&d.palette&&typeof d.palette==='object')?d.palette:(d||{});
+    S.pal.map={}; for(const k in pal) if(pal[k]!=null) S.pal.map[k]=String(pal[k]);
+    if(d && d.name) $('#pal-name').value=d.name;
+    status('palette JSON を反映しました（'+Object.keys(S.pal.map).length+' 件）');
+  }catch(e){ status('JSON を解釈できません'); }
+};
+$('#pal-copy').onclick=async()=>{ renderPalJson();
+  try{ await navigator.clipboard.writeText($('#pal-json').value); status('palette JSON をコピーしました'); }
+  catch(e){ $('#pal-json').select(); status('テキストを選択しました。長押しでコピー'); }
+};
 $('#pal-save').onclick=async()=>{
   const map={}; for(const k of Object.keys(S.pal.map)) if(S.pal.map[k]) map[k]=S.pal.map[k];   // 未割当は除外
   const text=JSON.stringify({name:$('#pal-name').value, palette:map}, null, 1);
