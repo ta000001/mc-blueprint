@@ -154,7 +154,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </style>
 </head>
 <body>
-<div class="apphead"><span class="appname">mc-blueprint</span><span class="ver" id="s-open" role="button" tabindex="0" aria-label="設定">⚙</span><span class="ver" id="ver" role="button" tabindex="0" aria-label="バージョン情報">?</span></div>
+<div class="apphead"><span class="appname">mc-blueprint</span><span class="ver" id="ver" role="button" tabindex="0" aria-label="バージョン情報">?</span><span class="ver" id="s-open" style="margin-left:auto" role="button" tabindex="0" aria-label="設定">⚙</span></div>
 <div class="topmode"><button id="m-place" aria-pressed="true">place</button><button id="m-palette" aria-pressed="false">palette</button></div>
 <div id="place-root">
 <div class="namerow">
@@ -303,15 +303,19 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </div></div>
 <div id="smodal"><div class="panel"><h3>設定</h3>
   <div class="hgrp">
-    <div class="hrow"><b>保存先フォルダ</b>（place / palette 共通）</div>
-    <div class="bar" style="margin-top:6px"><button class="btn" id="s-dir">📁 保存先を選ぶ</button></div>
-    <p class="note" id="dirlabel"></p>
+    <div class="hrow"><b>保存先フォルダ</b>（place / palette / structure を個別に指定）</div>
+    <div class="bar" style="margin-top:6px"><button class="btn" id="s-dir-place">📁 place の保存先</button></div>
+    <p class="note" id="dirlabel-place"></p>
+    <div class="bar" style="margin-top:6px"><button class="btn" id="s-dir-palette">📁 palette の保存先</button></div>
+    <p class="note" id="dirlabel-palette"></p>
+    <div class="bar" style="margin-top:6px"><button class="btn" id="s-dir-structure">📁 structure の保存先</button></div>
+    <p class="note" id="dirlabel-structure"></p>
   </div>
 </div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.79';
+const APP_VERSION = '3.80';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -417,7 +421,7 @@ const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'FULLBLOCK_1',
   shape:'fullblock', other:'DOOR', roleCount:{},
   props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
-  view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirHandle:null, labels:false,
+  view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirs:{place:null,palette:null,structure:null}, labels:false,
   top:'place', pal:{map:{}}
 };
 const cur = ()=>({r:S.role, s:S.shape, ot:S.other, props:{...S.props}});
@@ -1157,31 +1161,34 @@ async function ensurePerm(h){
   if(await h.queryPermission(o)==='granted') return true;
   return (await h.requestPermission(o))==='granted';
 }
-function updateDirLabel(){
-  $('#dirlabel').textContent = S.dirHandle
-    ? '保存先: '+S.dirHandle.name+'/ （このフォルダへ直接保存）'
-    : (FS_OK ? '保存先: 未設定（＝ダウンロード）。「保存先」でフォルダを選ぶと直接保存。'
-             : '保存先の指定はこの端末では非対応。ダウンロードで保存されます。');
+const DIR_KINDS=['place','palette','structure'];               // 保存先はこの3種を個別に持つ
+function updateDirLabels(){
+  for(const k of DIR_KINDS){ const el=$('#dirlabel-'+k); if(!el) continue; const h=S.dirs[k];
+    el.textContent = h ? (k+' → '+h.name+'/ に上書き保存')
+      : (FS_OK ? k+' → 未設定（ダウンロード）' : k+' → 非対応端末（ダウンロード）'); }
 }
-async function pickDir(){
+async function pickDir(kind){
   if(!FS_OK){ status('この端末は保存先指定に非対応'); return; }
   try{
-    const h=await window.showDirectoryPicker({mode:'readwrite',id:'bp-save'});
-    S.dirHandle=h; try{ await idbSet('dir',h); }catch(e){}
-    updateDirLabel(); status('保存先を設定: '+h.name);
+    const h=await window.showDirectoryPicker({mode:'readwrite',id:'bp-'+kind});
+    S.dirs[kind]=h; try{ await idbSet('dir_'+kind,h); }catch(e){}
+    updateDirLabels(); status(kind+' 保存先を設定: '+h.name);
   }catch(e){ /* ユーザーがキャンセル */ }
 }
-$('#s-dir').onclick=pickDir;                                   // 設定モーダル内の保存先ボタン
-$('#s-open').onclick=()=>{ updateDirLabel(); $('#smodal').classList.add('on'); };   // タイトル横 ⚙
+$('#s-dir-place').onclick=()=>pickDir('place');
+$('#s-dir-palette').onclick=()=>pickDir('palette');
+$('#s-dir-structure').onclick=()=>pickDir('structure');
+$('#s-open').onclick=()=>{ updateDirLabels(); $('#smodal').classList.add('on'); };   // タイトル横 ⚙
 $('#smodal').onclick=e=>{ if(e.target.id==='smodal') $('#smodal').classList.remove('on'); };
 
-async function saveFile(text, fname, okMsg){   // 保存先フォルダがあれば同名上書き、無ければダウンロード（place/palette 共通）
-  if(S.dirHandle){
+async function saveFile(text, fname, okMsg, kind){   // kind の保存先フォルダがあれば同名上書き、無ければダウンロード
+  const h=S.dirs[kind];
+  if(h){
     try{
-      if(await ensurePerm(S.dirHandle)){
-        const fh=await S.dirHandle.getFileHandle(fname,{create:true});   // 同名は上書き
+      if(await ensurePerm(h)){
+        const fh=await h.getFileHandle(fname,{create:true});   // 同名は上書き
         const w=await fh.createWritable(); await w.write(text); await w.close();
-        status((okMsg||'保存しました')+': '+S.dirHandle.name+'/'+fname); return;
+        status((okMsg||'保存しました')+': '+h.name+'/'+fname); return;
       }
       status('保存先の権限がありません。ダウンロードします');
     }catch(e){ status('保存先に書けませんでした。ダウンロードします'); }
@@ -1192,7 +1199,7 @@ async function saveFile(text, fname, okMsg){   // 保存先フォルダがあれ
 }
 $('#j-dl').onclick=async()=>{
   const text=buildJson('blocks'), fname=($('#name').value||'blueprint')+'.json';   // 保存は常に blocks（形/mat/向きを保持）
-  await saveFile(text, fname, '保存しました');
+  await saveFile(text, fname, '保存しました', 'place');
 };
 function importJson(text){
   try{
@@ -1239,7 +1246,7 @@ $('#j-imp').onclick=async()=>{
   if(FS_OK && window.showOpenFilePicker){
     try{
       const opt={types:[{description:'JSON',accept:{'application/json':['.json']}}], id:'bp-save'};
-      if(S.dirHandle) opt.startIn=S.dirHandle;
+      if(S.dirs.place) opt.startIn=S.dirs.place;
       const [fh]=await window.showOpenFilePicker(opt);
       importJson(await (await fh.getFile()).text());
       return;
@@ -1378,15 +1385,15 @@ $('#pal-save').onclick=async()=>{
   const map={}; for(const k of Object.keys(S.pal.map)) if(S.pal.map[k]) map[k]=S.pal.map[k];   // 未割当は除外
   const text=JSON.stringify({name:$('#pal-name').value, palette:map}, null, 1);
   const fname=($('#pal-name').value||'palette')+'.json';
-  await saveFile(text, fname, 'palette を保存（'+Object.keys(map).length+' 件）');   // place と同じ保存先/上書き
+  await saveFile(text, fname, 'palette を保存（'+Object.keys(map).length+' 件）', 'palette');   // place と同じ保存先/上書き
 };
 $('#pal-struct').onclick=async()=>{   // place(S.vox) + palette(S.pal.map) を合成して structure を保存
   if(!S.vox.size){ status('place が空です（先に place を作成/読み込み）'); return; }
   const {json,missing}=buildStructure();
   const fname=(($('#struct-name').value.trim())||'structure')+'.json';
-  await saveFile(json, fname, missing.length
+  await saveFile(json, fname, (missing.length
     ? '⚠ structure 保存: 未割当 '+missing.length+' 件（'+missing.slice(0,3).join(', ')+(missing.length>3?'…':'')+'）は slot 名のまま'
-    : 'structure を保存（place+palette 合成）');
+    : 'structure を保存（place+palette 合成）'), 'structure');
 };
 
 /* ---------- boot ---------- */
@@ -1411,8 +1418,8 @@ loadDict().then(()=>{
   $('#tot').textContent=S.vox.size; setLayer(0); setView('space'); renderRoles(); renderShapeBar();
 }).catch(err=>{ console.error(err); status('dict.json を読み込めません（初回はオンライン必須）'); });
 
-updateDirLabel();
-if(FS_OK) idbGet('dir').then(h=>{ if(h){ S.dirHandle=h; updateDirLabel(); } }).catch(()=>{});
+updateDirLabels();
+if(FS_OK) for(const k of DIR_KINDS){ idbGet('dir_'+k).then(h=>{ if(h){ S.dirs[k]=h; updateDirLabels(); } }).catch(()=>{}); }
 
 if('serviceWorker' in navigator){
   addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
