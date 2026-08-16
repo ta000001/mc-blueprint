@@ -68,11 +68,11 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .btn:disabled{opacity:.4;cursor:not-allowed}
 .ldgrp{display:flex;align-items:center;gap:12px;margin-bottom:12px}
 .ldradio{flex:none;display:flex;align-items:center}
-.ldradio input{width:20px;height:20px}
+.ldradio input{width:15px;height:15px}
 .ldrows{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
-.ldrow{display:flex;align-items:center;gap:10px;min-width:0}
-.ldrow .btn{flex:none;min-width:96px}
-.ldfn{flex:1;min-width:0;font-size:11px;color:var(--brass);font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid var(--rule);border-radius:4px;padding:7px 8px;background:var(--panel)}
+.ldrow{display:flex;align-items:center;gap:12px;min-width:0}
+.ldrow .btn{flex:none;min-width:88px}
+.ldfn{flex:1;min-width:0;font-size:11px;color:var(--brass);font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid var(--rule);padding:6px 2px;letter-spacing:.02em}
 .ldfn:empty::after{content:'\00a0'}
 .appname{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   font-size:20px;letter-spacing:-.02em;line-height:1;color:var(--chalk)}
@@ -334,7 +334,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.85';
+const APP_VERSION = '3.86';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
