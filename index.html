@@ -65,8 +65,10 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .palname input{margin-bottom:0}
 .apphead{display:flex;align-items:center;gap:8px;margin-bottom:12px}
 .ver.ico{border:none;font-size:16px;width:22px;height:22px;line-height:22px;color:var(--chalk)}
-.loaded{font-size:11px;color:var(--dim);margin:-6px 0 10px;min-height:14px;font-family:ui-monospace,monospace;word-break:break-all}
-.loaded b{color:var(--brass);font-weight:600}
+#loaded{font-size:11px;color:var(--dim);margin-top:10px;min-height:14px;font-family:ui-monospace,monospace;word-break:break-all}
+#loaded b{color:var(--brass);font-weight:600}
+#loadmodal .hrow input{margin-right:6px;vertical-align:middle}
+.btn:disabled{opacity:.4;cursor:not-allowed}
 .appname{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   font-size:20px;letter-spacing:-.02em;line-height:1;color:var(--chalk)}
 .namerow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
@@ -159,7 +161,6 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 <body>
 <div class="apphead"><span class="appname">mc-blueprint</span><span class="ver" id="ver" role="button" tabindex="0" aria-label="バージョン情報">?</span><span class="ver ico" id="sv-open" style="margin-left:auto" role="button" tabindex="0" aria-label="保存">💾</span><span class="ver ico" id="ld-open" role="button" tabindex="0" aria-label="読み込み">📂</span><span class="ver ico" id="s-open" role="button" tabindex="0" aria-label="設定">⚙</span></div>
 <div class="topmode"><button id="m-place" aria-pressed="true">place</button><button id="m-palette" aria-pressed="false">palette</button></div>
-<div id="loaded" class="loaded"></div>
 <div id="place-root">
 <div class="namerow">
   <div class="dims">
@@ -312,16 +313,20 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </div></div>
 <div id="loadmodal"><div class="panel"><h3>読み込み</h3>
   <div class="hgrp">
+    <label class="hrow"><input type="radio" name="ldmode" value="pp" checked> place・palette</label>
+    <label class="hrow"><input type="radio" name="ldmode" value="st"> structure</label>
+  </div>
+  <div class="hgrp">
     <div class="bar" style="margin-top:6px"><button class="btn" id="pal-load">place を読み込む</button></div>
     <div class="bar" style="margin-top:6px"><button class="btn" id="pal-load-pal">palette を読み込む</button></div>
     <div class="bar" style="margin-top:6px"><button class="btn" id="pal-loadstruct">structure を読み込む</button></div>
   </div>
-  <p class="hrow" style="margin-top:8px;font-size:11px;color:var(--dim)">place/palette 両タブ共通。place は本体へ読込（palette のスロットも同期）、palette は割当を復元、structure は place+palette へ分解取込。</p>
+  <p class="note" id="loaded"></p>
 </div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.82';
+const APP_VERSION = '3.83';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1398,6 +1403,12 @@ $('#pal-load-pal').onclick=()=>$('#pal-file2').click();
 $('#pal-file2').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ palImportPalette(r.result); setLoaded('palette', f.name); e.target.value=''; }; r.readAsText(f); };
 $('#pal-loadstruct').onclick=()=>$('#pal-file3').click();
 $('#pal-file3').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ importStructure(r.result); setLoaded('structure', f.name); e.target.value=''; }; r.readAsText(f); };
+function updateLdMode(){   // ラジオ：place・palette / structure のどちらか一方のみ読込ボタンを活性
+  const st=(document.querySelector('input[name=ldmode]:checked')||{}).value==='st';
+  $('#pal-load').disabled=st; $('#pal-load-pal').disabled=st; $('#pal-loadstruct').disabled=!st;
+}
+document.querySelectorAll('input[name=ldmode]').forEach(r=>r.onchange=updateLdMode);
+updateLdMode();
 $('#pal-save').onclick=async()=>{
   const map={}; for(const k of Object.keys(S.pal.map)) if(S.pal.map[k]) map[k]=S.pal.map[k];   // 未割当は除外
   const text=JSON.stringify({name:$('#pal-name').value, palette:map}, null, 1);
