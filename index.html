@@ -66,6 +66,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .apphead{display:flex;align-items:center;gap:8px;margin-bottom:12px}
 .ver.ico{border:none;font-size:16px;width:22px;height:22px;line-height:22px;color:var(--chalk)}
 .btn:disabled{opacity:.4;cursor:not-allowed}
+#loadmodal .panel,#savemodal .panel{width:min(460px,92%)}
 .ldgrp{display:flex;align-items:center;gap:12px;margin-bottom:12px}
 .ldradio{flex:none;display:flex;align-items:center}
 .ldradio input{width:15px;height:15px}
@@ -334,7 +335,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.86';
+const APP_VERSION = '3.87';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
