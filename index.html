@@ -123,8 +123,9 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .seg span.n{font-size:9px;color:var(--dim);position:relative;z-index:2}
 .seg span.f{position:absolute;inset:0;background:var(--brass)}
 .seg[data-cur="1"]{box-shadow:inset 0 0 0 2px var(--verdigris)}
+.gridbox{position:relative;flex:1;min-width:0;display:flex}
 #gridwrap{flex:1;min-width:0;overflow:auto;background:var(--panel);border:1px solid var(--rule);
-  border-radius:4px;padding:6px;max-height:52vh;-webkit-overflow-scrolling:touch}
+  border-radius:4px;padding:6px;max-height:52vh;-webkit-overflow-scrolling:touch;touch-action:none}
 #grid{display:grid;width:max-content;margin:0 auto;border-left:1px solid var(--rule);border-top:1px solid var(--rule)}
 .cell{border-right:1px solid #22302f;border-bottom:1px solid #22302f;background:#131c1e;position:relative}
 .cell[data-origin="1"]::after{content:'';position:absolute;inset:0;box-shadow:inset 3px 0 0 #8aa8ff,inset 0 -3px 0 #ff8a8a;pointer-events:none;z-index:2}
@@ -210,12 +211,15 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="readout"><span class="y" id="y2">H00</span><span class="sub" id="ymax">/ 15</span><span class="c" id="cnt"></span></div>
   <div class="stage">
     <div id="spine"></div>
-    <div id="gridwrap"><div id="grid"></div></div>
+    <div class="gridbox">
+      <div id="gridwrap"><div id="grid"></div></div>
+      <div class="vbottom"><button class="vbtn" id="pl-undo" aria-label="元に戻す">↶</button><button class="vbtn" id="pl-redo" aria-label="進む" disabled>↷</button></div>
+    </div>
   </div>
   <div class="bar">
-    <button class="btn" id="p-draw" aria-pressed="true">描く</button>
-    <button class="btn" id="p-erase" aria-pressed="false">消す</button>
-    <button class="btn" id="p-pan" aria-pressed="false">✋ 移動</button>
+    <button class="btn" id="pm-place" aria-pressed="true">置く</button>
+    <button class="btn" id="pm-break" aria-pressed="false">壊す</button>
+    <button class="btn" id="pm-info" aria-pressed="false">情報</button>
   </div>
   <div class="bar">
     <button class="btn" id="p-down">▼ 下の層</button>
@@ -227,7 +231,6 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="p-copy">下の層を複製</button>
     <button class="btn" id="p-out">外周を描く</button>
     <button class="btn" id="p-clr">層を消去</button>
-    <button class="btn" id="p-undo">元に戻す</button>
   </div>
   <div class="bar" id="form-plan"></div>
   <div class="bar" id="dir-plan"></div>
@@ -347,7 +350,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.91';
+const APP_VERSION = '3.92';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -497,7 +500,7 @@ function status(m){ $('#status').textContent = m; clearTimeout(status._t);
 
 /* ---------- model ---------- */
 function pushHist(){ S.hist.push(new Map(S.vox)); if(S.hist.length>60) S.hist.shift(); S.redo=[]; } // 新規操作でredo破棄
-function updateHistBtns(){ const r=$('#b-redo'); if(r) r.disabled = S.redo.length===0; }
+function updateHistBtns(){ const dis=S.redo.length===0; const r=$('#b-redo'), pr=$('#pl-redo'); if(r) r.disabled=dis; if(pr) pr.disabled=dis; }
 function inB(x,y,z){ const d=S.dims; return x>=0&&y>=0&&z>=0&&x<d.x&&y<d.y&&z<d.z; }
 function place(x,y,z){ if(!inB(x,y,z)) return; if(y>S.layer) return;  // 作業面より上には置かない
   const k=K(x,y,z), v=cur(); if(sig(S.vox.get(k))===sig(v)) return; pushHist(); S.vox.set(k,v); changed(); }
@@ -972,25 +975,43 @@ function renderGrid(){
   }
   g.appendChild(f);
 }
-(function bindPlan(){
-  let painting=false, strokeMode='draw';
-  const wrap=()=>$('#gridwrap');
+(function bindPlan(){   // 立体と同様のジェスチャ：1本指=描画 / 2本指=ズーム＋パン / ダブルタップ=削除
+  const wrap=$('#gridwrap');
+  const pts=new Map(); let painting=false, pmode='place', pinch=0, mid=null, lastUp=null;
   const cellAt=(x,y)=>{ const el=document.elementFromPoint(x,y);
     return (el&&el.dataset&&el.dataset.x!==undefined)?{x:+el.dataset.x,z:+el.dataset.z}:null; };
-  const apply=(x,z,m)=>{ const k=K(x,S.layer,z);
-    if(m==='draw'){ const v=cur(); if(sig(S.vox.get(k))!==sig(v)){ S.vox.set(k,v); changed(); renderGrid(); } }
-    else { if(S.vox.has(k)){ S.vox.delete(k); changed(); renderGrid(); } } };
-  document.addEventListener('pointerdown',e=>{
-    if(S.view!=='plan'||S.tool==='pan') return;
-    if(!wrap().contains(e.target)) return;
-    const c=cellAt(e.clientX,e.clientY); if(!c) return;
-    e.preventDefault(); pushHist(); painting=true; strokeMode=S.tool; apply(c.x,c.z,S.tool);
+  const dist=()=>{ const a=[...pts.values()]; return Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y); };
+  const midp=()=>{ const a=[...pts.values()]; return {x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2}; };
+  const apply=(c,m)=>{ const k=K(c.x,S.layer,c.z);
+    if(m==='break'){ if(S.vox.has(k)){ S.vox.delete(k); changed(); renderGrid(); renderSpine(); } }
+    else if(m==='info'){ const v=S.vox.get(k); if(v){ const f=formOf(v), parts=['form='+f,'slot='+v.r];
+      for(const {name} of shownProps(f)) if(v.props[name]!=null) parts.push(name+'='+v.props[name]); status(parts.join(' · ')); } }
+    else { const v=cur(); if(sig(S.vox.get(k))!==sig(v)){ S.vox.set(k,v); changed(); renderGrid(); renderSpine(); } } };
+  wrap.addEventListener('pointerdown',e=>{
+    if(S.view!=='plan') return;
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===1){
+      const now=Date.now();
+      const isDbl = lastUp && now-lastUp.t<300 && Math.hypot(e.clientX-lastUp.x,e.clientY-lastUp.y)<22;
+      const mode = (S.mode==='info')?'info':(isDbl?'break':S.mode);
+      const c=cellAt(e.clientX,e.clientY);
+      if(c){ if(mode==='info'){ apply(c,'info'); }
+        else { e.preventDefault(); pushHist(); painting=true; pmode=mode; apply(c,mode); } }
+      if(isDbl) lastUp=null;
+    } else { painting=false; if(pts.size===2){ pinch=dist(); mid=midp(); } }
   });
-  document.addEventListener('pointermove',e=>{
-    if(!painting) return; e.preventDefault();
-    const c=cellAt(e.clientX,e.clientY); if(c) apply(c.x,c.z,strokeMode);
+  addEventListener('pointermove',e=>{
+    const p=pts.get(e.pointerId); if(!p) return; p.x=e.clientX; p.y=e.clientY;
+    if(pts.size===1 && painting){ e.preventDefault(); const c=cellAt(e.clientX,e.clientY); if(c) apply(c,pmode); }
+    else if(pts.size===2){
+      const d=dist(); if(pinch){ const ns=clamp(Math.round(S.cell*(d/pinch)),6,40); if(ns!==S.cell){ S.cell=ns; S.manualZoom=true; renderGrid(); } } pinch=d;
+      const m=midp(); if(mid){ wrap.scrollLeft-=(m.x-mid.x); wrap.scrollTop-=(m.y-mid.y); } mid=m;
+    }
   });
-  ['pointerup','pointercancel'].forEach(ev=>document.addEventListener(ev,()=>painting=false));
+  const up=e=>{ const was=pts.get(e.pointerId); pts.delete(e.pointerId);
+    if(pts.size<2){ pinch=0; mid=null; }
+    if(pts.size===0){ if(was) lastUp={x:was.x,y:was.y,t:Date.now()}; painting=false; } };
+  addEventListener('pointerup',up); addEventListener('pointercancel',up);
 
   let scrub=false;
   $('#spine').addEventListener('pointerdown',e=>{ scrub=true; scrubTo(e.clientY); e.preventDefault(); });
@@ -1080,24 +1101,21 @@ $('#b-break').onclick = ()=>setMode('break');
 $('#b-info').onclick = ()=>setMode('info');   // モードボタン（置く/壊す/情報）
 $('#b-help').onclick = ()=> $('#hmodal').classList.add('on');
 $('#hmodal').onclick = e=>{ if(e.target.id==='hmodal') $('#hmodal').classList.remove('on'); };
-function setMode(m){ S.mode=m;
-  $('#b-place').setAttribute('aria-pressed', m==='place');
-  $('#b-break').setAttribute('aria-pressed', m==='break');
-  $('#b-info').setAttribute('aria-pressed', m==='info');
+function setMode(m){ S.mode=m;   // 立体・平面 共通のモード（置く/壊す/情報）
+  ['place','break','info'].forEach(n=>{ const a=$('#b-'+n), b=$('#pm-'+n);
+    if(a) a.setAttribute('aria-pressed', n===m); if(b) b.setAttribute('aria-pressed', n===m); });
   const hm=$('#hud-mode'); if(hm) hm.textContent = m==='break'?'壊す':(m==='info'?'情報モード':'置く');
   if(m!=='info') $('#inspect').classList.remove('on'); }
+$('#pm-place').onclick=()=>setMode('place');
+$('#pm-break').onclick=()=>setMode('break');
+$('#pm-info').onclick=()=>setMode('info');
 function showInfo(v){   // 案1: タップしたブロックの form/mat/向き を表示
   const form=formOf(v), parts=['form='+form];
   parts.push('slot='+v.r);
   for(const {name} of shownProps(form)) if(v.props[name]!=null) parts.push(name+'='+v.props[name]);
   $('#inspect').innerHTML=parts.join('<br>'); $('#inspect').classList.add('on'); }   // 項目毎に改行（右下詰め）
 
-$('#p-draw').onclick=()=>setTool('draw');
-$('#p-erase').onclick=()=>setTool('erase');
-$('#p-pan').onclick=()=>setTool('pan');
-function setTool(t){ S.tool=t;
-  ['draw','erase','pan'].forEach(n=>$('#p-'+n).setAttribute('aria-pressed', n===t));
-  $('#gridwrap').style.touchAction = t==='pan' ? 'auto' : 'none'; }
+$('#pl-undo').onclick=undo; $('#pl-redo').onclick=redo;   // 盤内の 元に戻す/進む
 
 function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他）／ 方向系（行2・種類に適したもののみ）
   const isOther = (S.shape==='others');
@@ -1154,7 +1172,6 @@ $('#p-up').onclick=()=>setLayer(S.layer+1);
 $('#p-down').onclick=()=>setLayer(S.layer-1);
 $('#p-zi').onclick=()=>{ S.manualZoom=true; S.cell=clamp(S.cell+4,6,44); renderGrid(); };
 $('#p-zo').onclick=()=>{ S.manualZoom=true; S.cell=clamp(S.cell-4,6,44); renderGrid(); };
-$('#p-undo').onclick=()=>{ undo(); renderGrid(); renderSpine(); };
 $('#p-clr').onclick=()=>{ pushHist(); const d=S.dims;
   for(let x=0;x<d.x;x++) for(let z=0;z<d.z;z++) S.vox.delete(K(x,S.layer,z));
   changed(); renderGrid(); renderSpine(); };
