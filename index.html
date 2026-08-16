@@ -75,6 +75,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .ldrow .btn{flex:none;min-width:88px}
 .ldfn{flex:1;min-width:0;font-size:11px;color:var(--brass);font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid var(--rule);padding:6px 2px;letter-spacing:.02em}
 .ldfn:empty::after{content:'\00a0'}
+#savemodal .ldrow{margin-bottom:14px}
+#savemodal .ldrow input{flex:1;min-width:0;max-width:none;margin-bottom:0;padding:6px 2px;font-size:12px}
 .appname{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   font-size:20px;letter-spacing:-.02em;line-height:1;color:var(--chalk)}
 .namerow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
@@ -307,15 +309,9 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   </div>
 </div></div>
 <div id="savemodal"><div class="panel"><h3>保存</h3>
-  <div class="hgrp"><div class="hrow"><b>place</b></div>
-    <div class="palname"><span>名前</span><input id="name" value="blueprint-01" aria-label="設計図の名前"></div>
-    <div class="bar" style="margin-top:6px"><button class="btn" id="j-dl">place を保存</button></div></div>
-  <div class="hgrp"><div class="hrow"><b>palette</b></div>
-    <div class="palname"><span>名前</span><input id="pal-name" value="palette-01" aria-label="palette の名前"></div>
-    <div class="bar" style="margin-top:6px"><button class="btn" id="pal-save">palette を保存</button></div></div>
-  <div class="hgrp"><div class="hrow"><b>structure</b></div>
-    <div class="palname"><span>名前</span><input id="struct-name" value="structure-01" aria-label="structure の名前"></div>
-    <div class="bar" style="margin-top:6px"><button class="btn" id="pal-struct">structure を保存</button></div></div>
+  <div class="ldrow"><button class="btn" id="j-dl">place</button><input id="name" value="blueprint-01" aria-label="place の名前"></div>
+  <div class="ldrow"><button class="btn" id="pal-save">palette</button><input id="pal-name" value="palette-01" aria-label="palette の名前"></div>
+  <div class="ldrow"><button class="btn" id="pal-struct">structure</button><input id="struct-name" value="structure-01" aria-label="structure の名前"></div>
 </div></div>
 <div id="loadmodal"><div class="panel"><h3>読み込み</h3>
   <div class="ldgrp">
@@ -335,7 +331,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.87';
+const APP_VERSION = '3.88';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
