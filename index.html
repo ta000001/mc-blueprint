@@ -65,6 +65,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .palname input{margin-bottom:0}
 .apphead{display:flex;align-items:center;gap:8px;margin-bottom:12px}
 .ver.ico{border:none;font-size:16px;width:22px;height:22px;line-height:22px;color:var(--chalk)}
+.loaded{font-size:11px;color:var(--dim);margin:-6px 0 10px;min-height:14px;font-family:ui-monospace,monospace;word-break:break-all}
+.loaded b{color:var(--brass);font-weight:600}
 .appname{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   font-size:20px;letter-spacing:-.02em;line-height:1;color:var(--chalk)}
 .namerow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
@@ -157,6 +159,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 <body>
 <div class="apphead"><span class="appname">mc-blueprint</span><span class="ver" id="ver" role="button" tabindex="0" aria-label="バージョン情報">?</span><span class="ver ico" id="sv-open" style="margin-left:auto" role="button" tabindex="0" aria-label="保存">💾</span><span class="ver ico" id="ld-open" role="button" tabindex="0" aria-label="読み込み">📂</span><span class="ver ico" id="s-open" role="button" tabindex="0" aria-label="設定">⚙</span></div>
 <div class="topmode"><button id="m-place" aria-pressed="true">place</button><button id="m-palette" aria-pressed="false">palette</button></div>
+<div id="loaded" class="loaded"></div>
 <div id="place-root">
 <div class="namerow">
   <div class="dims">
@@ -236,7 +239,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </div><!-- /place-root -->
 
 <div id="palette-root" class="hidden">
-  <p class="palhelp"><span class="ver" id="pal-help" role="button" tabindex="0" aria-label="使い方">?</span><span class="note">保存・読み込みは上部の 💾 / 📂 アイコンから</span></p>
+  <p class="palhelp"><span class="ver" id="pal-help" role="button" tabindex="0" aria-label="使い方">?</span></p>
   <div id="pal-list"></div>
   <input id="pal-file" type="file" accept="application/json,.json" class="hidden">
   <input id="pal-file2" type="file" accept="application/json,.json" class="hidden">
@@ -318,7 +321,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.81';
+const APP_VERSION = '3.82';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -424,7 +427,7 @@ const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'FULLBLOCK_1',
   shape:'fullblock', other:'DOOR', roleCount:{},
   props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
-  view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirs:{place:null,palette:null,structure:null}, labels:false,
+  view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirs:{place:null,palette:null,structure:null}, files:{place:null,palette:null,structure:null}, labels:false,
   top:'place', pal:{map:{}}
 };
 const cur = ()=>({r:S.role, s:S.shape, ot:S.other, props:{...S.props}});
@@ -1366,21 +1369,35 @@ function palImportPalette(text){   // 既存 palette を任意で復元。place 
     else status('palette を読み込みました（割当 '+Object.keys(pal).length+' 件）');
   }catch(e){ status('このファイルは読み込めません'); }
 }
+// 読み込んだファイル名を表示。place/palette は structure を無効化、structure は place+palette を上書き（表示解除）
+function setLoaded(kind, name){
+  S.files[kind]=name;
+  if(kind==='structure'){ S.files.place=null; S.files.palette=null; }
+  else S.files.structure=null;   // place/palette を読むと structure(合成物)は無効
+  renderLoaded();
+}
+function renderLoaded(){
+  const el=$('#loaded'); if(!el) return; const p=[];
+  if(S.files.place) p.push('place: <b>'+S.files.place+'</b>');
+  if(S.files.palette) p.push('palette: <b>'+S.files.palette+'</b>');
+  if(S.files.structure) p.push('structure: <b>'+S.files.structure+'</b>');
+  el.innerHTML = p.join('　/　');
+}
 $('#pal-load').onclick=async()=>{   // place 読み込み（保存先フォルダ対応・両タブ共通）→ 本体(S.vox)へ
   if(FS_OK && window.showOpenFilePicker){
     try{ const opt={types:[{description:'JSON',accept:{'application/json':['.json']}}], id:'bp-place'};
       if(S.dirs.place) opt.startIn=S.dirs.place;
       const [fh]=await window.showOpenFilePicker(opt);
-      palImport(await (await fh.getFile()).text()); return;
+      palImport(await (await fh.getFile()).text()); setLoaded('place', fh.name); return;
     }catch(e){ if(e && e.name==='AbortError') return; }
   }
   $('#pal-file').click();
 };
-$('#pal-file').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ palImport(r.result); e.target.value=''; }; r.readAsText(f); };
+$('#pal-file').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ palImport(r.result); setLoaded('place', f.name); e.target.value=''; }; r.readAsText(f); };
 $('#pal-load-pal').onclick=()=>$('#pal-file2').click();
-$('#pal-file2').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ palImportPalette(r.result); e.target.value=''; }; r.readAsText(f); };
+$('#pal-file2').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ palImportPalette(r.result); setLoaded('palette', f.name); e.target.value=''; }; r.readAsText(f); };
 $('#pal-loadstruct').onclick=()=>$('#pal-file3').click();
-$('#pal-file3').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ importStructure(r.result); e.target.value=''; }; r.readAsText(f); };
+$('#pal-file3').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ importStructure(r.result); setLoaded('structure', f.name); e.target.value=''; }; r.readAsText(f); };
 $('#pal-save').onclick=async()=>{
   const map={}; for(const k of Object.keys(S.pal.map)) if(S.pal.map[k]) map[k]=S.pal.map[k];   // 未割当は除外
   const text=JSON.stringify({name:$('#pal-name').value, palette:map}, null, 1);
