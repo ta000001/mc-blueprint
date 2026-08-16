@@ -32,14 +32,15 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .sub{font-size:11px;color:var(--dim);letter-spacing:.08em}
 .ver{font-size:11px;color:var(--brass);border:1px solid var(--brass-dim);border-radius:50%;
   width:18px;height:18px;line-height:16px;text-align:center;cursor:pointer;flex:none;align-self:center}
-#vmodal,#hmodal,#pmodal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:60}
-#vmodal.on,#hmodal.on,#pmodal.on{display:flex}
-#vmodal .panel,#hmodal .panel,#pmodal .panel{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:16px 20px;min-width:180px;max-width:88%}
-#vmodal h3,#hmodal h3,#pmodal h3{margin:0 0 10px;font-size:13px;color:var(--brass)}
+#vmodal,#hmodal,#pmodal,#smodal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:60}
+#vmodal.on,#hmodal.on,#pmodal.on,#smodal.on{display:flex}
+#vmodal .panel,#hmodal .panel,#pmodal .panel,#smodal .panel{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:16px 20px;min-width:220px;max-width:88%}
+#vmodal h3,#hmodal h3,#pmodal h3,#smodal h3{margin:0 0 10px;font-size:13px;color:var(--brass)}
 #vmodal .vrow{font-size:12px;color:var(--brass);letter-spacing:.04em;line-height:1.9;font-family:ui-monospace,monospace}
-#hmodal .hrow,#pmodal .hrow{font-size:12px;color:var(--dim);line-height:1.9}
+#hmodal .hrow,#pmodal .hrow,#smodal .hrow{font-size:12px;color:var(--dim);line-height:1.9}
 #hmodal .hnote{padding-left:1.1em;font-size:11px;color:var(--dim);opacity:.8;line-height:1.7}
-#hmodal .hgrp,#pmodal .hgrp{margin-bottom:10px}
+#hmodal .hgrp,#pmodal .hgrp,#smodal .hgrp{margin-bottom:10px}
+#smodal .note{margin-top:6px}
 .palhelp{display:flex;align-items:center;gap:6px;margin:10px 0 4px;font-size:11px;color:var(--dim)}
 #hmodal b{color:var(--brass)}
 .topmode{display:flex;gap:2px;background:var(--panel);padding:3px;border-radius:5px;margin-bottom:12px}
@@ -153,7 +154,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </style>
 </head>
 <body>
-<div class="apphead"><span class="appname">mc-blueprint</span><span class="ver" id="ver" role="button" tabindex="0" aria-label="バージョン情報">?</span></div>
+<div class="apphead"><span class="appname">mc-blueprint</span><span class="ver" id="s-open" role="button" tabindex="0" aria-label="設定">⚙</span><span class="ver" id="ver" role="button" tabindex="0" aria-label="バージョン情報">?</span></div>
 <div class="topmode"><button id="m-place" aria-pressed="true">place</button><button id="m-palette" aria-pressed="false">palette</button></div>
 <div id="place-root">
 <div class="namerow">
@@ -224,7 +225,6 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="bar" style="margin-top:0">
     <button class="btn" id="j-dl">保存</button>
     <button class="btn" id="j-imp">読み込み</button>
-    <button class="btn" id="j-dir">📁 保存先</button>
   </div>
   <div class="tabs" style="margin:12px 0 2px">
     <button id="j-voxels" aria-selected="true">レコード</button>
@@ -235,7 +235,6 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="j-apply">✓ 反映</button>
     <button class="btn" id="j-copy">コピー</button>
   </div>
-  <p class="note" id="dirlabel"></p>
   <p class="note" id="j-note"></p>
   <input id="file" type="file" accept="application/json,.json" class="hidden">
 </section>
@@ -302,10 +301,17 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <div class="hrow"><span style="color:#ff8a8a">赤 = W →</span>　<span style="color:#7ad79a">緑 = H ↑</span>　<span style="color:#8aa8ff">青 = D 奥</span></div>
   </div>
 </div></div>
+<div id="smodal"><div class="panel"><h3>設定</h3>
+  <div class="hgrp">
+    <div class="hrow"><b>保存先フォルダ</b>（place / palette 共通）</div>
+    <div class="bar" style="margin-top:6px"><button class="btn" id="s-dir">📁 保存先を選ぶ</button></div>
+    <p class="note" id="dirlabel"></p>
+  </div>
+</div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.78';
+const APP_VERSION = '3.79';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1165,23 +1171,28 @@ async function pickDir(){
     updateDirLabel(); status('保存先を設定: '+h.name);
   }catch(e){ /* ユーザーがキャンセル */ }
 }
-$('#j-dir').onclick=pickDir;
+$('#s-dir').onclick=pickDir;                                   // 設定モーダル内の保存先ボタン
+$('#s-open').onclick=()=>{ updateDirLabel(); $('#smodal').classList.add('on'); };   // タイトル横 ⚙
+$('#smodal').onclick=e=>{ if(e.target.id==='smodal') $('#smodal').classList.remove('on'); };
 
-$('#j-dl').onclick=async()=>{
-  const text=buildJson('blocks'), fname=($('#name').value||'blueprint')+'.json';   // 保存は常に blocks（形/mat/向きを保持）
+async function saveFile(text, fname, okMsg){   // 保存先フォルダがあれば同名上書き、無ければダウンロード（place/palette 共通）
   if(S.dirHandle){
     try{
       if(await ensurePerm(S.dirHandle)){
-        const fh=await S.dirHandle.getFileHandle(fname,{create:true});
+        const fh=await S.dirHandle.getFileHandle(fname,{create:true});   // 同名は上書き
         const w=await fh.createWritable(); await w.write(text); await w.close();
-        status('保存しました: '+S.dirHandle.name+'/'+fname); return;
+        status((okMsg||'保存しました')+': '+S.dirHandle.name+'/'+fname); return;
       }
       status('保存先の権限がありません。ダウンロードします');
     }catch(e){ status('保存先に書けませんでした。ダウンロードします'); }
   }
   const b=new Blob([text],{type:'application/json'}); const a=document.createElement('a');
   a.href=URL.createObjectURL(b); a.download=fname; a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),1000); status('ファイルを保存しました');
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000); status((okMsg||'保存しました')+'（ダウンロード）');
+}
+$('#j-dl').onclick=async()=>{
+  const text=buildJson('blocks'), fname=($('#name').value||'blueprint')+'.json';   // 保存は常に blocks（形/mat/向きを保持）
+  await saveFile(text, fname, '保存しました');
 };
 function importJson(text){
   try{
@@ -1363,23 +1374,19 @@ $('#pal-load-pal').onclick=()=>$('#pal-file2').click();
 $('#pal-file2').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ palImportPalette(r.result); e.target.value=''; }; r.readAsText(f); };
 $('#pal-loadstruct').onclick=()=>$('#pal-file3').click();
 $('#pal-file3').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ importStructure(r.result); e.target.value=''; }; r.readAsText(f); };
-$('#pal-save').onclick=()=>{
+$('#pal-save').onclick=async()=>{
   const map={}; for(const k of Object.keys(S.pal.map)) if(S.pal.map[k]) map[k]=S.pal.map[k];   // 未割当は除外
   const text=JSON.stringify({name:$('#pal-name').value, palette:map}, null, 1);
   const fname=($('#pal-name').value||'palette')+'.json';
-  const b=new Blob([text],{type:'application/json'}); const a=document.createElement('a');
-  a.href=URL.createObjectURL(b); a.download=fname; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-  status('palette を保存しました（'+Object.keys(map).length+' 件）');
+  await saveFile(text, fname, 'palette を保存（'+Object.keys(map).length+' 件）');   // place と同じ保存先/上書き
 };
-$('#pal-struct').onclick=()=>{   // place(S.vox) + palette(S.pal.map) を合成して structure を保存
+$('#pal-struct').onclick=async()=>{   // place(S.vox) + palette(S.pal.map) を合成して structure を保存
   if(!S.vox.size){ status('place が空です（先に place を作成/読み込み）'); return; }
   const {json,missing}=buildStructure();
   const fname=(($('#struct-name').value.trim())||'structure')+'.json';
-  const b=new Blob([json],{type:'application/json'}); const a=document.createElement('a');
-  a.href=URL.createObjectURL(b); a.download=fname; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-  status(missing.length
-    ? '⚠ structure 保存: 未割当スロット '+missing.length+' 件（'+missing.slice(0,3).join(', ')+(missing.length>3?'…':'')+'）は slot 名のまま出力。palette で mat を割り当ててください'
-    : 'structure を保存しました（place+palette 合成）');
+  await saveFile(json, fname, missing.length
+    ? '⚠ structure 保存: 未割当 '+missing.length+' 件（'+missing.slice(0,3).join(', ')+(missing.length>3?'…':'')+'）は slot 名のまま'
+    : 'structure を保存（place+palette 合成）');
 };
 
 /* ---------- boot ---------- */
