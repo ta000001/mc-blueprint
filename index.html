@@ -65,10 +65,14 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .palname input{margin-bottom:0}
 .apphead{display:flex;align-items:center;gap:8px;margin-bottom:12px}
 .ver.ico{border:none;font-size:16px;width:22px;height:22px;line-height:22px;color:var(--chalk)}
-#loaded{font-size:11px;color:var(--dim);margin-top:10px;min-height:14px;font-family:ui-monospace,monospace;word-break:break-all}
-#loaded b{color:var(--brass);font-weight:600}
-#loadmodal .hrow input{margin-right:6px;vertical-align:middle}
 .btn:disabled{opacity:.4;cursor:not-allowed}
+.ldgrp{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.ldradio{flex:none;display:flex;align-items:center}
+.ldradio input{width:20px;height:20px}
+.ldrows{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.ldrow{display:flex;align-items:center;gap:10px;min-width:0}
+.ldrow .btn{flex:none;min-width:160px}
+.ldfn{flex:1;min-width:0;font-size:11px;color:var(--brass);font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .appname{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   font-size:20px;letter-spacing:-.02em;line-height:1;color:var(--chalk)}
 .namerow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
@@ -312,21 +316,24 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <div class="bar" style="margin-top:6px"><button class="btn" id="pal-struct">structure を保存</button></div></div>
 </div></div>
 <div id="loadmodal"><div class="panel"><h3>読み込み</h3>
-  <div class="hgrp">
-    <label class="hrow"><input type="radio" name="ldmode" value="pp" checked> place・palette</label>
-    <label class="hrow"><input type="radio" name="ldmode" value="st"> structure</label>
+  <div class="ldgrp">
+    <label class="ldradio"><input type="radio" name="ldmode" value="pp" checked></label>
+    <div class="ldrows">
+      <div class="ldrow"><button class="btn" id="pal-load">place を読み込む</button><span class="ldfn" id="fn-place"></span></div>
+      <div class="ldrow"><button class="btn" id="pal-load-pal">palette を読み込む</button><span class="ldfn" id="fn-palette"></span></div>
+    </div>
   </div>
-  <div class="hgrp">
-    <div class="bar" style="margin-top:6px"><button class="btn" id="pal-load">place を読み込む</button></div>
-    <div class="bar" style="margin-top:6px"><button class="btn" id="pal-load-pal">palette を読み込む</button></div>
-    <div class="bar" style="margin-top:6px"><button class="btn" id="pal-loadstruct">structure を読み込む</button></div>
+  <div class="ldgrp">
+    <label class="ldradio"><input type="radio" name="ldmode" value="st"></label>
+    <div class="ldrows">
+      <div class="ldrow"><button class="btn" id="pal-loadstruct">structure を読み込む</button><span class="ldfn" id="fn-structure"></span></div>
+    </div>
   </div>
-  <p class="note" id="loaded"></p>
 </div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.83';
+const APP_VERSION = '3.84';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1381,12 +1388,9 @@ function setLoaded(kind, name){
   else S.files.structure=null;   // place/palette を読むと structure(合成物)は無効
   renderLoaded();
 }
-function renderLoaded(){
-  const el=$('#loaded'); if(!el) return; const p=[];
-  if(S.files.place) p.push('place: <b>'+S.files.place+'</b>');
-  if(S.files.palette) p.push('palette: <b>'+S.files.palette+'</b>');
-  if(S.files.structure) p.push('structure: <b>'+S.files.structure+'</b>');
-  el.innerHTML = p.join('　/　');
+function renderLoaded(){   // 各ボタン右にファイル名（無ければ空欄）
+  const set=(id,v)=>{ const el=$(id); if(el) el.textContent=v||''; };
+  set('#fn-place', S.files.place); set('#fn-palette', S.files.palette); set('#fn-structure', S.files.structure);
 }
 $('#pal-load').onclick=async()=>{   // place 読み込み（保存先フォルダ対応・両タブ共通）→ 本体(S.vox)へ
   if(FS_OK && window.showOpenFilePicker){
