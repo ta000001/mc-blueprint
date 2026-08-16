@@ -126,7 +126,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #gridwrap{flex:1;min-width:0;overflow:auto;background:var(--panel);border:1px solid var(--rule);
   border-radius:4px;padding:6px;max-height:52vh;-webkit-overflow-scrolling:touch}
 #grid{display:grid;width:max-content;margin:0 auto;border-left:1px solid var(--rule);border-top:1px solid var(--rule)}
-.cell{border-right:1px solid #22302f;border-bottom:1px solid #22302f;background:#131c1e}
+.cell{border-right:1px solid #22302f;border-bottom:1px solid #22302f;background:#131c1e;position:relative}
+.cell[data-origin="1"]::after{content:'';position:absolute;inset:0;box-shadow:inset 3px 0 0 #8aa8ff,inset 0 -3px 0 #ff8a8a;pointer-events:none;z-index:2}
 .cell[data-cx="1"]{border-right-color:var(--rule)}
 .cell[data-cz="1"]{border-bottom-color:var(--rule)}
 .cell[data-below="1"]{background:#1b2320;box-shadow:inset 0 0 0 1px var(--brass-dim)}
@@ -231,7 +232,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="bar" id="form-plan"></div>
   <div class="bar" id="dir-plan"></div>
   <div class="bar" id="roles-plan"></div>
-  <p class="note">上から見た平面図。横がW、縦がD。色＝役割。左の帯は各Hのブロック量で、ドラッグすると階層を移動する。</p>
+  <p class="note">上から見た平面図。横=W（赤→）・縦=D（青↑）、原点(0,0)は左下＝立体と同じ向き。色＝役割。左の帯は各Hのブロック量で、ドラッグすると階層を移動する。</p>
 </section>
 
 <section id="v-json" class="hidden">
@@ -346,7 +347,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.90';
+const APP_VERSION = '3.91';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -957,7 +958,7 @@ function renderGrid(){
   const g=$('#grid'), d=S.dims, f=document.createDocumentFragment();
   g.style.gridTemplateColumns='repeat('+d.x+','+S.cell+'px)';
   g.innerHTML='';
-  for(let z=0;z<d.z;z++) for(let x=0;x<d.x;x++){
+  for(let z=d.z-1;z>=0;z--) for(let x=0;x<d.x;x++){   // z(D) を逆順で並べ、原点 D=0 を下端に（立体と同じ向き）
     const c=document.createElement('div');
     c.className='cell'; c.dataset.x=x; c.dataset.z=z;
     const v=S.vox.get(K(x,S.layer,z));
@@ -965,6 +966,7 @@ function renderGrid(){
     if(v) c.style.background = roleHex(v.r);   // 役割色でセル表示
     c.dataset.below = (S.layer>0 && S.vox.has(K(x,S.layer-1,z)) && !S.vox.has(K(x,S.layer,z)))?1:0;
     c.dataset.cx=(x+1)%4===0?1:0; c.dataset.cz=(z+1)%4===0?1:0;
+    c.dataset.origin=(x===0&&z===0)?1:0;   // 原点(手前左)に立体同様のしるし（左=D青・下=W赤）
     c.style.width=c.style.height=S.cell+'px';
     f.appendChild(c);
   }
