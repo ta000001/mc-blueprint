@@ -32,10 +32,10 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .sub{font-size:11px;color:var(--dim);letter-spacing:.08em}
 .ver{font-size:11px;color:var(--brass);border:1px solid var(--brass-dim);border-radius:50%;
   width:18px;height:18px;line-height:16px;text-align:center;cursor:pointer;flex:none;align-self:center}
-#vmodal,#hmodal,#pmodal,#smodal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:60}
-#vmodal.on,#hmodal.on,#pmodal.on,#smodal.on{display:flex}
-#vmodal .panel,#hmodal .panel,#pmodal .panel,#smodal .panel{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:16px 20px;min-width:220px;max-width:88%}
-#vmodal h3,#hmodal h3,#pmodal h3,#smodal h3{margin:0 0 10px;font-size:13px;color:var(--brass)}
+#vmodal,#hmodal,#pmodal,#smodal,#savemodal,#loadmodal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:60}
+#vmodal.on,#hmodal.on,#pmodal.on,#smodal.on,#savemodal.on,#loadmodal.on{display:flex}
+#vmodal .panel,#hmodal .panel,#pmodal .panel,#smodal .panel,#savemodal .panel,#loadmodal .panel{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:16px 20px;min-width:220px;max-width:88%}
+#vmodal h3,#hmodal h3,#pmodal h3,#smodal h3,#savemodal h3,#loadmodal h3{margin:0 0 10px;font-size:13px;color:var(--brass)}
 #vmodal .vrow{font-size:12px;color:var(--brass);letter-spacing:.04em;line-height:1.9;font-family:ui-monospace,monospace}
 #hmodal .hrow,#pmodal .hrow,#smodal .hrow{font-size:12px;color:var(--dim);line-height:1.9}
 #hmodal .hnote{padding-left:1.1em;font-size:11px;color:var(--dim);opacity:.8;line-height:1.7}
@@ -64,6 +64,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .palname span{font-size:10px;color:var(--dim);min-width:64px}
 .palname input{margin-bottom:0}
 .apphead{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.ver.ico{border:none;font-size:16px;width:22px;height:22px;line-height:22px;color:var(--chalk)}
 .appname{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   font-size:20px;letter-spacing:-.02em;line-height:1;color:var(--chalk)}
 .namerow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
@@ -154,11 +155,10 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </style>
 </head>
 <body>
-<div class="apphead"><span class="appname">mc-blueprint</span><span class="ver" id="ver" role="button" tabindex="0" aria-label="バージョン情報">?</span><span class="ver" id="s-open" style="margin-left:auto" role="button" tabindex="0" aria-label="設定">⚙</span></div>
+<div class="apphead"><span class="appname">mc-blueprint</span><span class="ver" id="ver" role="button" tabindex="0" aria-label="バージョン情報">?</span><span class="ver ico" id="sv-open" style="margin-left:auto" role="button" tabindex="0" aria-label="保存">💾</span><span class="ver ico" id="ld-open" role="button" tabindex="0" aria-label="読み込み">📂</span><span class="ver ico" id="s-open" role="button" tabindex="0" aria-label="設定">⚙</span></div>
 <div class="topmode"><button id="m-place" aria-pressed="true">place</button><button id="m-palette" aria-pressed="false">palette</button></div>
 <div id="place-root">
 <div class="namerow">
-  <input id="name" value="blueprint-01" aria-label="設計図の名前">
   <div class="dims">
     <label>D<input id="dz" type="number" min="1" max="64" value="16"></label>
     <label>H<input id="dy" type="number" min="1" max="64" value="16"></label>
@@ -222,11 +222,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </section>
 
 <section id="v-json" class="hidden">
-  <div class="bar" style="margin-top:0">
-    <button class="btn" id="j-dl">保存</button>
-    <button class="btn" id="j-imp">読み込み</button>
-  </div>
-  <div class="tabs" style="margin:12px 0 2px">
+  <div class="tabs" style="margin:0 0 2px">
     <button id="j-voxels" aria-selected="true">レコード</button>
     <button id="j-layers" aria-selected="false">層グリッド</button>
   </div>
@@ -236,23 +232,11 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="j-copy">コピー</button>
   </div>
   <p class="note" id="j-note"></p>
-  <input id="file" type="file" accept="application/json,.json" class="hidden">
 </section>
 </div><!-- /place-root -->
 
 <div id="palette-root" class="hidden">
-  <div class="palname"><span>palette</span><input id="pal-name" value="palette-01" aria-label="palette の名前"></div>
-  <div class="palname"><span>structure</span><input id="struct-name" value="structure-01" aria-label="structure の名前"></div>
-  <div class="palbar"><span class="palbar-t">load</span>
-    <button class="btn" id="pal-load" title="place を読み込む">place</button>
-    <button class="btn" id="pal-load-pal" title="palette を読み込む">palette</button>
-    <button class="btn" id="pal-loadstruct" title="structure を読み込む">structure</button>
-  </div>
-  <div class="palbar"><span class="palbar-t">save</span>
-    <button class="btn" id="pal-save" title="palette を保存">palette</button>
-    <button class="btn" id="pal-struct" title="structure を保存">structure</button>
-  </div>
-  <p class="palhelp"><span class="ver" id="pal-help" role="button" tabindex="0" aria-label="使い方">?</span></p>
+  <p class="palhelp"><span class="ver" id="pal-help" role="button" tabindex="0" aria-label="使い方">?</span><span class="note">保存・読み込みは上部の 💾 / 📂 アイコンから</span></p>
   <div id="pal-list"></div>
   <input id="pal-file" type="file" accept="application/json,.json" class="hidden">
   <input id="pal-file2" type="file" accept="application/json,.json" class="hidden">
@@ -312,10 +296,29 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <p class="note" id="dirlabel-structure"></p>
   </div>
 </div></div>
+<div id="savemodal"><div class="panel"><h3>保存</h3>
+  <div class="hgrp"><div class="hrow"><b>place</b></div>
+    <div class="palname"><span>名前</span><input id="name" value="blueprint-01" aria-label="設計図の名前"></div>
+    <div class="bar" style="margin-top:6px"><button class="btn" id="j-dl">place を保存</button></div></div>
+  <div class="hgrp"><div class="hrow"><b>palette</b></div>
+    <div class="palname"><span>名前</span><input id="pal-name" value="palette-01" aria-label="palette の名前"></div>
+    <div class="bar" style="margin-top:6px"><button class="btn" id="pal-save">palette を保存</button></div></div>
+  <div class="hgrp"><div class="hrow"><b>structure</b></div>
+    <div class="palname"><span>名前</span><input id="struct-name" value="structure-01" aria-label="structure の名前"></div>
+    <div class="bar" style="margin-top:6px"><button class="btn" id="pal-struct">structure を保存</button></div></div>
+</div></div>
+<div id="loadmodal"><div class="panel"><h3>読み込み</h3>
+  <div class="hgrp">
+    <div class="bar" style="margin-top:6px"><button class="btn" id="pal-load">place を読み込む</button></div>
+    <div class="bar" style="margin-top:6px"><button class="btn" id="pal-load-pal">palette を読み込む</button></div>
+    <div class="bar" style="margin-top:6px"><button class="btn" id="pal-loadstruct">structure を読み込む</button></div>
+  </div>
+  <p class="hrow" style="margin-top:8px;font-size:11px;color:var(--dim)">place/palette 両タブ共通。place は本体へ読込（palette のスロットも同期）、palette は割当を復元、structure は place+palette へ分解取込。</p>
+</div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.80';
+const APP_VERSION = '3.81';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1237,23 +1240,11 @@ function importJson(text){
     setDims(nd); status('読み込みました');
   }catch(err){ status('このファイルは読み込めません'); }
 }
-$('#file').onchange=e=>{
-  const f=e.target.files[0]; if(!f) return;
-  const r=new FileReader(); r.onload=()=>{ importJson(r.result); e.target.value=''; }; r.readAsText(f);
-};
-$('#j-imp').onclick=async()=>{
-  // 対応環境では保存先フォルダを既定にして開く。非対応はファイル選択にフォールバック。
-  if(FS_OK && window.showOpenFilePicker){
-    try{
-      const opt={types:[{description:'JSON',accept:{'application/json':['.json']}}], id:'bp-save'};
-      if(S.dirs.place) opt.startIn=S.dirs.place;
-      const [fh]=await window.showOpenFilePicker(opt);
-      importJson(await (await fh.getFile()).text());
-      return;
-    }catch(e){ if(e && e.name==='AbortError') return; }  // キャンセルは無視、その他はフォールバック
-  }
-  $('#file').click();
-};
+// 保存/読み込みモーダル（タイトル右の 💾 / 📂）。place/palette 両タブ共通。
+$('#sv-open').onclick=()=>$('#savemodal').classList.add('on');
+$('#savemodal').onclick=e=>{ if(e.target.id==='savemodal') $('#savemodal').classList.remove('on'); };
+$('#ld-open').onclick=()=>$('#loadmodal').classList.add('on');
+$('#loadmodal').onclick=e=>{ if(e.target.id==='loadmodal') $('#loadmodal').classList.remove('on'); };
 
 addEventListener('resize',()=>{ if(S.view==='plan'&&!S.manualZoom) renderGrid(); });
 
@@ -1375,7 +1366,16 @@ function palImportPalette(text){   // 既存 palette を任意で復元。place 
     else status('palette を読み込みました（割当 '+Object.keys(pal).length+' 件）');
   }catch(e){ status('このファイルは読み込めません'); }
 }
-$('#pal-load').onclick=()=>$('#pal-file').click();
+$('#pal-load').onclick=async()=>{   // place 読み込み（保存先フォルダ対応・両タブ共通）→ 本体(S.vox)へ
+  if(FS_OK && window.showOpenFilePicker){
+    try{ const opt={types:[{description:'JSON',accept:{'application/json':['.json']}}], id:'bp-place'};
+      if(S.dirs.place) opt.startIn=S.dirs.place;
+      const [fh]=await window.showOpenFilePicker(opt);
+      palImport(await (await fh.getFile()).text()); return;
+    }catch(e){ if(e && e.name==='AbortError') return; }
+  }
+  $('#pal-file').click();
+};
 $('#pal-file').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ palImport(r.result); e.target.value=''; }; r.readAsText(f); };
 $('#pal-load-pal').onclick=()=>$('#pal-file2').click();
 $('#pal-file2').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ palImportPalette(r.result); e.target.value=''; }; r.readAsText(f); };
