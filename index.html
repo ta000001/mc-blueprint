@@ -360,7 +360,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.98';
+const APP_VERSION = '3.99';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -795,7 +795,7 @@ function syncVox(){
   S.vox.forEach((val,k)=>{ const v=norm(val), p=k.split(',').map(Number), gk=geoKey(v), up=p[1]>S.layer;
     (up?above:below)[gk] ??= []; (up?above:below)[gk].push({p,v});
     (up?aboveCells:belowCells).push(p);
-    if(!up) labelSet.push({p,v});
+    labelSet.push({p,v});   // ラベルは作業面の上下に関わらず全ブロック対象
     if(v.s==='trapdoor') (up?aboveTrap:belowTrap).push({p,v});
     if(v.s==='fullblock') (up?aboveFull:belowFull).push({p,v}); });
   if(S.labels) makeLabels(labelSet).forEach(s=>{ scene.add(s); labelMeshes.push(s); });
@@ -999,7 +999,7 @@ function renderGrid(){
     const v=S.vox.get(planeKeyAt(hh,vv,layer));
     c.dataset.on = v?1:0;
     if(v) c.style.background = roleHex(v.r);   // 役割色でセル表示
-    if(S.labels && v && S.cell>=11){ const fm=formOf(v); const lab=FORM_LABEL[fm]||PLAB2[fm]; if(lab) c.textContent=lab; }   // 2Dは非fullblock（others＋slab/stairs/trapdoor）を表示
+    if(S.labels && v && S.cell>=9){ const fm=formOf(v); const lab=FORM_LABEL[fm]||PLAB2[fm]; if(lab){ c.textContent=lab; c.style.fontSize=Math.max(6,Math.min(9,Math.floor(S.cell*0.5)))+'px'; } }   // 2Dは非fullblock（others＋slab/stairs/trapdoor）
     c.dataset.below = (layer>0 && S.vox.has(planeKeyAt(hh,vv,layer-1)) && !v)?1:0;
     c.dataset.cx=(hh+1)%4===0?1:0; c.dataset.cz=(vv+1)%4===0?1:0;
     c.dataset.origin=(hh===0&&vv===0)?1:0;     // 原点(手前左)にしるし（左=縦軸色・下=横軸色）
