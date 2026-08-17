@@ -109,10 +109,10 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .vbtn{width:34px;height:34px;font-size:17px;line-height:1;border-radius:8px;border:1px solid var(--rule);
   background:rgba(0,0,0,.45);color:var(--chalk);cursor:pointer}
 .vbtn:disabled{opacity:.4}
-#inspect{position:absolute;left:10px;top:10px;max-width:calc(100% - 20px);font-size:11px;color:var(--brass);
+#inspect,#pinspect{position:absolute;left:10px;top:10px;max-width:calc(100% - 20px);font-size:11px;color:var(--brass);
   display:none;font-family:ui-monospace,monospace;pointer-events:none;z-index:6;text-align:left;line-height:1.5;
   text-shadow:0 1px 3px rgba(0,0,0,0.95)}
-#inspect.on{display:block}
+#inspect.on,#pinspect.on{display:block}
 .slider{display:flex;align-items:center;gap:8px;margin-top:10px}
 .slider input{flex:1;accent-color:#D4A93C;height:26px}
 .y{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;font-size:22px;line-height:1;color:var(--brass)}
@@ -125,7 +125,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .seg[data-cur="1"]{box-shadow:inset 0 0 0 2px var(--verdigris)}
 .gridbox{position:relative;flex:1;min-width:0;display:flex}
 #gridwrap{flex:1;min-width:0;overflow:auto;background:var(--panel);border:1px solid var(--rule);
-  border-radius:4px;padding:6px;max-height:52vh;-webkit-overflow-scrolling:touch;touch-action:none}
+  border-radius:4px;padding:6px;max-height:60vh;min-height:300px;-webkit-overflow-scrolling:touch;touch-action:none}
 #grid{display:grid;width:max-content;margin:0 auto;border-left:1px solid var(--rule);border-top:1px solid var(--rule);--hcol:#ff8a8a;--vcol:#8aa8ff}
 .cell{border-right:1px solid #22302f;border-bottom:1px solid #22302f;background:#131c1e;position:relative}
 .cell[data-origin="1"]::after{content:'';position:absolute;inset:0;box-shadow:inset 3px 0 0 var(--vcol),inset 0 -3px 0 var(--hcol);pointer-events:none;z-index:2}
@@ -133,6 +133,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .cell[data-cz="1"]{border-bottom-color:var(--rule)}
 .cell[data-below="1"]{background:#1b2320;box-shadow:inset 0 0 0 1px var(--brass-dim)}
 .cell[data-on="1"]{background:var(--brass);box-shadow:inset -2px -2px 0 rgba(0,0,0,.22)}
+.cell[data-preview="draw"]{box-shadow:inset 0 0 0 2px var(--brass)!important;z-index:3}
+.cell[data-preview="break"]{box-shadow:inset 0 0 0 2px #c0533f!important;z-index:3}
 .readout{display:flex;align-items:baseline;gap:8px;margin:0 0 8px}
 .readout .c{margin-left:auto;font-size:11px;color:var(--dim)}
 #json,#pal-json{width:100%;height:300px;background:var(--panel);border:1px solid var(--rule);color:var(--chalk);
@@ -182,8 +184,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </div>
 
 <div class="tabs">
-  <button id="t-space" aria-selected="true">立体</button>
-  <button id="t-plan" aria-selected="false">平面</button>
+  <button id="t-space" aria-selected="true">3D</button>
+  <button id="t-plan" aria-selected="false">2D</button>
   <button id="t-json" aria-selected="false">JSON</button>
 </div>
 
@@ -218,6 +220,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <div id="spine"></div>
     <div class="gridbox">
       <div id="gridwrap"><div id="grid"></div></div>
+      <div id="pinspect"></div>
       <div class="vbottom"><button class="vbtn" id="pl-undo" aria-label="元に戻す">↶</button><button class="vbtn" id="pl-redo" aria-label="進む" disabled>↷</button></div>
     </div>
   </div>
@@ -240,7 +243,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="bar" id="form-plan"></div>
   <div class="bar" id="dir-plan"></div>
   <div class="bar" id="roles-plan"></div>
-  <p class="note">面をタブで切替（上面 W×D / 正面 W×H / 側面 D×H）。原点(0,0)は左下＝立体と同じ向き（左=縦軸色・下=横軸色）。1本指=描画・2本指=ズーム/移動・ダブルタップ=削除。左の帯は層（残り1軸）のブロック量、ドラッグで層移動。色＝役割。</p>
+  <p class="note">面をタブで切替（上面 W×D / 正面 W×H / 側面 D×H）。原点(0,0)は左下＝3Dと同じ向き（左=縦軸色・下=横軸色）。タップ=単発・ドラッグ=矩形・ダブルタップ(+ドラッグ)=削除(範囲)・2本指=ズーム/移動。左の帯は層（残り1軸）のブロック量、ドラッグで層移動。色＝役割。</p>
 </section>
 
 <section id="v-json" class="hidden">
@@ -355,7 +358,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.94';
+const APP_VERSION = '3.95';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1001,18 +1004,34 @@ function renderGrid(){
   }
   g.appendChild(f);
 }
-(function bindPlan(){   // 立体と同様のジェスチャ：1本指=描画 / 2本指=ズーム＋パン / ダブルタップ=削除
+(function bindPlan(){   // 立体と同じ操作感：タップ=単発 / ドラッグ=矩形(プレビュー) / ダブルタップ(+ドラッグ)=削除(範囲) / 2本指=ズーム+パン
   const wrap=$('#gridwrap');
-  const pts=new Map(); let painting=false, pmode='place', pinch=0, mid=null, lastUp=null;
+  const pts=new Map(); let tap=null, drag=null, pinch=0, mid=null, lastUp=null, pendingPlace=null;
   const cellAt=(x,y)=>{ const el=document.elementFromPoint(x,y);
     return (el&&el.dataset&&el.dataset.x!==undefined)?{x:+el.dataset.x,z:+el.dataset.z}:null; };
   const dist=()=>{ const a=[...pts.values()]; return Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y); };
   const midp=()=>{ const a=[...pts.values()]; return {x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2}; };
-  const apply=(c,m)=>{ const k=planeKey(c.x,c.z);
-    if(m==='break'){ if(S.vox.has(k)){ S.vox.delete(k); changed(); renderGrid(); renderSpine(); } }
-    else if(m==='info'){ const v=S.vox.get(k); if(v){ const f=formOf(v), parts=['form='+f,'slot='+v.r];
-      for(const {name} of shownProps(f)) if(v.props[name]!=null) parts.push(name+'='+v.props[name]); status(parts.join(' · ')); } }
-    else { const v=cur(); if(sig(S.vox.get(k))!==sig(v)){ S.vox.set(k,v); changed(); renderGrid(); renderSpine(); } } };
+  function preview(a,b,mode){   // 矩形プレビュー（セルに data-preview）
+    const x0=Math.min(a.x,b.x),x1=Math.max(a.x,b.x),z0=Math.min(a.z,b.z),z1=Math.max(a.z,b.z);
+    for(const c of $('#grid').children){ const h=+c.dataset.x, v=+c.dataset.z;
+      c.dataset.preview=(h>=x0&&h<=x1&&v>=z0&&v<=z1)?(mode==='break'?'break':'draw'):''; } }
+  const clearPrev=()=>{ for(const c of $('#grid').children) c.dataset.preview=''; };
+  function rect(a,b,mode){   // 矩形を確定
+    const x0=Math.min(a.x,b.x),x1=Math.max(a.x,b.x),z0=Math.min(a.z,b.z),z1=Math.max(a.z,b.z);
+    pushHist(); const v=cur(), vs=sig(v); let ch=false;
+    for(let h=x0;h<=x1;h++) for(let vv=z0;vv<=z1;vv++){ const k=planeKey(h,vv);
+      if(mode==='break'){ if(S.vox.has(k)){ S.vox.delete(k); ch=true; } }
+      else { if(sig(S.vox.get(k))!==vs){ S.vox.set(k,v); ch=true; } } }
+    if(ch) changed(); else S.hist.pop(); renderGrid(); renderSpine(); }
+  function single(c,mode){   // 単発（tap）
+    const k=planeKey(c.x,c.z);
+    if(mode==='break'){ if(S.vox.has(k)){ pushHist(); S.vox.delete(k); changed(); renderGrid(); renderSpine(); } }
+    else if(mode==='info'){ const val=S.vox.get(k), pi=$('#pinspect');
+      if(val){ const f=formOf(val), parts=['form='+f,'slot='+val.r];
+        for(const {name} of shownProps(f)) if(val.props[name]!=null) parts.push(name+'='+val.props[name]);
+        pi.innerHTML=parts.join('<br>'); pi.classList.add('on'); }
+      else { pi.classList.remove('on'); } }   // 空セルは消す
+    else { const v=cur(); if(sig(S.vox.get(k))!==sig(v)){ pushHist(); S.vox.set(k,v); changed(); renderGrid(); renderSpine(); } } }
   document.addEventListener('pointerdown',e=>{
     if(S.view!=='plan' || !wrap.contains(e.target)) return;
     if(e.target.releasePointerCapture){ try{ e.target.releasePointerCapture(e.pointerId); }catch(_){} }  // 再描画でセルが消えても move/up が届くように
@@ -1020,24 +1039,37 @@ function renderGrid(){
     if(pts.size===1){
       const now=Date.now();
       const isDbl = lastUp && now-lastUp.t<300 && Math.hypot(e.clientX-lastUp.x,e.clientY-lastUp.y)<22;
-      const mode = (S.mode==='info')?'info':(isDbl?'break':S.mode);
+      const gmode = (S.mode==='info')?'info':(isDbl?'break':S.mode);
       const c=cellAt(e.clientX,e.clientY);
-      if(c){ if(mode==='info'){ apply(c,'info'); }
-        else { e.preventDefault(); pushHist(); painting=true; pmode=mode; apply(c,mode); } }
-      if(isDbl) lastUp=null;
-    } else { painting=false; if(pts.size===2){ pinch=dist(); mid=midp(); } }
+      tap  = c ? {x:e.clientX,y:e.clientY,cell:c,mode:gmode,t:now} : null;
+      drag = (c && gmode!=='info') ? {mode:gmode,a:c,b:c} : null;   // 情報モードは矩形なし
+      if(isDbl){ clearTimeout(pendingPlace); pendingPlace=null; lastUp=null; }   // 1回目の配置を取消
+      e.preventDefault();
+    } else { tap=null; drag=null; clearPrev(); if(pts.size===2){ pinch=dist(); mid=midp(); } }
   });
   addEventListener('pointermove',e=>{
     const p=pts.get(e.pointerId); if(!p) return; p.x=e.clientX; p.y=e.clientY;
-    if(pts.size===1 && painting){ e.preventDefault(); const c=cellAt(e.clientX,e.clientY); if(c) apply(c,pmode); }
-    else if(pts.size===2){
+    if(pts.size===1){
+      if(tap && Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>8) tap=null;
+      if(drag){ e.preventDefault(); const c=cellAt(e.clientX,e.clientY); if(c){ drag.b=c; preview(drag.a,drag.b,drag.mode); } }
+    } else if(pts.size===2){
       const d=dist(); if(pinch){ const ns=clamp(Math.round(S.cell*(d/pinch)),6,40); if(ns!==S.cell){ S.cell=ns; S.manualZoom=true; renderGrid(); } } pinch=d;
       const m=midp(); if(mid){ wrap.scrollLeft-=(m.x-mid.x); wrap.scrollTop-=(m.y-mid.y); } mid=m;
     }
   });
   const up=e=>{ const was=pts.get(e.pointerId); pts.delete(e.pointerId);
     if(pts.size<2){ pinch=0; mid=null; }
-    if(pts.size===0){ if(was) lastUp={x:was.x,y:was.y,t:Date.now()}; painting=false; } };
+    if(tap && was && Date.now()-tap.t<600){
+      const c=tap.cell, mode=tap.mode;
+      if(mode==='break'){ single(c,'break'); lastUp=null; }
+      else if(mode==='info'){ single(c,'info'); lastUp=null; }
+      else { lastUp={x:tap.x,y:tap.y,t:Date.now()}; clearTimeout(pendingPlace);   // 置く単発はダブル判定のため遅延
+        pendingPlace=setTimeout(()=>{ single(c,'place'); pendingPlace=null; },130); }
+    } else if(drag && (drag.a.x!==drag.b.x||drag.a.z!==drag.b.z)){   // 1セルのみの範囲はキャンセル
+      clearTimeout(pendingPlace); pendingPlace=null; rect(drag.a,drag.b,drag.mode); lastUp=null;
+    }
+    clearPrev();
+    if(pts.size===0){ tap=null; drag=null; } };
   addEventListener('pointerup',up); addEventListener('pointercancel',up);
 
   let scrub=false;
@@ -1132,7 +1164,7 @@ function setMode(m){ S.mode=m;   // 立体・平面 共通のモード（置く/
   ['place','break','info'].forEach(n=>{ const a=$('#b-'+n), b=$('#pm-'+n);
     if(a) a.setAttribute('aria-pressed', n===m); if(b) b.setAttribute('aria-pressed', n===m); });
   const hm=$('#hud-mode'); if(hm) hm.textContent = m==='break'?'壊す':(m==='info'?'情報モード':'置く');
-  if(m!=='info') $('#inspect').classList.remove('on'); }
+  if(m!=='info'){ $('#inspect').classList.remove('on'); const pi=$('#pinspect'); if(pi) pi.classList.remove('on'); } }
 $('#pm-place').onclick=()=>setMode('place');
 $('#pm-break').onclick=()=>setMode('break');
 $('#pm-info').onclick=()=>setMode('info');
