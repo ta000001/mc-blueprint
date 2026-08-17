@@ -198,8 +198,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="b-info" aria-pressed="false">情報</button>
   </div>
   <div class="bar">
-    <button class="btn" id="b-down">▼ 作業面を下げる</button>
-    <button class="btn" id="b-up">▲ 作業面を上げる</button>
+    <button class="btn" id="b-down">▼ 下の層</button>
+    <button class="btn" id="b-up">▲ 上の層</button>
     <button class="btn" id="b-fit">視点をリセット</button>
   </div>
   <div class="bar" id="form-space"></div>
@@ -358,7 +358,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.95';
+const APP_VERSION = '3.96';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
