@@ -244,12 +244,12 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   </div>
   <div class="bar">
     <button class="btn" id="p-lcopy">層をコピー</button>
-    <button class="btn" id="p-lcut">層を切り取り</button>
     <button class="btn" id="p-lpaste">層を貼り付け</button>
+    <button class="btn" id="p-ladd">層を追加</button>
   </div>
   <div class="bar">
+    <button class="btn" id="p-lcut">層を切り取り</button>
     <button class="btn" id="p-lins">層を挿入</button>
-    <button class="btn" id="p-ladd">層を追加</button>
     <button class="btn" id="p-ldel">層を削除</button>
   </div>
   <div class="bar" id="form-plan"></div>
@@ -370,7 +370,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.03';
+const APP_VERSION = '4.04';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
