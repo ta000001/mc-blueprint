@@ -127,7 +127,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #gridwrap{flex:1;min-width:0;overflow:auto;background:var(--panel);border:1px solid var(--rule);
   border-radius:4px;padding:6px;max-height:60vh;min-height:300px;-webkit-overflow-scrolling:touch;touch-action:none}
 #grid{display:grid;width:max-content;margin:0 auto;border-left:1px solid var(--rule);border-top:1px solid var(--rule);--hcol:#ff8a8a;--vcol:#8aa8ff}
-.cell{border-right:1px solid #22302f;border-bottom:1px solid #22302f;background:#131c1e;position:relative}
+.cell{border-right:1px solid #22302f;border-bottom:1px solid #22302f;background:#131c1e;position:relative;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:8px;line-height:1;color:#0e1416;text-align:center;font-family:ui-monospace,monospace}
 .cell[data-origin="1"]::after{content:'';position:absolute;inset:0;box-shadow:inset 3px 0 0 var(--vcol),inset 0 -3px 0 var(--hcol);pointer-events:none;z-index:2}
 .cell[data-cx="1"]{border-right-color:var(--rule)}
 .cell[data-cz="1"]{border-bottom-color:var(--rule)}
@@ -221,6 +222,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <div class="gridbox">
       <div id="gridwrap"><div id="grid"></div></div>
       <div id="pinspect"></div>
+      <div class="vtoggles"><button class="vtoggle" id="pl-label" aria-pressed="false">ラベル</button></div>
       <div class="vbottom"><button class="vbtn" id="pl-undo" aria-label="元に戻す">↶</button><button class="vbtn" id="pl-redo" aria-label="進む" disabled>↷</button></div>
     </div>
   </div>
@@ -358,7 +360,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.96';
+const APP_VERSION = '3.97';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -996,6 +998,7 @@ function renderGrid(){
     const v=S.vox.get(planeKeyAt(hh,vv,layer));
     c.dataset.on = v?1:0;
     if(v) c.style.background = roleHex(v.r);   // 役割色でセル表示
+    if(S.labels && v && S.cell>=14){ const lab=FORM_LABEL[formOf(v)]; if(lab) c.textContent=lab; }   // others の form ラベル
     c.dataset.below = (layer>0 && S.vox.has(planeKeyAt(hh,vv,layer-1)) && !v)?1:0;
     c.dataset.cx=(hh+1)%4===0?1:0; c.dataset.cz=(vv+1)%4===0?1:0;
     c.dataset.origin=(hh===0&&vv===0)?1:0;     // 原点(手前左)にしるし（左=縦軸色・下=横軸色）
@@ -1151,7 +1154,11 @@ $('#plane').oninput = e=>setLayer(+e.target.value);
 $('#b-up').onclick = ()=>setLayer(S.layer+1);
 $('#b-down').onclick = ()=>setLayer(S.layer-1);
 $('#b-fit').onclick = frameCamera;
-$('#b-label').onclick = ()=>{ S.labels=!S.labels; $('#b-label').setAttribute('aria-pressed', S.labels); syncVox(); };
+function setLabels(v){ S.labels=v;   // 3D/2D 共通のラベル表示
+  ['#b-label','#pl-label'].forEach(id=>{ const b=$(id); if(b) b.setAttribute('aria-pressed', v); });
+  syncVox(); if(S.view==='plan') renderGrid(); }
+$('#b-label').onclick = ()=>setLabels(!S.labels);
+$('#pl-label').onclick = ()=>setLabels(!S.labels);
 $('#b-undo').onclick = undo;
 $('#b-redo').onclick = redo;
 $('#b-clear').onclick = ()=>{ pushHist(); S.vox=new Map(); changed(); renderGrid(); renderSpine(); };
