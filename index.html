@@ -140,7 +140,12 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .cell[data-on="1"]{background:var(--brass);box-shadow:inset -2px -2px 0 rgba(0,0,0,.22)}
 .cell[data-preview="draw"]{box-shadow:inset 0 0 0 2px var(--brass)!important;z-index:3}
 .cell[data-preview="break"]{box-shadow:inset 0 0 0 2px #c0533f!important;z-index:3}
-.cell[data-inspect="1"]{box-shadow:inset 0 0 0 3px #8ff0ff!important;z-index:4}
+.cell[data-preview="select"]{box-shadow:inset 0 0 0 2px #8ff0ff!important;z-index:3}
+.cell[data-sel="1"]{background:rgba(143,240,255,.16);box-shadow:inset 0 0 0 1px rgba(143,240,255,.5)}
+.cell[data-inspect="1"]{box-shadow:inset 0 0 0 3px #8ff0ff!important;z-index:5}
+.cell[data-clipsrc="cut"]{outline:2px dashed #ffd24a;outline-offset:-2px;z-index:4}
+.cell[data-clipsrc="copy"]{outline:2px dashed #8ff0ff;outline-offset:-2px;z-index:4}
+.cell[data-clipdst="1"]{outline:2px dashed #7ad79a;outline-offset:-2px;z-index:4}
 .readout{display:flex;align-items:baseline;gap:8px;margin:0 0 8px}
 .readout .c{margin-left:auto;font-size:11px;color:var(--dim)}
 #json,#pal-json{width:100%;height:300px;background:var(--panel);border:1px solid var(--rule);color:var(--chalk);
@@ -201,7 +206,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="bar">
     <button class="btn" id="b-place" aria-pressed="true">置く</button>
     <button class="btn" id="b-break" aria-pressed="false">壊す</button>
-    <button class="btn" id="b-info" aria-pressed="false">情報</button>
+    <button class="btn" id="b-info" aria-pressed="false">選択</button>
   </div>
   <div class="bar">
     <button class="btn" id="b-down">▼ 下の層</button>
@@ -234,7 +239,12 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="bar">
     <button class="btn" id="pm-place" aria-pressed="true">置く</button>
     <button class="btn" id="pm-break" aria-pressed="false">壊す</button>
-    <button class="btn" id="pm-info" aria-pressed="false">情報</button>
+    <button class="btn" id="pm-info" aria-pressed="false">選択</button>
+  </div>
+  <div class="bar hidden" id="cellclip-bar">
+    <button class="btn" id="c-copy">コピー</button>
+    <button class="btn" id="c-cut">切り取り</button>
+    <button class="btn" id="c-paste">貼り付け</button>
   </div>
   <div class="bar">
     <button class="btn" id="p-down">▼ 下の層</button>
@@ -370,7 +380,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.04';
+const APP_VERSION = '4.05';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -477,7 +487,7 @@ const S = {
   shape:'fullblock', other:'DOOR', roleCount:{},
   props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
   view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirs:{place:null,palette:null,structure:null}, files:{place:null,palette:null,structure:null}, labels:false,
-  top:'place', pal:{map:{}}, plane:'WD', lay:{x:0,z:0}, inspect:null, clip:null, clipMode:null, clipLayer:0, clipPlane:null
+  top:'place', pal:{map:{}}, plane:'WD', lay:{x:0,z:0}, inspect:null, clip:null, clipMode:null, clipLayer:0, clipPlane:null, sel:null, cellClip:null
 };
 const cur = ()=>({r:S.role, s:S.shape, ot:S.other, props:{...S.props}});
 const sig = (v)=>{ if(!v) return ''; const n=norm(v); return [n.r,n.s,n.ot,n.f,n.h,n.ax,n.hg,n.o,n.hang,n.fc].join('|'); };
@@ -1004,6 +1014,12 @@ function renderGrid(){
   if(!S.manualZoom) fitCells();
   const P=PLANES[S.plane], g=$('#grid'), f=document.createDocumentFragment();
   const dimH=S.dims[P.h], dimV=S.dims[P.v], layer=curLayer();
+  const nr=(a,b)=>({x0:Math.min(a.h,b.h),x1:Math.max(a.h,b.h),z0:Math.min(a.v,b.v),z1:Math.max(a.v,b.v)});
+  const selR=(S.mode==='info'&&S.sel&&S.sel.plane===S.plane&&S.sel.layer===layer)?nr(S.sel.a,S.sel.b):null;   // 選択範囲
+  const cc=S.cellClip;
+  const srcR=(cc&&cc.srcPlane===S.plane&&cc.srcLayer===layer)?cc.rect:null;                                   // 切取/コピー元
+  const dstR=(cc&&S.mode==='info'&&S.sel&&S.sel.plane===S.plane&&S.sel.layer===layer)?{x0:S.sel.a.h,x1:S.sel.a.h+cc.w-1,z0:S.sel.a.v,z1:S.sel.a.v+cc.h-1}:null;  // 移動先
+  const inR=(R,h,v)=>R&&h>=R.x0&&h<=R.x1&&v>=R.z0&&v<=R.z1;
   g.style.gridTemplateColumns='repeat('+dimH+','+S.cell+'px)';
   g.style.setProperty('--hcol',P.hcol); g.style.setProperty('--vcol',P.vcol);   // 原点マーカーの軸色
   g.innerHTML='';
@@ -1013,7 +1029,10 @@ function renderGrid(){
     const key=planeKeyAt(hh,vv,layer), v=S.vox.get(key);
     c.dataset.on = v?1:0;
     if(v) c.style.background = roleHex(v.r);   // 役割色でセル表示
-    if(S.mode==='info' && S.inspect===key) c.dataset.inspect=1;   // 情報モードで選択中のセル
+    if(S.mode==='info' && S.inspect===key) c.dataset.inspect=1;   // 選択の起点セル（情報表示元）
+    if(inR(selR,hh,vv)) c.dataset.sel=1;                          // 選択範囲
+    if(inR(srcR,hh,vv)) c.dataset.clipsrc=cc.mode;                // 切取/コピー元
+    if(inR(dstR,hh,vv)) c.dataset.clipdst=1;                      // 貼り付け先プレビュー
     if(S.labels && v && S.cell>=9){ const fm=formOf(v); const lab=FORM_LABEL[fm]||PLAB2[fm]; if(lab){ c.textContent=lab; c.style.fontSize=Math.max(6,Math.min(9,Math.floor(S.cell*0.5)))+'px'; } }   // 2Dは非fullblock（others＋slab/stairs/trapdoor）
     c.dataset.below = (layer>0 && S.vox.has(planeKeyAt(hh,vv,layer-1)) && !v)?1:0;
     c.dataset.cx=(hh+1)%4===0?1:0; c.dataset.cz=(vv+1)%4===0?1:0;
@@ -1033,8 +1052,17 @@ function renderGrid(){
   const midp=()=>{ const a=[...pts.values()]; return {x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2}; };
   function preview(a,b,mode){   // 矩形プレビュー（セルに data-preview）
     const x0=Math.min(a.x,b.x),x1=Math.max(a.x,b.x),z0=Math.min(a.z,b.z),z1=Math.max(a.z,b.z);
+    const kind = mode==='break'?'break':mode==='select'?'select':'draw';
     for(const c of $('#grid').children){ const h=+c.dataset.x, v=+c.dataset.z;
-      c.dataset.preview=(h>=x0&&h<=x1&&v>=z0&&v<=z1)?(mode==='break'?'break':'draw'):''; } }
+      c.dataset.preview=(h>=x0&&h<=x1&&v>=z0&&v<=z1)?kind:''; } }
+  function selectRange(a,b){   // 範囲選択。情報は開始セル(a=ドラッグ開始)のみ表示
+    S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:curLayer(), plane:S.plane};
+    const k=planeKey(a.x,a.z), val=S.vox.get(k), pi=$('#pinspect');
+    if(val){ const f=formOf(val), parts=['form='+f,'slot='+val.r];
+      for(const {name} of shownProps(f)) if(val.props[name]!=null) parts.push(name+'='+val.props[name]);
+      pi.innerHTML=parts.join('<br>'); pi.classList.add('on'); S.inspect=k; }
+    else { pi.classList.remove('on'); S.inspect=null; }
+    renderGrid(); }
   const clearPrev=()=>{ for(const c of $('#grid').children) c.dataset.preview=''; };
   function rect(a,b,mode){   // 矩形を確定
     const x0=Math.min(a.x,b.x),x1=Math.max(a.x,b.x),z0=Math.min(a.z,b.z),z1=Math.max(a.z,b.z);
@@ -1060,10 +1088,10 @@ function renderGrid(){
     if(pts.size===1){
       const now=Date.now();
       const isDbl = lastUp && now-lastUp.t<300 && Math.hypot(e.clientX-lastUp.x,e.clientY-lastUp.y)<22;
-      const gmode = (S.mode==='info')?'info':(isDbl?'break':S.mode);
+      const gmode = (S.mode==='info')?'select':(isDbl?'break':S.mode);
       const c=cellAt(e.clientX,e.clientY);
       tap  = c ? {x:e.clientX,y:e.clientY,cell:c,mode:gmode,t:now} : null;
-      drag = (c && gmode!=='info') ? {mode:gmode,a:c,b:c} : null;   // 情報モードは矩形なし
+      drag = c ? {mode:gmode,a:c,b:c} : null;   // select も範囲ドラッグ可
       if(isDbl){ clearTimeout(pendingPlace); pendingPlace=null; lastUp=null; }   // 1回目の配置を取消
       e.preventDefault();
     } else { tap=null; drag=null; clearPrev(); if(pts.size===2){ pinch=dist(); mid=midp(); } }
@@ -1083,11 +1111,12 @@ function renderGrid(){
     if(tap && was && Date.now()-tap.t<600){
       const c=tap.cell, mode=tap.mode;
       if(mode==='break'){ single(c,'break'); lastUp=null; }
-      else if(mode==='info'){ single(c,'info'); lastUp=null; }
+      else if(mode==='select'){ selectRange(c,c); lastUp=null; }
       else { lastUp={x:tap.x,y:tap.y,t:Date.now()}; clearTimeout(pendingPlace);   // 置く単発はダブル判定のため遅延
         pendingPlace=setTimeout(()=>{ single(c,'place'); pendingPlace=null; },130); }
     } else if(drag && (drag.a.x!==drag.b.x||drag.a.z!==drag.b.z)){   // 1セルのみの範囲はキャンセル
-      clearTimeout(pendingPlace); pendingPlace=null; rect(drag.a,drag.b,drag.mode); lastUp=null;
+      clearTimeout(pendingPlace); pendingPlace=null;
+      if(drag.mode==='select') selectRange(drag.a,drag.b); else rect(drag.a,drag.b,drag.mode); lastUp=null;
     }
     clearPrev();
     if(pts.size===0){ tap=null; drag=null; } };
@@ -1189,8 +1218,10 @@ function setMode(m){ S.mode=m;   // 立体・平面 共通のモード（置く/
   ['place','break','info'].forEach(n=>{ const a=$('#b-'+n), b=$('#pm-'+n);
     if(a) a.setAttribute('aria-pressed', n===m); if(b) b.setAttribute('aria-pressed', n===m); });
   const hm=$('#hud-mode'); if(hm) hm.textContent = m==='break'?'壊す':(m==='info'?'情報モード':'置く');
+  const cb=$('#cellclip-bar'); if(cb) cb.classList.toggle('hidden', m!=='info');   // 選択モードのみコピー/切取/貼付
   if(m!=='info'){ $('#inspect').classList.remove('on'); const pi=$('#pinspect'); if(pi) pi.classList.remove('on');
-    if(S.inspect){ S.inspect=null; syncVox(); if(S.view==='plan') renderGrid(); } } }
+    const had=S.inspect||S.sel||S.cellClip; S.inspect=null; S.sel=null; S.cellClip=null;
+    if(had){ syncVox(); if(S.view==='plan') renderGrid(); } } }
 $('#pm-place').onclick=()=>setMode('place');
 $('#pm-break').onclick=()=>setMode('break');
 $('#pm-info').onclick=()=>setMode('info');
@@ -1296,6 +1327,25 @@ $('#p-ladd').onclick=()=>{ const P=PLANES[S.plane]; if(S.dims[P.l]>=64){ status(
   const L=curLayer(); _shift(L,1); _bump(1); applyDims(S.dims); status('層を追加（現在位置に空層）'); };   // ③ 選択中の位置へ
 $('#p-ldel').onclick=()=>{ const P=PLANES[S.plane]; if(S.dims[P.l]<=1){ status('これ以上減らせません'); return; } pushHist();
   const L=curLayer(); _remove(L); _bump(-1); applyDims(S.dims); setPlanLayer(Math.min(L,S.dims[P.l]-1)); status('層を削除'); };
+
+/* ---- 選択モードのセル範囲クリップボード（コピー/切取/貼付） ---- */
+function grabCells(mode){ if(!S.sel){ status('セルを選択してください'); return; }
+  const a=S.sel.a,b=S.sel.b, r={x0:Math.min(a.h,b.h),x1:Math.max(a.h,b.h),z0:Math.min(a.v,b.v),z1:Math.max(a.v,b.v)};
+  const layer=curLayer(), cells=[];
+  for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++){ const val=S.vox.get(planeKeyAt(h,v,layer)); if(val) cells.push({dh:h-r.x0,dv:v-r.z0,val}); }
+  S.cellClip={mode, cells, w:r.x1-r.x0+1, h:r.z1-r.z0+1, rect:r, srcLayer:layer, srcPlane:S.plane};
+  renderGrid(); status((mode==='cut'?'切り取り':'コピー')+'（'+cells.length+'）→ 貼り付け先を選択'); }
+$('#c-copy').onclick=()=>grabCells('copy');
+$('#c-cut').onclick =()=>grabCells('cut');
+$('#c-paste').onclick=()=>{ const cc=S.cellClip;
+  if(!cc){ status('クリップボードが空です'); return; }
+  if(cc.srcPlane!==S.plane){ status('別の面のクリップボードです'); return; }
+  if(!S.sel){ status('貼り付け先を選択してください'); return; }
+  pushHist(); const layer=curLayer(), a=S.sel.a, P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v];
+  if(cc.mode==='cut') for(let h=cc.rect.x0;h<=cc.rect.x1;h++) for(let v=cc.rect.z0;v<=cc.rect.z1;v++) S.vox.delete(planeKeyAt(h,v,cc.srcLayer));  // 切取元を消去
+  for(let i=0;i<cc.w;i++) for(let j=0;j<cc.h;j++){ const h=a.h+i,v=a.v+j; if(h<dh&&v<dv) S.vox.delete(planeKeyAt(h,v,layer)); }  // 貼付先を一旦クリア
+  for(const c of cc.cells){ const h=a.h+c.dh,v=a.v+c.dv; if(h<dh&&v<dv) S.vox.set(planeKeyAt(h,v,layer),c.val); }
+  S.cellClip=null; changed(); renderGrid(); renderSpine(); status('貼り付けました'); };
 
 $('#j-layers').onclick=()=>{ S.jsonMode='layers';
   $('#j-layers').setAttribute('aria-selected',true); $('#j-voxels').setAttribute('aria-selected',false); renderJson(); };
