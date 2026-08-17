@@ -355,7 +355,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.93';
+const APP_VERSION = '3.94';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1013,8 +1013,9 @@ function renderGrid(){
     else if(m==='info'){ const v=S.vox.get(k); if(v){ const f=formOf(v), parts=['form='+f,'slot='+v.r];
       for(const {name} of shownProps(f)) if(v.props[name]!=null) parts.push(name+'='+v.props[name]); status(parts.join(' · ')); } }
     else { const v=cur(); if(sig(S.vox.get(k))!==sig(v)){ S.vox.set(k,v); changed(); renderGrid(); renderSpine(); } } };
-  wrap.addEventListener('pointerdown',e=>{
-    if(S.view!=='plan') return;
+  document.addEventListener('pointerdown',e=>{
+    if(S.view!=='plan' || !wrap.contains(e.target)) return;
+    if(e.target.releasePointerCapture){ try{ e.target.releasePointerCapture(e.pointerId); }catch(_){} }  // 再描画でセルが消えても move/up が届くように
     pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
     if(pts.size===1){
       const now=Date.now();
