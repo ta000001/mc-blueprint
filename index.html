@@ -123,6 +123,10 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .seg span.n{font-size:9px;color:var(--dim);position:relative;z-index:2}
 .seg span.f{position:absolute;inset:0;background:var(--brass)}
 .seg[data-cur="1"]{box-shadow:inset 0 0 0 2px var(--verdigris)}
+.seg[data-clip="cut"]{outline:2px dashed #ffd24a;outline-offset:-2px;z-index:3}
+.seg[data-clip="copy"]{outline:2px dashed #8ff0ff;outline-offset:-2px;z-index:3}
+#grid[data-clip="cut"]{outline:2px dashed #ffd24a;outline-offset:3px}
+#grid[data-clip="copy"]{outline:2px dashed #8ff0ff;outline-offset:3px}
 .gridbox{position:relative;flex:1;min-width:0;display:flex}
 #gridwrap{flex:1;min-width:0;overflow:auto;background:var(--panel);border:1px solid var(--rule);
   border-radius:4px;padding:38px 6px 6px;max-height:60vh;min-height:300px;-webkit-overflow-scrolling:touch;touch-action:none}
@@ -366,7 +370,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.02';
+const APP_VERSION = '4.03';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -473,7 +477,7 @@ const S = {
   shape:'fullblock', other:'DOOR', roleCount:{},
   props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
   view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirs:{place:null,palette:null,structure:null}, files:{place:null,palette:null,structure:null}, labels:false,
-  top:'place', pal:{map:{}}, plane:'WD', lay:{x:0,z:0}, inspect:null, clip:null
+  top:'place', pal:{map:{}}, plane:'WD', lay:{x:0,z:0}, inspect:null, clip:null, clipMode:null, clipLayer:0, clipPlane:null
 };
 const cur = ()=>({r:S.role, s:S.shape, ot:S.other, props:{...S.props}});
 const sig = (v)=>{ if(!v) return ''; const n=norm(v); return [n.r,n.s,n.ot,n.f,n.h,n.ax,n.hg,n.o,n.hang,n.fc].join('|'); };
@@ -981,6 +985,7 @@ function renderSpine(){
   for(let i=0;i<n;i++){
     const d=document.createElement('div');
     d.className='seg'; d.dataset.cur = i===layer?1:0;
+    d.dataset.clip = (S.clipMode && S.clip && S.clipPlane===S.plane && i===S.clipLayer) ? S.clipMode : '';   // 切取/コピー元の層
     const f=document.createElement('span'); f.className='f';
     f.style.opacity = c[i] ? (0.18+0.72*(c[i]/mx)) : 0;
     d.appendChild(f);
@@ -1017,6 +1022,7 @@ function renderGrid(){
     f.appendChild(c);
   }
   g.appendChild(f);
+  g.dataset.clip = (S.clipMode && S.clip && S.clipPlane===S.plane && layer===S.clipLayer) ? S.clipMode : '';   // 切取/コピー元を表示中なら枠
 }
 (function bindPlan(){   // 立体と同じ操作感：タップ=単発 / ドラッグ=矩形(プレビュー) / ダブルタップ(+ドラッグ)=削除(範囲) / 2本指=ズーム+パン
   const wrap=$('#gridwrap');
@@ -1254,31 +1260,42 @@ $('#p-up').onclick=()=>setPlanLayer(curLayer()+1);
 $('#p-down').onclick=()=>setPlanLayer(curLayer()-1);
 $('#p-zi').onclick=()=>{ S.manualZoom=true; S.cell=clamp(S.cell+4,6,44); renderGrid(); };
 $('#p-zo').onclick=()=>{ S.manualZoom=true; S.cell=clamp(S.cell-4,6,44); renderGrid(); };
-/* ---- 2D 層操作（コピー/切取/貼付/挿入/追加/削除。現平面の層軸に沿って） ---- */
+/* ---- 2D 層操作（Excel 的：コピー/切取/貼付/挿入/追加/削除。現平面の層軸に沿って） ---- */
 function applyDims(nd){ setDims(nd); $('#dz').value=nd.z; $('#dy').value=nd.y; $('#dx').value=nd.x; }
-const clipEmpty = ()=> !S.clip || !S.clip.length;
 function layerClear(L){ const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v];
   for(let h=0;h<dh;h++) for(let v=0;v<dv;v++) S.vox.delete(planeKeyAt(h,v,L)); }
-$('#p-lcopy').onclick=()=>{ const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v], L=curLayer();
-  S.clip=[]; for(let h=0;h<dh;h++) for(let v=0;v<dv;v++){ const val=S.vox.get(planeKeyAt(h,v,L)); if(val) S.clip.push({h,v,val}); }
-  status('層をコピー（'+S.clip.length+' ブロック）'); };
-$('#p-lcut').onclick=()=>{ $('#p-lcopy').onclick(); pushHist(); layerClear(curLayer()); changed(); renderGrid(); renderSpine(); status('層を切り取り'); };
-$('#p-lpaste').onclick=()=>{ if(clipEmpty()){ status('クリップボードが空です'); return; } pushHist();
-  const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v], L=curLayer(); layerClear(L);
-  for(const c of S.clip) if(c.h<dh&&c.v<dv) S.vox.set(planeKeyAt(c.h,c.v,L),c.val);
-  changed(); renderGrid(); renderSpine(); status('層を貼り付け'); };
-$('#p-lins').onclick=()=>{ const P=PLANES[S.plane], idx=AXI[P.l], n=S.dims[P.l]; if(n>=64){ status('これ以上増やせません'); return; } pushHist();
-  const L=curLayer(), next=new Map();
-  S.vox.forEach((val,k)=>{ const a=k.split(',').map(Number); if(a[idx]>=L) a[idx]+=1; next.set(a.join(','),val); }); S.vox=next;   // L以上を1つ上へ
-  const nd={...S.dims,[P.l]:n+1};
-  if(!clipEmpty()){ for(const c of S.clip) if(c.h<nd[P.h]&&c.v<nd[P.v]) S.vox.set(planeKeyAt(c.h,c.v,L),c.val); }   // clip があれば新層へ
-  applyDims(nd); status(clipEmpty()?'空の層を挿入':'層を挿入（クリップボード）'); };
-$('#p-ladd').onclick=()=>{ const P=PLANES[S.plane], n=S.dims[P.l]; if(n>=64){ status('これ以上増やせません'); return; } pushHist();
-  applyDims({...S.dims,[P.l]:n+1}); setPlanLayer(n); status('層を追加（末尾）'); };
-$('#p-ldel').onclick=()=>{ const P=PLANES[S.plane], idx=AXI[P.l], n=S.dims[P.l]; if(n<=1){ status('これ以上減らせません'); return; } pushHist();
-  const L=curLayer(), next=new Map();
-  S.vox.forEach((val,k)=>{ const a=k.split(',').map(Number); if(a[idx]===L) return; if(a[idx]>L) a[idx]-=1; next.set(a.join(','),val); }); S.vox=next;   // L削除・上を1つ下へ
-  applyDims({...S.dims,[P.l]:n-1}); setPlanLayer(Math.min(L,n-2)); status('層を削除'); };
+function grabLayer(){ const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v], L=curLayer(), a=[];
+  for(let h=0;h<dh;h++) for(let v=0;v<dv;v++){ const val=S.vox.get(planeKeyAt(h,v,L)); if(val) a.push({h,v,val}); } return a; }
+function fillLayer(L,cells){ const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v];
+  for(const c of cells) if(c.h<dh&&c.v<dv) S.vox.set(planeKeyAt(c.h,c.v,L),c.val); }
+function _shift(from,delta){ const idx=AXI[PLANES[S.plane].l], next=new Map();
+  S.vox.forEach((val,k)=>{ const b=k.split(',').map(Number); if(b[idx]>=from) b[idx]+=delta; next.set(b.join(','),val); }); S.vox=next; }
+function _remove(L){ const idx=AXI[PLANES[S.plane].l], next=new Map();
+  S.vox.forEach((val,k)=>{ const b=k.split(',').map(Number); if(b[idx]===L) return; if(b[idx]>L) b[idx]-=1; next.set(b.join(','),val); }); S.vox=next; }
+function _bump(d){ const P=PLANES[S.plane]; S.dims={...S.dims,[P.l]:clamp(S.dims[P.l]+d,1,64)}; }
+function clipActive(){ return !!(S.clipMode && S.clip); }
+function updateClipUI(){ $('#p-lcopy').setAttribute('aria-pressed',S.clipMode==='copy'); $('#p-lcut').setAttribute('aria-pressed',S.clipMode==='cut');
+  renderSpine(); if(S.view==='plan') renderGrid(); }
+function clearClip(){ S.clip=null; S.clipMode=null; S.clipPlane=null; updateClipUI(); }
+$('#p-lcopy').onclick=()=>{ S.clip=grabLayer(); S.clipMode='copy'; S.clipPlane=S.plane; S.clipLayer=curLayer(); updateClipUI(); status('層をコピー（'+S.clip.length+'）'); };
+$('#p-lcut').onclick =()=>{ S.clip=grabLayer(); S.clipMode='cut';  S.clipPlane=S.plane; S.clipLayer=curLayer(); updateClipUI(); status('層を切り取り（貼付/挿入で確定）'); };
+$('#p-lpaste').onclick=()=>{ if(!clipActive()){ status('クリップボードが空です'); return; }
+  if(S.clipPlane!==S.plane){ status('別の面のクリップボードです'); return; } pushHist();
+  const cut=S.clipMode==='cut', src=S.clipLayer, L=curLayer();
+  layerClear(L); fillLayer(L,S.clip);
+  if(cut && src!==L){ _remove(src); _bump(-1); applyDims(S.dims); setPlanLayer(src<L?L-1:L); }   // 切取元の層を削除＋カレント補正
+  else { applyDims(S.dims); }
+  clearClip(); status('層を貼り付け'+(cut?'（切取元を削除）':'')); };
+$('#p-lins').onclick=()=>{ const P=PLANES[S.plane]; if(S.dims[P.l]>=64){ status('これ以上増やせません'); return; }
+  const useClip=clipActive()&&S.clipPlane===S.plane, cut=useClip&&S.clipMode==='cut', src=S.clipLayer, L=curLayer(); pushHist();
+  _shift(L,1); _bump(1); if(useClip) fillLayer(L,S.clip);
+  if(cut){ const s=src>=L?src+1:src; _remove(s); _bump(-1); }
+  applyDims(S.dims); if(useClip) clearClip();
+  status('層を挿入'+(cut?'（切取元を削除）':useClip?'（クリップボード）':'（空）')); };
+$('#p-ladd').onclick=()=>{ const P=PLANES[S.plane]; if(S.dims[P.l]>=64){ status('これ以上増やせません'); return; } pushHist();
+  const L=curLayer(); _shift(L,1); _bump(1); applyDims(S.dims); status('層を追加（現在位置に空層）'); };   // ③ 選択中の位置へ
+$('#p-ldel').onclick=()=>{ const P=PLANES[S.plane]; if(S.dims[P.l]<=1){ status('これ以上減らせません'); return; } pushHist();
+  const L=curLayer(); _remove(L); _bump(-1); applyDims(S.dims); setPlanLayer(Math.min(L,S.dims[P.l]-1)); status('層を削除'); };
 
 $('#j-layers').onclick=()=>{ S.jsonMode='layers';
   $('#j-layers').setAttribute('aria-selected',true); $('#j-voxels').setAttribute('aria-selected',false); renderJson(); };
