@@ -126,9 +126,9 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .gridbox{position:relative;flex:1;min-width:0;display:flex}
 #gridwrap{flex:1;min-width:0;overflow:auto;background:var(--panel);border:1px solid var(--rule);
   border-radius:4px;padding:6px;max-height:52vh;-webkit-overflow-scrolling:touch;touch-action:none}
-#grid{display:grid;width:max-content;margin:0 auto;border-left:1px solid var(--rule);border-top:1px solid var(--rule)}
+#grid{display:grid;width:max-content;margin:0 auto;border-left:1px solid var(--rule);border-top:1px solid var(--rule);--hcol:#ff8a8a;--vcol:#8aa8ff}
 .cell{border-right:1px solid #22302f;border-bottom:1px solid #22302f;background:#131c1e;position:relative}
-.cell[data-origin="1"]::after{content:'';position:absolute;inset:0;box-shadow:inset 3px 0 0 #8aa8ff,inset 0 -3px 0 #ff8a8a;pointer-events:none;z-index:2}
+.cell[data-origin="1"]::after{content:'';position:absolute;inset:0;box-shadow:inset 3px 0 0 var(--vcol),inset 0 -3px 0 var(--hcol);pointer-events:none;z-index:2}
 .cell[data-cx="1"]{border-right-color:var(--rule)}
 .cell[data-cz="1"]{border-bottom-color:var(--rule)}
 .cell[data-below="1"]{background:#1b2320;box-shadow:inset 0 0 0 1px var(--brass-dim)}
@@ -208,6 +208,11 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </section>
 
 <section id="v-plan" class="hidden">
+  <div class="tabs" id="plane-tabs">
+    <button id="pt-WD" aria-selected="true">上面 W×D</button>
+    <button id="pt-WH" aria-selected="false">正面 W×H</button>
+    <button id="pt-DH" aria-selected="false">側面 D×H</button>
+  </div>
   <div class="readout"><span class="y" id="y2">H00</span><span class="sub" id="ymax">/ 15</span><span class="c" id="cnt"></span></div>
   <div class="stage">
     <div id="spine"></div>
@@ -235,7 +240,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="bar" id="form-plan"></div>
   <div class="bar" id="dir-plan"></div>
   <div class="bar" id="roles-plan"></div>
-  <p class="note">上から見た平面図。横=W（赤→）・縦=D（青↑）、原点(0,0)は左下＝立体と同じ向き。色＝役割。左の帯は各Hのブロック量で、ドラッグすると階層を移動する。</p>
+  <p class="note">面をタブで切替（上面 W×D / 正面 W×H / 側面 D×H）。原点(0,0)は左下＝立体と同じ向き（左=縦軸色・下=横軸色）。1本指=描画・2本指=ズーム/移動・ダブルタップ=削除。左の帯は層（残り1軸）のブロック量、ドラッグで層移動。色＝役割。</p>
 </section>
 
 <section id="v-json" class="hidden">
@@ -350,7 +355,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.92';
+const APP_VERSION = '3.93';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -457,7 +462,7 @@ const S = {
   shape:'fullblock', other:'DOOR', roleCount:{},
   props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
   view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirs:{place:null,palette:null,structure:null}, files:{place:null,palette:null,structure:null}, labels:false,
-  top:'place', pal:{map:{}}
+  top:'place', pal:{map:{}}, plane:'WD', lay:{x:0,z:0}
 };
 const cur = ()=>({r:S.role, s:S.shape, ot:S.other, props:{...S.props}});
 const sig = (v)=>{ if(!v) return ''; const n=norm(v); return [n.r,n.s,n.ot,n.f,n.h,n.ax,n.hg,n.o,n.hang,n.fc].join('|'); };
@@ -526,8 +531,7 @@ function setDims(nd){
 function setLayer(v){
   S.layer = clamp(v,0,S.dims.y-1);
   $('#plane').value = S.layer;
-  const lbl = 'H'+String(S.layer).padStart(2,'0');
-  $('#y3').textContent = lbl; $('#y2').textContent = lbl;
+  $('#y3').textContent = 'H'+String(S.layer).padStart(2,'0');   // 立体スライダのラベル（平面の y2 は renderSpine が担当）
   buildPlane(); syncVox(); renderGrid(); renderSpine();
 }
 
@@ -933,43 +937,65 @@ function bindGestures(el){
 }
 
 /* ---------- plan view ---------- */
-function counts(){
+// 3面：WD(上面 横W×縦D 層H) / WH(正面 横W×縦H 層D) / DH(側面 横D×縦H 層W)。色 W=赤 D=青 H=緑。
+const PLANES = {
+  WD:{h:'x',v:'z',l:'y',llab:'H',hcol:'#ff8a8a',vcol:'#8aa8ff'},
+  WH:{h:'x',v:'y',l:'z',llab:'D',hcol:'#ff8a8a',vcol:'#7ad79a'},
+  DH:{h:'z',v:'y',l:'x',llab:'W',hcol:'#8aa8ff',vcol:'#7ad79a'},
+};
+const AXI = {x:0,y:1,z:2};
+const curLayer = ()=>{ const l=PLANES[S.plane].l; return l==='y'?S.layer:(S.lay[l]||0); };
+function planeKeyAt(h,v,layer){ const P=PLANES[S.plane], c={}; c[P.h]=h; c[P.v]=v; c[P.l]=layer; return K(c.x,c.y,c.z); }
+const planeKey = (h,v)=> planeKeyAt(h,v,curLayer());
+function setPlanLayer(v){ const P=PLANES[S.plane], n=S.dims[P.l]; v=clamp(v,0,n-1);
+  if(P.l==='y') setLayer(v);                        // H は立体の作業面と共有
+  else { S.lay[P.l]=v; renderGrid(); renderSpine(); } }
+function layerCounts(){ const P=PLANES[S.plane], n=S.dims[P.l], c=new Array(n).fill(0), idx=AXI[P.l];
+  S.vox.forEach((val,k)=>{ const a=+k.split(',')[idx]; if(a<n) c[a]++; }); return c; }   // 現平面の層軸ごとの数
+function setPlane(p){ S.plane=p; S.manualZoom=false;
+  ['WD','WH','DH'].forEach(n=>{ const b=$('#pt-'+n); if(b) b.setAttribute('aria-selected', n===p); });
+  renderGrid(); renderSpine(); }
+function counts(){   // ※ H(y) 基準（buildJson の layers 用）。スパインは layerCounts を使う。
   const c=new Array(S.dims.y).fill(0);
   S.vox.forEach((role,k)=>{ const y=+k.split(',')[1]; if(y<S.dims.y) c[y]++; });
   return c;
 }
 function renderSpine(){
-  const c=counts(), mx=Math.max(1,...c), sp=$('#spine');
-  sp.innerHTML='';
-  for(let y=0;y<S.dims.y;y++){
+  const P=PLANES[S.plane], n=S.dims[P.l], layer=curLayer();
+  const c=layerCounts(), mx=Math.max(1,...c), sp=$('#spine'); sp.innerHTML='';
+  for(let i=0;i<n;i++){
     const d=document.createElement('div');
-    d.className='seg'; d.dataset.cur = y===S.layer?1:0;
+    d.className='seg'; d.dataset.cur = i===layer?1:0;
     const f=document.createElement('span'); f.className='f';
-    f.style.opacity = c[y] ? (0.18+0.72*(c[y]/mx)) : 0;
+    f.style.opacity = c[i] ? (0.18+0.72*(c[i]/mx)) : 0;
     d.appendChild(f);
-    if(y%4===0||y===S.layer){ const n=document.createElement('span'); n.className='n'; n.textContent=y; d.appendChild(n); }
+    if(i%4===0||i===layer){ const nn=document.createElement('span'); nn.className='n'; nn.textContent=i; d.appendChild(nn); }
     sp.appendChild(d);
   }
-  $('#cnt').textContent = 'この層 '+(c[S.layer]||0)+' · 合計 '+S.vox.size;
+  $('#cnt').textContent = 'この層 '+(c[layer]||0)+' · 合計 '+S.vox.size;
+  const y=$('#y2'); if(y) y.textContent = P.llab+String(layer).padStart(2,'0');
+  const ym=$('#ymax'); if(ym) ym.textContent = '/ '+(n-1);
 }
 function fitCells(){
   const w=$('#gridwrap').clientWidth-14;
-  S.cell = clamp(Math.floor(w/S.dims.x),6,34);
+  S.cell = clamp(Math.floor(w/S.dims[PLANES[S.plane].h]),6,34);
 }
 function renderGrid(){
   if(!S.manualZoom) fitCells();
-  const g=$('#grid'), d=S.dims, f=document.createDocumentFragment();
-  g.style.gridTemplateColumns='repeat('+d.x+','+S.cell+'px)';
+  const P=PLANES[S.plane], g=$('#grid'), f=document.createDocumentFragment();
+  const dimH=S.dims[P.h], dimV=S.dims[P.v], layer=curLayer();
+  g.style.gridTemplateColumns='repeat('+dimH+','+S.cell+'px)';
+  g.style.setProperty('--hcol',P.hcol); g.style.setProperty('--vcol',P.vcol);   // 原点マーカーの軸色
   g.innerHTML='';
-  for(let z=d.z-1;z>=0;z--) for(let x=0;x<d.x;x++){   // z(D) を逆順で並べ、原点 D=0 を下端に（立体と同じ向き）
+  for(let vv=dimV-1;vv>=0;vv--) for(let hh=0;hh<dimH;hh++){   // 縦軸を逆順で並べ原点を下端に（立体と同じ向き）
     const c=document.createElement('div');
-    c.className='cell'; c.dataset.x=x; c.dataset.z=z;
-    const v=S.vox.get(K(x,S.layer,z));
+    c.className='cell'; c.dataset.x=hh; c.dataset.z=vv;       // x=横index h, z=縦index v
+    const v=S.vox.get(planeKeyAt(hh,vv,layer));
     c.dataset.on = v?1:0;
     if(v) c.style.background = roleHex(v.r);   // 役割色でセル表示
-    c.dataset.below = (S.layer>0 && S.vox.has(K(x,S.layer-1,z)) && !S.vox.has(K(x,S.layer,z)))?1:0;
-    c.dataset.cx=(x+1)%4===0?1:0; c.dataset.cz=(z+1)%4===0?1:0;
-    c.dataset.origin=(x===0&&z===0)?1:0;   // 原点(手前左)に立体同様のしるし（左=D青・下=W赤）
+    c.dataset.below = (layer>0 && S.vox.has(planeKeyAt(hh,vv,layer-1)) && !v)?1:0;
+    c.dataset.cx=(hh+1)%4===0?1:0; c.dataset.cz=(vv+1)%4===0?1:0;
+    c.dataset.origin=(hh===0&&vv===0)?1:0;     // 原点(手前左)にしるし（左=縦軸色・下=横軸色）
     c.style.width=c.style.height=S.cell+'px';
     f.appendChild(c);
   }
@@ -982,7 +1008,7 @@ function renderGrid(){
     return (el&&el.dataset&&el.dataset.x!==undefined)?{x:+el.dataset.x,z:+el.dataset.z}:null; };
   const dist=()=>{ const a=[...pts.values()]; return Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y); };
   const midp=()=>{ const a=[...pts.values()]; return {x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2}; };
-  const apply=(c,m)=>{ const k=K(c.x,S.layer,c.z);
+  const apply=(c,m)=>{ const k=planeKey(c.x,c.z);
     if(m==='break'){ if(S.vox.has(k)){ S.vox.delete(k); changed(); renderGrid(); renderSpine(); } }
     else if(m==='info'){ const v=S.vox.get(k); if(v){ const f=formOf(v), parts=['form='+f,'slot='+v.r];
       for(const {name} of shownProps(f)) if(v.props[name]!=null) parts.push(name+'='+v.props[name]); status(parts.join(' · ')); } }
@@ -1017,8 +1043,8 @@ function renderGrid(){
   $('#spine').addEventListener('pointerdown',e=>{ scrub=true; scrubTo(e.clientY); e.preventDefault(); });
   addEventListener('pointermove',e=>{ if(scrub) scrubTo(e.clientY); });
   addEventListener('pointerup',()=>scrub=false);
-  function scrubTo(cy){ const r=$('#spine').getBoundingClientRect();
-    setLayer(Math.floor((1-(cy-r.top)/r.height)*S.dims.y)); }
+  function scrubTo(cy){ const P=PLANES[S.plane], n=S.dims[P.l], r=$('#spine').getBoundingClientRect();
+    setPlanLayer(Math.floor((1-(cy-r.top)/r.height)*n)); }
 })();
 
 /* ---------- json ---------- */
@@ -1168,20 +1194,23 @@ function renderRoles(){   // 役割バー：現在 form の役割 FORM_1.. の�
   });
 }
 
-$('#p-up').onclick=()=>setLayer(S.layer+1);
-$('#p-down').onclick=()=>setLayer(S.layer-1);
+$('#pt-WD').onclick=()=>setPlane('WD');
+$('#pt-WH').onclick=()=>setPlane('WH');
+$('#pt-DH').onclick=()=>setPlane('DH');
+$('#p-up').onclick=()=>setPlanLayer(curLayer()+1);
+$('#p-down').onclick=()=>setPlanLayer(curLayer()-1);
 $('#p-zi').onclick=()=>{ S.manualZoom=true; S.cell=clamp(S.cell+4,6,44); renderGrid(); };
 $('#p-zo').onclick=()=>{ S.manualZoom=true; S.cell=clamp(S.cell-4,6,44); renderGrid(); };
-$('#p-clr').onclick=()=>{ pushHist(); const d=S.dims;
-  for(let x=0;x<d.x;x++) for(let z=0;z<d.z;z++) S.vox.delete(K(x,S.layer,z));
+$('#p-clr').onclick=()=>{ pushHist(); const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v];
+  for(let h=0;h<dh;h++) for(let v=0;v<dv;v++) S.vox.delete(planeKey(h,v));
   changed(); renderGrid(); renderSpine(); };
-$('#p-copy').onclick=()=>{ if(S.layer===0) return; pushHist(); const d=S.dims;
-  for(let x=0;x<d.x;x++) for(let z=0;z<d.z;z++){ const r=S.vox.get(K(x,S.layer-1,z));
-    if(r) S.vox.set(K(x,S.layer,z),r); }              // 役割も複製
+$('#p-copy').onclick=()=>{ const layer=curLayer(); if(layer===0) return; pushHist(); const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v];
+  for(let h=0;h<dh;h++) for(let v=0;v<dv;v++){ const r=S.vox.get(planeKeyAt(h,v,layer-1));
+    if(r) S.vox.set(planeKeyAt(h,v,layer),r); }        // 役割も複製（1つ手前の層から）
   changed(); renderGrid(); renderSpine(); };
-$('#p-out').onclick=()=>{ pushHist(); const d=S.dims;
-  for(let x=0;x<d.x;x++) for(let z=0;z<d.z;z++)
-    if(x===0||z===0||x===d.x-1||z===d.z-1) S.vox.set(K(x,S.layer,z),cur());
+$('#p-out').onclick=()=>{ pushHist(); const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v];
+  for(let h=0;h<dh;h++) for(let v=0;v<dv;v++)
+    if(h===0||v===0||h===dh-1||v===dv-1) S.vox.set(planeKey(h,v),cur());
   changed(); renderGrid(); renderSpine(); };
 
 $('#j-layers').onclick=()=>{ S.jsonMode='layers';
