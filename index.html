@@ -136,6 +136,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .cell[data-on="1"]{background:var(--brass);box-shadow:inset -2px -2px 0 rgba(0,0,0,.22)}
 .cell[data-preview="draw"]{box-shadow:inset 0 0 0 2px var(--brass)!important;z-index:3}
 .cell[data-preview="break"]{box-shadow:inset 0 0 0 2px #c0533f!important;z-index:3}
+.cell[data-inspect="1"]{box-shadow:inset 0 0 0 3px #8ff0ff!important;z-index:4}
 .readout{display:flex;align-items:baseline;gap:8px;margin:0 0 8px}
 .readout .c{margin-left:auto;font-size:11px;color:var(--dim)}
 #json,#pal-json{width:100%;height:300px;background:var(--panel);border:1px solid var(--rule);color:var(--chalk);
@@ -360,7 +361,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.00';
+const APP_VERSION = '4.01';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -467,7 +468,7 @@ const S = {
   shape:'fullblock', other:'DOOR', roleCount:{},
   props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
   view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirs:{place:null,palette:null,structure:null}, files:{place:null,palette:null,structure:null}, labels:false,
-  top:'place', pal:{map:{}}, plane:'WD', lay:{x:0,z:0}
+  top:'place', pal:{map:{}}, plane:'WD', lay:{x:0,z:0}, inspect:null
 };
 const cur = ()=>({r:S.role, s:S.shape, ot:S.other, props:{...S.props}});
 const sig = (v)=>{ if(!v) return ''; const n=norm(v); return [n.r,n.s,n.ot,n.f,n.h,n.ax,n.hg,n.o,n.hang,n.fc].join('|'); };
@@ -541,7 +542,7 @@ function setLayer(v){
 }
 
 /* ---------- three.js ---------- */
-let renderer,scene,camera,editMeshes=[],ghostMeshes=[],outlineMeshes=[],preview,floorObj,planeObj,originObj,geo,GEOS,mat,ghostMat,outlineMat,outlineGhostMat,hingeMat,hingeGhostMat,HINGE_GEO,orientMat,orientGhostMat,axisFaceMat,axisFaceGhostMat,EDGE_POS,previewMat,previewBreakMat,target,sph,dirty=true;
+let renderer,scene,camera,editMeshes=[],ghostMeshes=[],outlineMeshes=[],preview,floorObj,planeObj,originObj,geo,GEOS,mat,ghostMat,outlineMat,outlineGhostMat,hingeMat,hingeGhostMat,HINGE_GEO,orientMat,orientGhostMat,axisFaceMat,axisFaceGhostMat,EDGE_POS,previewMat,previewBreakMat,inspectMat,target,sph,dirty=true;
 function boxAt(w,h,d,oy,oz){ const g=new THREE.BoxGeometry(w,h,d); g.translate(0,oy||0,oz||0); return g; }
 function mergeGeo(a,b){   // 2つの indexed BoxGeometry を結合（階段用）
   const g=new THREE.BufferGeometry(), cat=(n,sz)=>{ const aa=a.attributes[n].array, bb=b.attributes[n].array;
@@ -621,6 +622,7 @@ function initThree(){
   const eg=new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1));
   EDGE_POS=eg.attributes.position.array.slice(); eg.dispose();
   outlineMat      = new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.32});
+  inspectMat      = new THREE.LineBasicMaterial({color:0x8ff0ff, transparent:true, opacity:1, depthTest:false});  // 情報モードで選択中のブロック枠
   outlineGhostMat = new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.11});
   hingeMat        = new THREE.MeshBasicMaterial({color:0x9aa7b0});                                 // open trapdoor の蝶番(開閉軸)＝棒
   hingeGhostMat   = new THREE.MeshBasicMaterial({color:0x9aa7b0, transparent:true, opacity:0.3});
@@ -801,6 +803,8 @@ function syncVox(){
   if(S.labels) makeLabels(labelSet).forEach(s=>{ scene.add(s); labelMeshes.push(s); });
   for(const gk in below){ const im=makeInstShape(below[gk],GEOS[gk],mat); scene.add(im); editMeshes.push(im); }
   for(const gk in above){ const im=makeInstShape(above[gk],GEOS[gk],ghostMat); scene.add(im); ghostMeshes.push(im); }
+  if(S.mode==='info' && S.inspect && S.vox.has(S.inspect)){ const ip=S.inspect.split(',').map(Number);   // 情報モード：選択中ブロックを強調枠
+    const o=makeOutline([ip],inspectMat); scene.add(o); outlineMeshes.push(o); }
   if(belowCells.length){ const o=makeOutline(belowCells,outlineMat); scene.add(o); outlineMeshes.push(o); }
   if(aboveCells.length){ const o=makeOutline(aboveCells,outlineGhostMat); scene.add(o); outlineMeshes.push(o); }
   if(belowTrap.length){ const h=makeHingeRods(belowTrap,mat); scene.add(h); editMeshes.push(h); }
@@ -929,7 +933,7 @@ function bindGestures(el){
     if(hit.object!==planeObj){
       const im=hit.object, o=im.userData.items[hit.instanceId]; if(!o) return; const p=o.p;
       if(mode==='break') remove(p[0],p[1],p[2]);
-      else if(mode==='info') showInfo(o.v);
+      else if(mode==='info'){ showInfo(o.v); S.inspect=K(p[0],p[1],p[2]); syncVox(); }   // 選択中ブロックを強調
       else { const m4=new THREE.Matrix4(); im.getMatrixAt(hit.instanceId,m4);
         const nm=new THREE.Matrix3().getNormalMatrix(m4);
         const n=hit.face.normal.clone().applyMatrix3(nm).normalize();
@@ -996,9 +1000,10 @@ function renderGrid(){
   for(let vv=dimV-1;vv>=0;vv--) for(let hh=0;hh<dimH;hh++){   // 縦軸を逆順で並べ原点を下端に（立体と同じ向き）
     const c=document.createElement('div');
     c.className='cell'; c.dataset.x=hh; c.dataset.z=vv;       // x=横index h, z=縦index v
-    const v=S.vox.get(planeKeyAt(hh,vv,layer));
+    const key=planeKeyAt(hh,vv,layer), v=S.vox.get(key);
     c.dataset.on = v?1:0;
     if(v) c.style.background = roleHex(v.r);   // 役割色でセル表示
+    if(S.mode==='info' && S.inspect===key) c.dataset.inspect=1;   // 情報モードで選択中のセル
     if(S.labels && v && S.cell>=9){ const fm=formOf(v); const lab=FORM_LABEL[fm]||PLAB2[fm]; if(lab){ c.textContent=lab; c.style.fontSize=Math.max(6,Math.min(9,Math.floor(S.cell*0.5)))+'px'; } }   // 2Dは非fullblock（others＋slab/stairs/trapdoor）
     c.dataset.below = (layer>0 && S.vox.has(planeKeyAt(hh,vv,layer-1)) && !v)?1:0;
     c.dataset.cx=(hh+1)%4===0?1:0; c.dataset.cz=(vv+1)%4===0?1:0;
@@ -1033,8 +1038,9 @@ function renderGrid(){
     else if(mode==='info'){ const val=S.vox.get(k), pi=$('#pinspect');
       if(val){ const f=formOf(val), parts=['form='+f,'slot='+val.r];
         for(const {name} of shownProps(f)) if(val.props[name]!=null) parts.push(name+'='+val.props[name]);
-        pi.innerHTML=parts.join('<br>'); pi.classList.add('on'); }
-      else { pi.classList.remove('on'); } }   // 空セルは消す
+        pi.innerHTML=parts.join('<br>'); pi.classList.add('on'); S.inspect=k; }
+      else { pi.classList.remove('on'); S.inspect=null; }
+      renderGrid(); }   // 選択セルを強調
     else { const v=cur(); if(sig(S.vox.get(k))!==sig(v)){ pushHist(); S.vox.set(k,v); changed(); renderGrid(); renderSpine(); } } }
   document.addEventListener('pointerdown',e=>{
     if(S.view!=='plan' || !wrap.contains(e.target)) return;
@@ -1172,7 +1178,8 @@ function setMode(m){ S.mode=m;   // 立体・平面 共通のモード（置く/
   ['place','break','info'].forEach(n=>{ const a=$('#b-'+n), b=$('#pm-'+n);
     if(a) a.setAttribute('aria-pressed', n===m); if(b) b.setAttribute('aria-pressed', n===m); });
   const hm=$('#hud-mode'); if(hm) hm.textContent = m==='break'?'壊す':(m==='info'?'情報モード':'置く');
-  if(m!=='info'){ $('#inspect').classList.remove('on'); const pi=$('#pinspect'); if(pi) pi.classList.remove('on'); } }
+  if(m!=='info'){ $('#inspect').classList.remove('on'); const pi=$('#pinspect'); if(pi) pi.classList.remove('on');
+    if(S.inspect){ S.inspect=null; syncVox(); if(S.view==='plan') renderGrid(); } } }
 $('#pm-place').onclick=()=>setMode('place');
 $('#pm-break').onclick=()=>setMode('break');
 $('#pm-info').onclick=()=>setMode('info');
