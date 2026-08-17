@@ -360,7 +360,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '3.97';
+const APP_VERSION = '3.98';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -767,7 +767,8 @@ function makeAxisFaces(entries, material){
 }
 /* ---- form ラベル（トグル・案3）: form 名の短ラベルをブロック上にスプライトで重畳。FULLBLOCK は多数派なので省略 ---- */
 let labelMeshes=[];
-const FORM_LABEL={DOOR:'door',FENCE:'fence',FENCE_GATE:'gate',BUTTON:'btn',PANE:'pane',GRATE:'grate',TORCH:'torch',WALL_TORCH:'wtorch',LANTERN:'lantern',CAMPFIRE:'fire',CHAIN:'chain',POPPY:'poppy',VINE:'vine',BAMBOO_PLANT:'bamboo',AIR:'air'};   // others のみ（fullblock/slab/stairs/trapdoor は省略）
+const FORM_LABEL={DOOR:'door',FENCE:'fence',FENCE_GATE:'gate',BUTTON:'btn',PANE:'pane',GRATE:'grate',TORCH:'torch',WALL_TORCH:'wtorch',LANTERN:'lantern',CAMPFIRE:'fire',CHAIN:'chain',POPPY:'poppy',VINE:'vine',BAMBOO_PLANT:'bamboo',AIR:'air'};   // others のみ（3Dは形で区別できるため primary は省略）
+const PLAB2={SLAB:'slab',STAIRS:'stair',TRAPDOOR:'trap'};   // 2D追加分（四角で見分けられないため slab/stairs/trapdoor も表示。fullblock は多数のため除外）
 const _labelMat={};
 function labelMat(txt){
   if(_labelMat[txt]) return _labelMat[txt];
@@ -998,7 +999,7 @@ function renderGrid(){
     const v=S.vox.get(planeKeyAt(hh,vv,layer));
     c.dataset.on = v?1:0;
     if(v) c.style.background = roleHex(v.r);   // 役割色でセル表示
-    if(S.labels && v && S.cell>=14){ const lab=FORM_LABEL[formOf(v)]; if(lab) c.textContent=lab; }   // others の form ラベル
+    if(S.labels && v && S.cell>=11){ const fm=formOf(v); const lab=FORM_LABEL[fm]||PLAB2[fm]; if(lab) c.textContent=lab; }   // 2Dは非fullblock（others＋slab/stairs/trapdoor）を表示
     c.dataset.below = (layer>0 && S.vox.has(planeKeyAt(hh,vv,layer-1)) && !v)?1:0;
     c.dataset.cx=(hh+1)%4===0?1:0; c.dataset.cz=(vv+1)%4===0?1:0;
     c.dataset.origin=(hh===0&&vv===0)?1:0;     // 原点(手前左)にしるし（左=縦軸色・下=横軸色）
