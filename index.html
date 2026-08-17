@@ -199,6 +199,11 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <button id="t-plan" aria-selected="false">2D</button>
   <button id="t-json" aria-selected="false">JSON</button>
 </div>
+<div class="bar hidden" id="cellclip-bar">
+  <button class="btn" id="c-copy">コピー</button>
+  <button class="btn" id="c-cut">切り取り</button>
+  <button class="btn" id="c-paste">貼り付け</button>
+</div>
 
 <section id="v-space">
   <div id="space"><div id="inspect"></div><div class="vtoggles"><button class="vtoggle" id="b-label" aria-pressed="false">ラベル</button></div><div class="vbottom"><button class="vbtn" id="b-undo" aria-label="元に戻す">↶</button><button class="vbtn" id="b-redo" aria-label="進む" disabled>↷</button></div></div>
@@ -240,11 +245,6 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="pm-place" aria-pressed="true">置く</button>
     <button class="btn" id="pm-break" aria-pressed="false">壊す</button>
     <button class="btn" id="pm-info" aria-pressed="false">選択</button>
-  </div>
-  <div class="bar hidden" id="cellclip-bar">
-    <button class="btn" id="c-copy">コピー</button>
-    <button class="btn" id="c-cut">切り取り</button>
-    <button class="btn" id="c-paste">貼り付け</button>
   </div>
   <div class="bar">
     <button class="btn" id="p-down">▼ 下の層</button>
@@ -380,7 +380,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.05';
+const APP_VERSION = '4.06';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -561,7 +561,7 @@ function setLayer(v){
 }
 
 /* ---------- three.js ---------- */
-let renderer,scene,camera,editMeshes=[],ghostMeshes=[],outlineMeshes=[],preview,floorObj,planeObj,originObj,geo,GEOS,mat,ghostMat,outlineMat,outlineGhostMat,hingeMat,hingeGhostMat,HINGE_GEO,orientMat,orientGhostMat,axisFaceMat,axisFaceGhostMat,EDGE_POS,previewMat,previewBreakMat,inspectMat,target,sph,dirty=true;
+let renderer,scene,camera,editMeshes=[],ghostMeshes=[],outlineMeshes=[],preview,floorObj,planeObj,originObj,geo,GEOS,mat,ghostMat,outlineMat,outlineGhostMat,hingeMat,hingeGhostMat,HINGE_GEO,orientMat,orientGhostMat,axisFaceMat,axisFaceGhostMat,EDGE_POS,previewMat,previewBreakMat,inspectMat,clipSrcMat,clipDstMat,target,sph,dirty=true;
 function boxAt(w,h,d,oy,oz){ const g=new THREE.BoxGeometry(w,h,d); g.translate(0,oy||0,oz||0); return g; }
 function mergeGeo(a,b){   // 2つの indexed BoxGeometry を結合（階段用）
   const g=new THREE.BufferGeometry(), cat=(n,sz)=>{ const aa=a.attributes[n].array, bb=b.attributes[n].array;
@@ -641,7 +641,9 @@ function initThree(){
   const eg=new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1));
   EDGE_POS=eg.attributes.position.array.slice(); eg.dispose();
   outlineMat      = new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.32});
-  inspectMat      = new THREE.LineBasicMaterial({color:0x8ff0ff, transparent:true, opacity:1, depthTest:false});  // 情報モードで選択中のブロック枠
+  inspectMat      = new THREE.LineBasicMaterial({color:0x8ff0ff, transparent:true, opacity:1, depthTest:false});  // 選択（範囲/起点）枠
+  clipSrcMat      = new THREE.LineBasicMaterial({color:0xffd24a, transparent:true, opacity:1, depthTest:false});  // 切取/コピー元
+  clipDstMat      = new THREE.LineBasicMaterial({color:0x7ad79a, transparent:true, opacity:1, depthTest:false});  // 貼り付け先
   outlineGhostMat = new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.11});
   hingeMat        = new THREE.MeshBasicMaterial({color:0x9aa7b0});                                 // open trapdoor の蝶番(開閉軸)＝棒
   hingeGhostMat   = new THREE.MeshBasicMaterial({color:0x9aa7b0, transparent:true, opacity:0.3});
@@ -822,8 +824,20 @@ function syncVox(){
   if(S.labels) makeLabels(labelSet).forEach(s=>{ scene.add(s); labelMeshes.push(s); });
   for(const gk in below){ const im=makeInstShape(below[gk],GEOS[gk],mat); scene.add(im); editMeshes.push(im); }
   for(const gk in above){ const im=makeInstShape(above[gk],GEOS[gk],ghostMat); scene.add(im); ghostMeshes.push(im); }
-  if(S.mode==='info' && S.inspect && S.vox.has(S.inspect)){ const ip=S.inspect.split(',').map(Number);   // 情報モード：選択中ブロックを強調枠
+  if(S.mode==='info' && S.inspect && S.vox.has(S.inspect)){ const ip=S.inspect.split(',').map(Number);   // 選択モード：起点ブロックを強調枠
     const o=makeOutline([ip],inspectMat); scene.add(o); outlineMeshes.push(o); }
+  if(S.mode==='info' && S.sel && S.sel.plane==='WD'){   // 選択範囲（作業面 WD 上）
+    const a=S.sel.a,b=S.sel.b,L=S.sel.layer,cs=[];
+    for(let h=Math.min(a.h,b.h);h<=Math.max(a.h,b.h);h++) for(let v=Math.min(a.v,b.v);v<=Math.max(a.v,b.v);v++) cs.push([h,L,v]);
+    if(cs.length){ const o=makeOutline(cs,inspectMat); scene.add(o); outlineMeshes.push(o); } }
+  if(S.cellClip && S.cellClip.srcPlane==='WD'){   // 切取/コピー元
+    const r=S.cellClip.rect,L=S.cellClip.srcLayer,cs=[];
+    for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++) cs.push([h,L,v]);
+    const o=makeOutline(cs,clipSrcMat); scene.add(o); outlineMeshes.push(o); }
+  if(S.cellClip && S.mode==='info' && S.sel && S.sel.plane==='WD'){   // 貼り付け先プレビュー
+    const a=S.sel.a,L=S.sel.layer,cc=S.cellClip,cs=[];
+    for(let i=0;i<cc.w;i++) for(let j=0;j<cc.h;j++) cs.push([a.h+i,L,a.v+j]);
+    const o=makeOutline(cs,clipDstMat); scene.add(o); outlineMeshes.push(o); }
   if(belowCells.length){ const o=makeOutline(belowCells,outlineMat); scene.add(o); outlineMeshes.push(o); }
   if(aboveCells.length){ const o=makeOutline(aboveCells,outlineGhostMat); scene.add(o); outlineMeshes.push(o); }
   if(belowTrap.length){ const h=makeHingeRods(belowTrap,mat); scene.add(h); editMeshes.push(h); }
@@ -882,13 +896,13 @@ function bindGestures(el){
     if(pts.size===1){
       const now=Date.now();
       const isDbl = lastUp && now-lastUp.t<130 && Math.hypot(e.clientX-lastUp.x,e.clientY-lastUp.y)<22;
-      const gmode = (S.mode==='info') ? 'info' : (isDbl ? 'break' : S.mode);   // 情報モードはダブルでも壊さない
+      const gmode = (S.mode==='info') ? 'select' : (isDbl ? 'break' : S.mode);   // 選択モードは範囲選択
       tap={id:e.pointerId,x:e.clientX,y:e.clientY,t:now,mode:gmode,dbl:!!isDbl};
       drag=null;
-      // 編集ドラッグ開始（マウスは左のみ／タッチは1本指）。作業面上で始めたら矩形。情報モードは矩形なし。
-      if(!(e.pointerType==='mouse' && e.button!==0) && gmode!=='info'){
+      // 編集/選択ドラッグ開始（マウスは左のみ／タッチは1本指）。作業面上で始めたら矩形/範囲。
+      if(!(e.pointerType==='mouse' && e.button!==0)){
         const c=planeCell(e.clientX,e.clientY);
-        if(c) drag={mode:gmode,a:c,b:c};           // ダブル時は削除範囲
+        if(c) drag={mode:gmode,a:c,b:c};           // ダブル時は削除範囲・選択時は選択範囲
       }
       if(isDbl){ clearTimeout(pendingPlace); pendingPlace=null; lastUp=null; }  // 1回目の配置を取消
     } else { tap=null; drag=null; clearPreview();
@@ -915,6 +929,11 @@ function bindGestures(el){
       mid=m; updateCam();
     }
   });
+  function set3DSel(a,b){   // a,b:{x,z}作業面上 → S.sel(WD基準)。情報は起点セルのみ
+    S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:S.layer, plane:'WD'};
+    const k=K(a.x,S.layer,a.z), val=S.vox.get(k);
+    if(val) showInfo(norm(val)); else $('#inspect').classList.remove('on');
+    S.inspect = val ? k : null; syncVox(); }
   const up=e=>{
     const was=pts.get(e.pointerId); pts.delete(e.pointerId);
     if(pts.size<2){ pinch=0; mid=null; }
@@ -922,8 +941,8 @@ function bindGestures(el){
       const x=was.x, y=was.y;
       if(tap.mode==='break'){
         doTap(x,y,'break'); lastUp=null;    // 削除は即時（ダブル/壊すモード）
-      } else if(tap.mode==='info'){
-        doTap(x,y,'info'); lastUp=null;      // 情報＝即時インスペクト
+      } else if(tap.mode==='select'){
+        const c=planeCell(x,y); if(c) set3DSel(c,c); else { S.sel=null; $('#inspect').classList.remove('on'); S.inspect=null; syncVox(); } lastUp=null;   // 単セル選択
       } else {                              // 置く単発はダブル判定のため遅延（ダブルなら次のdownで取消）
         lastUp={x,y,t:Date.now()};
         clearTimeout(pendingPlace);
@@ -931,8 +950,8 @@ function bindGestures(el){
       }
     } else if(drag){
       clearTimeout(pendingPlace); pendingPlace=null;
-      if(drag.a.x!==drag.b.x || drag.a.z!==drag.b.z)   // 1ブロックのみの範囲はキャンセル
-        applyRect(drag.a,drag.b,drag.mode);
+      if(drag.mode==='select'){ set3DSel(drag.a,drag.b); }                              // 範囲選択
+      else if(drag.a.x!==drag.b.x || drag.a.z!==drag.b.z) applyRect(drag.a,drag.b,drag.mode);   // 1ブロックのみはキャンセル
       lastUp=null;
     }
     clearPreview();
@@ -975,6 +994,7 @@ const PLANES = {
 const AXI = {x:0,y:1,z:2};
 const curLayer = ()=>{ const l=PLANES[S.plane].l; return l==='y'?S.layer:(S.lay[l]||0); };
 function planeKeyAt(h,v,layer){ const P=PLANES[S.plane], c={}; c[P.h]=h; c[P.v]=v; c[P.l]=layer; return K(c.x,c.y,c.z); }
+function planeKeyP(plane,h,v,layer){ const P=PLANES[plane], c={}; c[P.h]=h; c[P.v]=v; c[P.l]=layer; return K(c.x,c.y,c.z); }   // 面指定版（3D=WD / 2D=S.plane 両対応）
 const planeKey = (h,v)=> planeKeyAt(h,v,curLayer());
 function setPlanLayer(v){ const P=PLANES[S.plane], n=S.dims[P.l]; v=clamp(v,0,n-1);
   if(P.l==='y') setLayer(v);                        // H は立体の作業面と共有
@@ -1329,23 +1349,24 @@ $('#p-ldel').onclick=()=>{ const P=PLANES[S.plane]; if(S.dims[P.l]<=1){ status('
   const L=curLayer(); _remove(L); _bump(-1); applyDims(S.dims); setPlanLayer(Math.min(L,S.dims[P.l]-1)); status('層を削除'); };
 
 /* ---- 選択モードのセル範囲クリップボード（コピー/切取/貼付） ---- */
+function redrawSel(){ if(S.view==='plan') renderGrid(); else syncVox(); }   // 選択/クリップの再描画（2D/3D）
 function grabCells(mode){ if(!S.sel){ status('セルを選択してください'); return; }
-  const a=S.sel.a,b=S.sel.b, r={x0:Math.min(a.h,b.h),x1:Math.max(a.h,b.h),z0:Math.min(a.v,b.v),z1:Math.max(a.v,b.v)};
-  const layer=curLayer(), cells=[];
-  for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++){ const val=S.vox.get(planeKeyAt(h,v,layer)); if(val) cells.push({dh:h-r.x0,dv:v-r.z0,val}); }
-  S.cellClip={mode, cells, w:r.x1-r.x0+1, h:r.z1-r.z0+1, rect:r, srcLayer:layer, srcPlane:S.plane};
-  renderGrid(); status((mode==='cut'?'切り取り':'コピー')+'（'+cells.length+'）→ 貼り付け先を選択'); }
+  const pl=S.sel.plane, layer=S.sel.layer, a=S.sel.a, b=S.sel.b;
+  const r={x0:Math.min(a.h,b.h),x1:Math.max(a.h,b.h),z0:Math.min(a.v,b.v),z1:Math.max(a.v,b.v)}, cells=[];
+  for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++){ const val=S.vox.get(planeKeyP(pl,h,v,layer)); if(val) cells.push({dh:h-r.x0,dv:v-r.z0,val}); }
+  S.cellClip={mode, cells, w:r.x1-r.x0+1, h:r.z1-r.z0+1, rect:r, srcLayer:layer, srcPlane:pl};
+  redrawSel(); status((mode==='cut'?'切り取り':'コピー')+'（'+cells.length+'）→ 貼り付け先を選択'); }
 $('#c-copy').onclick=()=>grabCells('copy');
 $('#c-cut').onclick =()=>grabCells('cut');
 $('#c-paste').onclick=()=>{ const cc=S.cellClip;
   if(!cc){ status('クリップボードが空です'); return; }
-  if(cc.srcPlane!==S.plane){ status('別の面のクリップボードです'); return; }
   if(!S.sel){ status('貼り付け先を選択してください'); return; }
-  pushHist(); const layer=curLayer(), a=S.sel.a, P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v];
-  if(cc.mode==='cut') for(let h=cc.rect.x0;h<=cc.rect.x1;h++) for(let v=cc.rect.z0;v<=cc.rect.z1;v++) S.vox.delete(planeKeyAt(h,v,cc.srcLayer));  // 切取元を消去
-  for(let i=0;i<cc.w;i++) for(let j=0;j<cc.h;j++){ const h=a.h+i,v=a.v+j; if(h<dh&&v<dv) S.vox.delete(planeKeyAt(h,v,layer)); }  // 貼付先を一旦クリア
-  for(const c of cc.cells){ const h=a.h+c.dh,v=a.v+c.dv; if(h<dh&&v<dv) S.vox.set(planeKeyAt(h,v,layer),c.val); }
-  S.cellClip=null; changed(); renderGrid(); renderSpine(); status('貼り付けました'); };
+  if(cc.srcPlane!==S.sel.plane){ status('別の面のクリップボードです'); return; }
+  pushHist(); const pl=S.sel.plane, layer=S.sel.layer, a=S.sel.a, P=PLANES[pl], dh=S.dims[P.h], dv=S.dims[P.v];
+  if(cc.mode==='cut') for(let h=cc.rect.x0;h<=cc.rect.x1;h++) for(let v=cc.rect.z0;v<=cc.rect.z1;v++) S.vox.delete(planeKeyP(pl,h,v,cc.srcLayer));  // 切取元を消去
+  for(let i=0;i<cc.w;i++) for(let j=0;j<cc.h;j++){ const h=a.h+i,v=a.v+j; if(h<dh&&v<dv) S.vox.delete(planeKeyP(pl,h,v,layer)); }  // 貼付先を一旦クリア
+  for(const c of cc.cells){ const h=a.h+c.dh,v=a.v+c.dv; if(h<dh&&v<dv) S.vox.set(planeKeyP(pl,h,v,layer),c.val); }
+  S.cellClip=null; changed(); redrawSel(); renderSpine(); status('貼り付けました'); };
 
 $('#j-layers').onclick=()=>{ S.jsonMode='layers';
   $('#j-layers').setAttribute('aria-selected',true); $('#j-voxels').setAttribute('aria-selected',false); renderJson(); };
