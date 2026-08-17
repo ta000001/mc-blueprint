@@ -239,9 +239,14 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="p-zi">＋ 拡大</button>
   </div>
   <div class="bar">
-    <button class="btn" id="p-copy">下の層を複製</button>
-    <button class="btn" id="p-out">外周を描く</button>
-    <button class="btn" id="p-clr">層を消去</button>
+    <button class="btn" id="p-lcopy">層をコピー</button>
+    <button class="btn" id="p-lcut">層を切り取り</button>
+    <button class="btn" id="p-lpaste">層を貼り付け</button>
+  </div>
+  <div class="bar">
+    <button class="btn" id="p-lins">層を挿入</button>
+    <button class="btn" id="p-ladd">層を追加</button>
+    <button class="btn" id="p-ldel">層を削除</button>
   </div>
   <div class="bar" id="form-plan"></div>
   <div class="bar" id="dir-plan"></div>
@@ -361,7 +366,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.01';
+const APP_VERSION = '4.02';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -468,7 +473,7 @@ const S = {
   shape:'fullblock', other:'DOOR', roleCount:{},
   props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
   view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirs:{place:null,palette:null,structure:null}, files:{place:null,palette:null,structure:null}, labels:false,
-  top:'place', pal:{map:{}}, plane:'WD', lay:{x:0,z:0}, inspect:null
+  top:'place', pal:{map:{}}, plane:'WD', lay:{x:0,z:0}, inspect:null, clip:null
 };
 const cur = ()=>({r:S.role, s:S.shape, ot:S.other, props:{...S.props}});
 const sig = (v)=>{ if(!v) return ''; const n=norm(v); return [n.r,n.s,n.ot,n.f,n.h,n.ax,n.hg,n.o,n.hang,n.fc].join('|'); };
@@ -1249,17 +1254,31 @@ $('#p-up').onclick=()=>setPlanLayer(curLayer()+1);
 $('#p-down').onclick=()=>setPlanLayer(curLayer()-1);
 $('#p-zi').onclick=()=>{ S.manualZoom=true; S.cell=clamp(S.cell+4,6,44); renderGrid(); };
 $('#p-zo').onclick=()=>{ S.manualZoom=true; S.cell=clamp(S.cell-4,6,44); renderGrid(); };
-$('#p-clr').onclick=()=>{ pushHist(); const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v];
-  for(let h=0;h<dh;h++) for(let v=0;v<dv;v++) S.vox.delete(planeKey(h,v));
-  changed(); renderGrid(); renderSpine(); };
-$('#p-copy').onclick=()=>{ const layer=curLayer(); if(layer===0) return; pushHist(); const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v];
-  for(let h=0;h<dh;h++) for(let v=0;v<dv;v++){ const r=S.vox.get(planeKeyAt(h,v,layer-1));
-    if(r) S.vox.set(planeKeyAt(h,v,layer),r); }        // 役割も複製（1つ手前の層から）
-  changed(); renderGrid(); renderSpine(); };
-$('#p-out').onclick=()=>{ pushHist(); const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v];
-  for(let h=0;h<dh;h++) for(let v=0;v<dv;v++)
-    if(h===0||v===0||h===dh-1||v===dv-1) S.vox.set(planeKey(h,v),cur());
-  changed(); renderGrid(); renderSpine(); };
+/* ---- 2D 層操作（コピー/切取/貼付/挿入/追加/削除。現平面の層軸に沿って） ---- */
+function applyDims(nd){ setDims(nd); $('#dz').value=nd.z; $('#dy').value=nd.y; $('#dx').value=nd.x; }
+const clipEmpty = ()=> !S.clip || !S.clip.length;
+function layerClear(L){ const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v];
+  for(let h=0;h<dh;h++) for(let v=0;v<dv;v++) S.vox.delete(planeKeyAt(h,v,L)); }
+$('#p-lcopy').onclick=()=>{ const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v], L=curLayer();
+  S.clip=[]; for(let h=0;h<dh;h++) for(let v=0;v<dv;v++){ const val=S.vox.get(planeKeyAt(h,v,L)); if(val) S.clip.push({h,v,val}); }
+  status('層をコピー（'+S.clip.length+' ブロック）'); };
+$('#p-lcut').onclick=()=>{ $('#p-lcopy').onclick(); pushHist(); layerClear(curLayer()); changed(); renderGrid(); renderSpine(); status('層を切り取り'); };
+$('#p-lpaste').onclick=()=>{ if(clipEmpty()){ status('クリップボードが空です'); return; } pushHist();
+  const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v], L=curLayer(); layerClear(L);
+  for(const c of S.clip) if(c.h<dh&&c.v<dv) S.vox.set(planeKeyAt(c.h,c.v,L),c.val);
+  changed(); renderGrid(); renderSpine(); status('層を貼り付け'); };
+$('#p-lins').onclick=()=>{ const P=PLANES[S.plane], idx=AXI[P.l], n=S.dims[P.l]; if(n>=64){ status('これ以上増やせません'); return; } pushHist();
+  const L=curLayer(), next=new Map();
+  S.vox.forEach((val,k)=>{ const a=k.split(',').map(Number); if(a[idx]>=L) a[idx]+=1; next.set(a.join(','),val); }); S.vox=next;   // L以上を1つ上へ
+  const nd={...S.dims,[P.l]:n+1};
+  if(!clipEmpty()){ for(const c of S.clip) if(c.h<nd[P.h]&&c.v<nd[P.v]) S.vox.set(planeKeyAt(c.h,c.v,L),c.val); }   // clip があれば新層へ
+  applyDims(nd); status(clipEmpty()?'空の層を挿入':'層を挿入（クリップボード）'); };
+$('#p-ladd').onclick=()=>{ const P=PLANES[S.plane], n=S.dims[P.l]; if(n>=64){ status('これ以上増やせません'); return; } pushHist();
+  applyDims({...S.dims,[P.l]:n+1}); setPlanLayer(n); status('層を追加（末尾）'); };
+$('#p-ldel').onclick=()=>{ const P=PLANES[S.plane], idx=AXI[P.l], n=S.dims[P.l]; if(n<=1){ status('これ以上減らせません'); return; } pushHist();
+  const L=curLayer(), next=new Map();
+  S.vox.forEach((val,k)=>{ const a=k.split(',').map(Number); if(a[idx]===L) return; if(a[idx]>L) a[idx]-=1; next.set(a.join(','),val); }); S.vox=next;   // L削除・上を1つ下へ
+  applyDims({...S.dims,[P.l]:n-1}); setPlanLayer(Math.min(L,n-2)); status('層を削除'); };
 
 $('#j-layers').onclick=()=>{ S.jsonMode='layers';
   $('#j-layers').setAttribute('aria-selected',true); $('#j-voxels').setAttribute('aria-selected',false); renderJson(); };
