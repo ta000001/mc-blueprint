@@ -386,7 +386,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.08';
+const APP_VERSION = '4.09';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1366,9 +1366,9 @@ $('#p-ldel').onclick=()=>{ const P=PLANES[S.plane]; if(S.dims[P.l]<=1){ status('
 
 /* ---- 選択モードのセル範囲クリップボード（コピー/切取/貼付） ---- */
 function redrawSel(){ if(S.view==='plan') renderGrid(); else syncVox(); }   // 選択/クリップの再描画（2D/3D）
-function updateCellClipUI(){ const m=S.cellClip&&S.cellClip.mode;   // コピー/切取ボタンのアクティブ表示・貼付ボタンの準備完了（両ビュー）
-  document.querySelectorAll('.c-copy').forEach(b=>b.setAttribute('aria-pressed', m==='copy'));
-  document.querySelectorAll('.c-cut').forEach(b=>b.setAttribute('aria-pressed', m==='cut'));
+function updateCellClipUI(){ const m=S.cellClip&&S.cellClip.mode;   // コピー/切取ボタンをキャンセルに変える・貼付ボタンの準備完了（両ビュー）
+  document.querySelectorAll('.c-copy').forEach(b=>{ b.setAttribute('aria-pressed', m==='copy'); b.textContent = m==='copy'?'キャンセル':'コピー'; });
+  document.querySelectorAll('.c-cut').forEach(b=>{ b.setAttribute('aria-pressed', m==='cut'); b.textContent = m==='cut'?'キャンセル':'切り取り'; });
   document.querySelectorAll('.c-paste').forEach(b=>b.setAttribute('aria-pressed', !!S.cellClip)); }
 function cancelCellClip(){ if(!S.cellClip) return; S.cellClip=null; updateCellClipUI(); redrawSel(); status('コピー/切り取りをキャンセル'); }
 function grabCells(mode){ if(!S.sel){ status('セルを選択してください'); return; }
@@ -1377,8 +1377,8 @@ function grabCells(mode){ if(!S.sel){ status('セルを選択してください'
   for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++){ const val=S.vox.get(planeKeyP(pl,h,v,layer)); if(val) cells.push({dh:h-r.x0,dv:v-r.z0,val}); }
   S.cellClip={mode, cells, w:r.x1-r.x0+1, h:r.z1-r.z0+1, rect:r, srcLayer:layer, srcPlane:pl};
   updateCellClipUI(); redrawSel(); status((mode==='cut'?'切り取り':'コピー')+'（'+cells.length+'）→ ドラッグで配置位置・貼り付けで確定・ダブルタップで取消'); }
-document.querySelectorAll('.c-copy').forEach(b=>b.onclick=()=>grabCells('copy'));
-document.querySelectorAll('.c-cut').forEach(b=>b.onclick=()=>grabCells('cut'));
+document.querySelectorAll('.c-copy').forEach(b=>b.onclick=()=>{ if(S.cellClip&&S.cellClip.mode==='copy') cancelCellClip(); else grabCells('copy'); });   // コピー状態ならキャンセル
+document.querySelectorAll('.c-cut').forEach(b=>b.onclick=()=>{ if(S.cellClip&&S.cellClip.mode==='cut') cancelCellClip(); else grabCells('cut'); });      // 切取状態ならキャンセル
 const doPaste=()=>{ const cc=S.cellClip;
   if(!cc){ status('クリップボードが空です'); return; }
   if(!S.sel){ status('貼り付け先を選択してください'); return; }
