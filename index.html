@@ -86,7 +86,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   font-family:inherit;font-size:12px;border-radius:3px}
 .tabs button[aria-selected="true"]{background:var(--panel2);color:var(--brass)}
 .bar{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
-.bar.sep{border-top:1px solid var(--rule);padding-top:12px}
+.bar.sep{border-top:1px solid var(--verdigris);padding-top:14px;margin-top:14px}
 .palbar{display:flex;align-items:center;gap:6px;margin-top:8px}
 .palbar-t{font-size:10px;color:var(--dim);min-width:36px;letter-spacing:.06em}
 .palbar .btn{min-width:0}
@@ -224,8 +224,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   </div>
   <div class="bar sep" id="form-space"></div>
   <div class="bar" id="dir-space"></div>
-  <div class="bar" id="roles-space"></div>
-  <div class="bar"><button class="btn" id="b-clear">すべて消去</button></div>
+  <div class="bar sep" id="roles-space"></div>
+  <div class="bar sep"><button class="btn" id="b-clear">すべて消去</button></div>
   <p class="note">合計 <span id="tot">0</span> ブロック。（操作方法は右上の <b>?</b> ）</p>
 </section>
 
@@ -275,7 +275,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   </div>
   <div class="bar sep" id="form-plan"></div>
   <div class="bar" id="dir-plan"></div>
-  <div class="bar" id="roles-plan"></div>
+  <div class="bar sep" id="roles-plan"></div>
   <p class="note">面をタブで切替（上面 W×D / 正面 W×H / 側面 D×H）。原点(0,0)は左下＝3Dと同じ向き（左=縦軸色・下=横軸色）。タップ=単発・ドラッグ=矩形・ダブルタップ(+ドラッグ)=削除(範囲)・2本指=ズーム/移動。左の帯は層（残り1軸）のブロック量、ドラッグで層移動。色＝役割。</p>
 </section>
 
@@ -391,7 +391,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.14';
+const APP_VERSION = '4.15';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
