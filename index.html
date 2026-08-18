@@ -135,6 +135,9 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .cell{border-right:1px solid #22302f;border-bottom:1px solid #22302f;background:#131c1e;position:relative;
   display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:8px;line-height:1;color:#0e1416;text-align:center;font-family:ui-monospace,monospace}
 .cell[data-origin="1"]::after{content:'';position:absolute;inset:0;box-shadow:inset 3px 0 0 var(--vcol),inset 0 -3px 0 var(--hcol);pointer-events:none;z-index:2}
+.cell .axlab{position:absolute;line-height:1;font-weight:700;pointer-events:none;z-index:4;font-family:ui-monospace,monospace}
+.cell .axlab-v{left:2px;top:1px}
+.cell .axlab-h{right:2px;bottom:1px}
 .cell[data-cx="1"]{border-right-color:var(--rule)}
 .cell[data-cz="1"]{border-bottom-color:var(--rule)}
 .cell[data-below="1"]{background:#1b2320;box-shadow:inset 0 0 0 1px var(--brass-dim)}
@@ -226,7 +229,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="bar" id="dir-space"></div>
   <div class="bar sep" id="roles-space"></div>
   <div class="bar sep"><button class="btn" id="b-clear">すべて消去</button></div>
-  <p class="note">合計 <span id="tot">0</span> ブロック。（操作方法は右上の <b>?</b> ）</p>
+  <p class="note">合計：<span id="tot">0</span>ブロック</p>
 </section>
 
 <section id="v-plan" class="hidden">
@@ -391,7 +394,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.15';
+const APP_VERSION = '4.16';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -820,6 +823,24 @@ function makeLabels(entries){
     spr.scale.set(0.85,0.34,1); arr.push(spr); }
   return arr;
 }
+const _axLabMat={};
+function axLabMat(txt,col){   // 原点の軸ラベル用（色付き）
+  const key=txt+col; if(_axLabMat[key]) return _axLabMat[key];
+  const c=document.createElement('canvas'); c.width=64; c.height=64;
+  const g=c.getContext('2d'); g.font='bold 46px ui-monospace,monospace'; g.textAlign='center'; g.textBaseline='middle';
+  g.lineWidth=8; g.strokeStyle='rgba(0,0,0,0.9)'; g.strokeText(txt,32,34);
+  g.fillStyle=col; g.fillText(txt,32,34);
+  const t=new THREE.CanvasTexture(c); t.minFilter=THREE.LinearFilter;
+  return _axLabMat[key]=new THREE.SpriteMaterial({map:t, depthTest:false, transparent:true});
+}
+function makeOriginAxisLabels(){   // 原点(0,0,0)=手前下左 の各軸端にラベル。色は原点バーと対応
+  const ox=S.dims.x, arr=[];
+  const mk=(txt,col,x,y,z)=>{ const s=new THREE.Sprite(axLabMat(txt,col)); s.position.set(x,y,z); s.scale.set(0.5,0.5,1); arr.push(s); };
+  mk('W','#ff5a5a', ox-1.35, 0, 0);   // +W＝内部 -x
+  mk('H','#5ad07a', ox, 1.35, 0);     // +H＝上
+  mk('D','#5a86ff', ox, 0, 1.35);     // +D＝奥
+  return arr;
+}
 function syncVox(){
   editMeshes.forEach(m=>scene.remove(m)); ghostMeshes.forEach(m=>scene.remove(m));
   outlineMeshes.forEach(m=>{ scene.remove(m); m.geometry.dispose(); });
@@ -832,7 +853,8 @@ function syncVox(){
     labelSet.push({p,v});   // ラベルは作業面の上下に関わらず全ブロック対象
     if(v.s==='trapdoor') (up?aboveTrap:belowTrap).push({p,v});
     if(v.s==='fullblock') (up?aboveFull:belowFull).push({p,v}); });
-  if(S.labels) makeLabels(labelSet).forEach(s=>{ scene.add(s); labelMeshes.push(s); });
+  if(S.labels){ makeLabels(labelSet).forEach(s=>{ scene.add(s); labelMeshes.push(s); });
+    makeOriginAxisLabels().forEach(s=>{ scene.add(s); labelMeshes.push(s); }); }
   for(const gk in below){ const im=makeInstShape(below[gk],GEOS[gk],mat); scene.add(im); editMeshes.push(im); }
   for(const gk in above){ const im=makeInstShape(above[gk],GEOS[gk],ghostMat); scene.add(im); ghostMeshes.push(im); }
   if(S.mode==='info' && S.inspect && S.vox.has(S.inspect)){ const ip=S.inspect.split(',').map(Number);   // 選択モード：起点ブロックを強調枠
@@ -1007,6 +1029,7 @@ const PLANES = {
   DH:{h:'z',v:'y',l:'x',llab:'W',hcol:'#8aa8ff',vcol:'#7ad79a'},
 };
 const AXI = {x:0,y:1,z:2};
+const AXLAB = {x:'W',y:'H',z:'D'};   // 内部軸→表示ラベル
 const curLayer = ()=>{ const l=PLANES[S.plane].l; return l==='y'?S.layer:(S.lay[l]||0); };
 function planeKeyAt(h,v,layer){ const P=PLANES[S.plane], c={}; c[P.h]=h; c[P.v]=v; c[P.l]=layer; return K(c.x,c.y,c.z); }
 function planeKeyP(plane,h,v,layer){ const P=PLANES[plane], c={}; c[P.h]=h; c[P.v]=v; c[P.l]=layer; return K(c.x,c.y,c.z); }   // 面指定版（3D=WD / 2D=S.plane 両対応）
@@ -1072,6 +1095,11 @@ function renderGrid(){
     c.dataset.below = (layer>0 && S.vox.has(planeKeyAt(hh,vv,layer-1)) && !v)?1:0;
     c.dataset.cx=(hh+1)%4===0?1:0; c.dataset.cz=(vv+1)%4===0?1:0;
     c.dataset.origin=(hh===0&&vv===0)?1:0;     // 原点(手前左)にしるし（左=縦軸色・下=横軸色）
+    if(hh===0&&vv===0&&S.labels){              // 原点マークの横に軸ラベル（縦=左上/横=右下）
+      const fs=Math.max(6,Math.min(10,Math.floor(S.cell*0.5)))+'px';
+      const mkax=(cls,txt,col)=>{ const s=document.createElement('span'); s.className='axlab '+cls; s.textContent=txt; s.style.color=col; s.style.fontSize=fs; c.appendChild(s); };
+      mkax('axlab-v', AXLAB[P.v], P.vcol); mkax('axlab-h', AXLAB[P.h], P.hcol);
+    }
     c.style.width=c.style.height=S.cell+'px';
     f.appendChild(c);
   }
