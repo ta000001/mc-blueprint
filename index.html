@@ -402,7 +402,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.30';
+const APP_VERSION = '4.31';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -636,6 +636,8 @@ function buildGeos(){
 /* ---- 状態依存ジオメトリ（プロパティで形が変わる form）。キーに状態を畳み込み、遅延生成して GEOS にキャッシュ ---- */
 function box3(w,h,d,ox,oy,oz){ const g=new THREE.BoxGeometry(w,h,d); g.translate(ox||0,oy||0,oz||0); return g; }
 const FACE_DIR = { north:[0,0,-1], south:[0,0,1], east:[1,0,0], west:[-1,0,0], up:[0,1,0] };   // vine 面→内部方向
+const VINE_FACES = Object.keys(FACE_DIR);   // 最低1面が必要（0面は不可）
+const vineAny = (P)=> VINE_FACES.some(f=>P[f]==='true');   // 1面でも true か
 const faceOfVec = (d)=>{ for(const f in FACE_DIR){ const e=FACE_DIR[f]; if(e[0]===d[0]&&e[1]===d[1]&&e[2]===d[2]) return f; } return null; };
 const pTrue = (P,k)=> (P&&P[k])==='true';
 function buildVineGeo(v){   // 付く面ごとに薄板を貼る（無指定は -z の1枚でフォールバック）
@@ -1375,7 +1377,10 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
     const mk=(label,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=label; b.onclick=onclick; del.appendChild(b); };
     for(const {name,values} of shownProps(form)){          // 汎用: form_dict の値を巡回する1ループ
       if(!values.includes(S.props[name])) S.props[name]=values[0];
-      mk(name+':'+S.props[name], ()=>{ const i=values.indexOf(S.props[name]); S.props[name]=values[(i+1)%values.length]; save(); renderShapeBar(); });
+      mk(name+':'+S.props[name], ()=>{ const i=values.indexOf(S.props[name]), next=values[(i+1)%values.length];
+        if(form==='VINE' && VINE_FACES.includes(name) && next==='false'   // つたは最低1面必要＝最後の1面はオフ不可
+           && !VINE_FACES.some(f=>f!==name && S.props[f]==='true')){ status('つたは最低1面必要です'); return; }
+        S.props[name]=next; save(); renderShapeBar(); });
     }
   });
   renderRoles();   // 材質なし種類では役割バーを隠す
@@ -1499,7 +1504,7 @@ function rotVal(val, plane){ const n=norm(val), props={...n.props};   // facing/
   const fp = FORM_PROPS[formOf(n)] || {};   // その form が実際に持つ向きプロパティだけ回す（GRATE等の無方向は不変）
   if(fp.facing) props.facing = FAC[ rotFacingIdx(FAC_I[props.facing]||0, plane) ];
   if(fp.axis)   props.axis   = rotAxisTok(props.axis, plane);
-  if(fp.north)  Object.assign(props, rotVineFaces(props, plane));   // つた面
+  if(fp.north){ const nf=rotVineFaces(props, plane); if(vineAny(nf)) Object.assign(props, nf); }   // つた面（0面になる回転は据え置き）
   return {r:n.r, s:n.s, ot:n.ot, props}; }
 function rotateClip(){ const cc=S.cellClip; if(!cc){ status('コピー / 切り取り中に回転できます'); return; }
   const w=cc.w;
