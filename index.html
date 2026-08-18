@@ -402,7 +402,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.28';
+const APP_VERSION = '4.29';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -814,7 +814,8 @@ function makeAxisFaces(entries, material){
 }
 /* ---- form ラベル（トグル）: 聖典(form_dict)の form 名をそのままブロック上に重畳。FULLBLOCK は多数派なので省略 ---- */
 let labelMeshes=[];
-const labelOf = (v)=>{ const f=formOf(v); return (f && f!=='FULLBLOCK') ? f : ''; };   // ラベル文字＝聖典 form 名（FULLBLOCK除外）
+const labelOf   = (v)=>{ const f=formOf(v); return (f && f!=='FULLBLOCK') ? f : ''; };              // 2D：FULLBLOCK以外（slab/stairs/trapdoor も四角で見分け不可のため表示）
+const labelOf3D = (v)=>{ const f=formOf(v); return (f && !PRIMARY_SHAPES.includes(f)) ? f : ''; };   // 3D：others のみ（primary は形で区別できる）
 const _labelMat={};
 function labelMat(txt){
   if(_labelMat[txt]) return _labelMat[txt];
@@ -829,7 +830,7 @@ function labelMat(txt){
 }
 function makeLabels(entries){
   const arr=[];
-  for(const {p,v} of entries){ const txt=labelOf(v); if(!txt) continue;   // FULLBLOCK 等は省略
+  for(const {p,v} of entries){ const txt=labelOf3D(v); if(!txt) continue;   // 3Dは others のみ（primary は形で区別）
     const spr=new THREE.Sprite(labelMat(txt)); spr.position.set(p[0]+0.5, p[1]+1.02, p[2]+0.5);
     spr.scale.set(1.1,0.31,1); arr.push(spr); }
   return arr;
