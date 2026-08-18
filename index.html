@@ -203,11 +203,13 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <section id="v-space">
   <div class="bar">
-    <button class="btn" id="b-place" aria-pressed="true">置く</button>
+    <button class="btn" id="b-info" aria-pressed="true">選択</button>
+    <button class="btn" id="b-place" aria-pressed="false">置く</button>
     <button class="btn" id="b-break" aria-pressed="false">壊す</button>
-    <button class="btn" id="b-info" aria-pressed="false">選択</button>
   </div>
   <div class="bar cellclip-bar hidden">
+    <button class="btn c-fill">置く</button>
+    <button class="btn c-clear">壊す</button>
     <button class="btn c-copy">コピー</button>
     <button class="btn c-cut">切り取り</button>
     <button class="btn c-paste">貼り付け</button>
@@ -234,11 +236,13 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   </div>
   <div class="readout"><span class="y" id="y2">H00</span><span class="sub" id="ymax">/ 15</span><span class="c" id="cnt"></span></div>
   <div class="bar">
-    <button class="btn" id="pm-place" aria-pressed="true">置く</button>
+    <button class="btn" id="pm-info" aria-pressed="true">選択</button>
+    <button class="btn" id="pm-place" aria-pressed="false">置く</button>
     <button class="btn" id="pm-break" aria-pressed="false">壊す</button>
-    <button class="btn" id="pm-info" aria-pressed="false">選択</button>
   </div>
   <div class="bar cellclip-bar hidden">
+    <button class="btn c-fill">置く</button>
+    <button class="btn c-clear">壊す</button>
     <button class="btn c-copy">コピー</button>
     <button class="btn c-cut">切り取り</button>
     <button class="btn c-paste">貼り付け</button>
@@ -386,7 +390,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.10';
+const APP_VERSION = '4.11';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -489,7 +493,7 @@ const MIR_FAC = {FRONT:'FRONT', RIGHT:'LEFT', BACK:'BACK', LEFT:'RIGHT'};
 const mirFac = (tok)=> MIR_FAC[tok] || tok;
 
 const S = {
-  dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'place', tool:'draw', role:'FULLBLOCK_1',
+  dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'info', tool:'draw', role:'FULLBLOCK_1',
   shape:'fullblock', other:'DOOR', roleCount:{},
   props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
   view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirs:{place:null,palette:null,structure:null}, files:{place:null,palette:null,structure:null}, labels:false,
@@ -1377,6 +1381,16 @@ function grabCells(mode){ if(!S.sel){ status('セルを選択してください'
   for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++){ const val=S.vox.get(planeKeyP(pl,h,v,layer)); if(val) cells.push({dh:h-r.x0,dv:v-r.z0,val}); }
   S.cellClip={mode, cells, w:r.x1-r.x0+1, h:r.z1-r.z0+1, rect:r, srcLayer:layer, srcPlane:pl};
   updateCellClipUI(); redrawSel(); status((mode==='cut'?'切り取り':'コピー')+'（'+cells.length+'）→ ドラッグで配置位置・貼り付けで確定・ダブルタップで取消'); }
+function selRange(){ if(!S.sel) return null; const a=S.sel.a,b=S.sel.b;
+  return {pl:S.sel.plane, layer:S.sel.layer, x0:Math.min(a.h,b.h),x1:Math.max(a.h,b.h),z0:Math.min(a.v,b.v),z1:Math.max(a.v,b.v)}; }
+function fillSel(){ const r=selRange(); if(!r){ status('セルを選択してください'); return; } pushHist(); const v=cur();
+  for(let h=r.x0;h<=r.x1;h++) for(let z=r.z0;z<=r.z1;z++) S.vox.set(planeKeyP(r.pl,h,z,r.layer),v);   // 選択範囲へ現在ブロックを配置
+  changed(); redrawSel(); renderSpine(); status('選択範囲に配置'); }
+function clearSel(){ const r=selRange(); if(!r){ status('セルを選択してください'); return; } pushHist();
+  for(let h=r.x0;h<=r.x1;h++) for(let z=r.z0;z<=r.z1;z++) S.vox.delete(planeKeyP(r.pl,h,z,r.layer));   // 選択範囲を空に
+  changed(); redrawSel(); renderSpine(); status('選択範囲を消去'); }
+document.querySelectorAll('.c-fill').forEach(b=>b.onclick=fillSel);
+document.querySelectorAll('.c-clear').forEach(b=>b.onclick=clearSel);
 document.querySelectorAll('.c-copy').forEach(b=>b.onclick=()=>{ if(S.cellClip&&S.cellClip.mode==='copy') cancelCellClip(); else grabCells('copy'); });   // コピー状態ならキャンセル
 document.querySelectorAll('.c-cut').forEach(b=>b.onclick=()=>{ if(S.cellClip&&S.cellClip.mode==='cut') cancelCellClip(); else grabCells('cut'); });      // 切取状態ならキャンセル
 const doPaste=()=>{ const cc=S.cellClip;
@@ -1711,7 +1725,7 @@ initThree(); buildFloor(); buildOrigin(); buildPlane(); frameCamera();
 loadDict().then(()=>{
   fillVer();
   syncVox();
-  $('#tot').textContent=S.vox.size; setLayer(0); setView('space'); renderRoles(); renderShapeBar();
+  $('#tot').textContent=S.vox.size; setLayer(0); setView('space'); setMode('info'); renderRoles(); renderShapeBar();
 }).catch(err=>{ console.error(err); status('dict.json を読み込めません（初回はオンライン必須）'); });
 
 updateDirLabels();
