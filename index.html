@@ -396,7 +396,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.23';
+const APP_VERSION = '4.24';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -602,7 +602,7 @@ function buildGeos(){
     trapdoor_open:   boxAt(1,1,T,0,0.5-T/2),   // 開＝facing 側(+z)に立つ縦板（MC準拠・door とは逆／half 非依存）
     stairs_bottom: mergeGeo(boxAt(1,0.5,1,-0.25,0), boxAt(1,0.5,0.5,0.25,-0.25)), // 高段=facingの反対(-z=BACK側)
     stairs_top:    mergeGeo(boxAt(1,0.5,1,0.25,0),  boxAt(1,0.5,0.5,-0.25,-0.25)),
-    other:    boxAt(0.4,0.92,0.4,0,0),                       // 未登録 form の汎用フォールバック
+    other:    boxAt(1,1,1,0,0),                              // 形状未登録 form の保険＝フルブロック形（form 名ラベルで区別。設計するまでの一時姿）
     door_left:  doorGeo(true),                               // ドア（蝶番=左）2ブロック高・hinge 別の特例
     door_right: doorGeo(false),                              // ドア（蝶番=右）
     // ▼▼ others form の形状レジストリ：新しい form の 3D 見た目はここに「聖典 form 名」で1行足すだけ ▼▼
