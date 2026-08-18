@@ -86,6 +86,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   font-family:inherit;font-size:12px;border-radius:3px}
 .tabs button[aria-selected="true"]{background:var(--panel2);color:var(--brass)}
 .bar{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.bar.sep{border-top:1px solid var(--rule);padding-top:12px}
 .palbar{display:flex;align-items:center;gap:6px;margin-top:8px}
 .palbar-t{font-size:10px;color:var(--dim);min-width:36px;letter-spacing:.06em}
 .palbar .btn{min-width:0}
@@ -214,14 +215,14 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="b-up">▲ 上の層</button>
     <button class="btn" id="b-fit">視点をリセット</button>
   </div>
-  <div class="bar cellclip-bar hidden">
+  <div class="bar cellclip-bar sep hidden">
     <button class="btn c-fill">置く</button>
     <button class="btn c-clear">壊す</button>
     <button class="btn c-copy">コピー</button>
     <button class="btn c-cut">切り取り</button>
     <button class="btn c-paste">貼り付け</button>
   </div>
-  <div class="bar" id="form-space"></div>
+  <div class="bar sep" id="form-space"></div>
   <div class="bar" id="dir-space"></div>
   <div class="bar" id="roles-space"></div>
   <div class="bar"><button class="btn" id="b-clear">すべて消去</button></div>
@@ -255,14 +256,14 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="p-zo">− 縮小</button>
     <button class="btn" id="p-zi">＋ 拡大</button>
   </div>
-  <div class="bar cellclip-bar hidden">
+  <div class="bar cellclip-bar sep hidden">
     <button class="btn c-fill">置く</button>
     <button class="btn c-clear">壊す</button>
     <button class="btn c-copy">コピー</button>
     <button class="btn c-cut">切り取り</button>
     <button class="btn c-paste">貼り付け</button>
   </div>
-  <div class="bar">
+  <div class="bar sep">
     <button class="btn" id="p-lcopy">層をコピー</button>
     <button class="btn" id="p-lpaste">層を貼り付け</button>
     <button class="btn" id="p-ladd">層を追加</button>
@@ -272,7 +273,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="p-lins">層を挿入</button>
     <button class="btn" id="p-ldel">層を削除</button>
   </div>
-  <div class="bar" id="form-plan"></div>
+  <div class="bar sep" id="form-plan"></div>
   <div class="bar" id="dir-plan"></div>
   <div class="bar" id="roles-plan"></div>
   <p class="note">面をタブで切替（上面 W×D / 正面 W×H / 側面 D×H）。原点(0,0)は左下＝3Dと同じ向き（左=縦軸色・下=横軸色）。タップ=単発・ドラッグ=矩形・ダブルタップ(+ドラッグ)=削除(範囲)・2本指=ズーム/移動。左の帯は層（残り1軸）のブロック量、ドラッグで層移動。色＝役割。</p>
@@ -390,7 +391,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.13';
+const APP_VERSION = '4.14';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
