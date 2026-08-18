@@ -143,6 +143,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .cell[data-cx="1"]{border-right-color:var(--rule)}
 .cell[data-cz="1"]{border-bottom-color:var(--rule)}
 .cell[data-below="1"]{background:#1b2320;box-shadow:inset 0 0 0 1px var(--brass-dim)}
+.cell[data-dim="1"]{opacity:.24}
 .cell[data-on="1"]{background:var(--brass);box-shadow:inset -2px -2px 0 rgba(0,0,0,.22)}
 .cell[data-preview="draw"]{box-shadow:inset 0 0 0 2px var(--brass)!important;z-index:3}
 .cell[data-preview="break"]{box-shadow:inset 0 0 0 2px #c0533f!important;z-index:3}
@@ -213,7 +214,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="b-place" aria-pressed="false">置く</button>
     <button class="btn" id="b-break" aria-pressed="false">壊す</button>
   </div>
-  <div id="space"><div id="inspect"></div><div class="vtoggles"><button class="vtoggle" id="b-label" aria-pressed="false">ラベル</button></div><div class="vbottom"><button class="vbtn" id="b-undo" aria-label="元に戻す">↶</button><button class="vbtn" id="b-redo" aria-label="進む" disabled>↷</button></div></div>
+  <div id="space"><div id="inspect"></div><div class="vtoggles"><button class="vtoggle" id="b-hl" aria-pressed="false">強調</button><button class="vtoggle" id="b-label" aria-pressed="false">ラベル</button></div><div class="vbottom"><button class="vbtn" id="b-undo" aria-label="元に戻す">↶</button><button class="vbtn" id="b-redo" aria-label="進む" disabled>↷</button></div></div>
   <div class="slider"><span class="y" id="y3">H00</span><input id="plane" type="range" min="0" max="15" value="0" aria-label="作業面の高さ"></div>
   <div class="bar">
     <button class="btn" id="b-down">▼ 下の層</button>
@@ -252,7 +253,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <div class="gridbox">
       <div id="gridwrap"><div id="grid"></div></div>
       <div id="pinspect"></div>
-      <div class="vtoggles"><button class="vtoggle" id="pl-label" aria-pressed="false">ラベル</button></div>
+      <div class="vtoggles"><button class="vtoggle" id="pl-hl" aria-pressed="false">強調</button><button class="vtoggle" id="pl-label" aria-pressed="false">ラベル</button></div>
       <div class="vbottom"><button class="vbtn" id="pl-undo" aria-label="元に戻す">↶</button><button class="vbtn" id="pl-redo" aria-label="進む" disabled>↷</button></div>
     </div>
   </div>
@@ -401,7 +402,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.27';
+const APP_VERSION = '4.28';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -505,7 +506,7 @@ const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'info', tool:'draw', role:'FULLBLOCK_1',
   shape:'fullblock', other:'DOOR', roleCount:{},
   props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
-  view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirs:{place:null,palette:null,structure:null}, files:{place:null,palette:null,structure:null}, labels:false,
+  view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirs:{place:null,palette:null,structure:null}, files:{place:null,palette:null,structure:null}, labels:false, hlForm:false,
   top:'place', pal:{map:{}}, plane:'WD', lay:{x:0,z:0}, inspect:null, clip:null, clipMode:null, clipLayer:0, clipPlane:null, sel:null, cellClip:null
 };
 const cur = ()=>({r:S.role, s:S.shape, ot:S.other, props:{...S.props}});
@@ -580,7 +581,7 @@ function setLayer(v){
 }
 
 /* ---------- three.js ---------- */
-let renderer,scene,camera,editMeshes=[],ghostMeshes=[],outlineMeshes=[],preview,floorObj,planeObj,originObj,geo,GEOS,mat,ghostMat,outlineMat,outlineGhostMat,hingeMat,hingeGhostMat,HINGE_GEO,orientMat,orientGhostMat,axisFaceMat,axisFaceGhostMat,EDGE_POS,previewMat,previewBreakMat,inspectMat,clipSrcMat,clipDstMat,target,sph,dirty=true;
+let renderer,scene,camera,editMeshes=[],ghostMeshes=[],outlineMeshes=[],preview,floorObj,planeObj,originObj,geo,GEOS,mat,ghostMat,dimMat,ghostDimMat,outlineMat,outlineGhostMat,hingeMat,hingeGhostMat,HINGE_GEO,orientMat,orientGhostMat,axisFaceMat,axisFaceGhostMat,EDGE_POS,previewMat,previewBreakMat,inspectMat,clipSrcMat,clipDstMat,target,sph,dirty=true;
 function boxAt(w,h,d,oy,oz){ const g=new THREE.BoxGeometry(w,h,d); g.translate(0,oy||0,oz||0); return g; }
 function mergeGeo(a,b){   // 2つの indexed BoxGeometry を結合（階段用）
   const g=new THREE.BufferGeometry(), cat=(n,sz)=>{ const aa=a.attributes[n].array, bb=b.attributes[n].array;
@@ -655,6 +656,8 @@ function initThree(){
   const tex=new THREE.CanvasTexture(c); tex.magFilter=THREE.NearestFilter; tex.minFilter=THREE.NearestFilter;
   mat = new THREE.MeshLambertMaterial({map:tex});
   ghostMat = new THREE.MeshLambertMaterial({map:tex, transparent:true, opacity:0.22, depthWrite:false});
+  dimMat      = new THREE.MeshLambertMaterial({map:tex, transparent:true, opacity:0.13, depthWrite:false});  // form強調：非該当（作業面下）
+  ghostDimMat = new THREE.MeshLambertMaterial({map:tex, transparent:true, opacity:0.05, depthWrite:false});  // form強調：非該当（作業面上）
   previewMat = new THREE.MeshBasicMaterial({color:0xF0D48C, transparent:true, opacity:0.5, depthWrite:false});
   previewBreakMat = new THREE.MeshBasicMaterial({color:0xE0604A, transparent:true, opacity:0.5, depthWrite:false});
   buildGeos();
@@ -854,17 +857,23 @@ function syncVox(){
   outlineMeshes.forEach(m=>{ scene.remove(m); m.geometry.dispose(); });
   labelMeshes.forEach(m=>scene.remove(m));
   editMeshes=[]; ghostMeshes=[]; outlineMeshes=[]; labelMeshes=[];
-  const below={}, above={}, belowCells=[], aboveCells=[], belowTrap=[], aboveTrap=[], belowFull=[], aboveFull=[], labelSet=[];
+  const hl=S.hlForm, hlForm=hl?formOf({s:S.shape,ot:S.other}):null;   // 選択 form を強調・他を減光
+  const below={}, above={}, belowDim={}, aboveDim={}, belowCells=[], aboveCells=[], belowTrap=[], aboveTrap=[], belowFull=[], aboveFull=[], labelSet=[];
   S.vox.forEach((val,k)=>{ const v=norm(val), p=k.split(',').map(Number), gk=geoKey(v), up=p[1]>S.layer;
-    (up?above:below)[gk] ??= []; (up?above:below)[gk].push({p,v});
-    (up?aboveCells:belowCells).push(p);
     labelSet.push({p,v});   // ラベルは作業面の上下に関わらず全ブロック対象
-    if(v.s==='trapdoor') (up?aboveTrap:belowTrap).push({p,v});
-    if(v.s==='fullblock') (up?aboveFull:belowFull).push({p,v}); });
+    const match = !hl || formOf(v)===hlForm;
+    if(!match){ (up?aboveDim:belowDim)[gk] ??= []; (up?aboveDim:belowDim)[gk].push({p,v}); return; }   // 非該当は減光メッシュのみ（枠/詳細なし）
+    const solid = hl || !up;   // 強調中は該当を層に関わらず常にソリッド／通常は作業面下のみ
+    (solid?below:above)[gk] ??= []; (solid?below:above)[gk].push({p,v});
+    (solid?belowCells:aboveCells).push(p);
+    if(v.s==='trapdoor') (solid?belowTrap:aboveTrap).push({p,v});
+    if(v.s==='fullblock') (solid?belowFull:aboveFull).push({p,v}); });
   if(S.labels){ makeLabels(labelSet).forEach(s=>{ scene.add(s); labelMeshes.push(s); });
     makeOriginAxisLabels().forEach(s=>{ scene.add(s); labelMeshes.push(s); }); }
   for(const gk in below){ const im=makeInstShape(below[gk],GEOS[gk],mat); scene.add(im); editMeshes.push(im); }
   for(const gk in above){ const im=makeInstShape(above[gk],GEOS[gk],ghostMat); scene.add(im); ghostMeshes.push(im); }
+  for(const gk in belowDim){ const im=makeInstShape(belowDim[gk],GEOS[gk],dimMat); scene.add(im); ghostMeshes.push(im); }
+  for(const gk in aboveDim){ const im=makeInstShape(aboveDim[gk],GEOS[gk],ghostDimMat); scene.add(im); ghostMeshes.push(im); }
   if(S.mode==='info' && S.inspect && S.vox.has(S.inspect)){ const ip=S.inspect.split(',').map(Number);   // 選択モード：起点ブロックを強調枠
     const o=makeOutline([ip],inspectMat); scene.add(o); outlineMeshes.push(o); }
   if(S.mode==='info' && S.sel && S.sel.plane==='WD'){   // 選択範囲（作業面 WD 上）
@@ -1086,6 +1095,7 @@ function renderGrid(){
   const srcR=(cc&&cc.srcPlane===S.plane&&cc.srcLayer===layer)?cc.rect:null;                                   // 切取/コピー元
   const dstR=(cc&&S.mode==='info'&&S.sel&&S.sel.plane===S.plane&&S.sel.layer===layer)?{x0:S.sel.a.h,x1:S.sel.a.h+cc.w-1,z0:S.sel.a.v,z1:S.sel.a.v+cc.h-1}:null;  // 移動先
   const inR=(R,h,v)=>R&&h>=R.x0&&h<=R.x1&&v>=R.z0&&v<=R.z1;
+  const hlF = S.hlForm ? formOf({s:S.shape,ot:S.other}) : null;   // 選択 form 以外を減光
   g.style.gridTemplateColumns='repeat('+dimH+','+S.cell+'px)';
   g.style.setProperty('--hcol',P.hcol); g.style.setProperty('--vcol',P.vcol);   // 原点マーカーの軸色
   g.innerHTML='';
@@ -1100,6 +1110,7 @@ function renderGrid(){
     if(inR(srcR,hh,vv)) c.dataset.clipsrc=cc.mode;                // 切取/コピー元
     if(inR(dstR,hh,vv)) c.dataset.clipdst=1;                      // 貼り付け先プレビュー
     if(S.labels && v && S.cell>=9){ const lab=labelOf(v); if(lab){ c.textContent=lab; c.style.fontSize=Math.max(6,Math.min(9,Math.floor(S.cell*0.5)))+'px'; } }   // 聖典 form 名（FULLBLOCK除外）
+    if(hlF && v && formOf(v)!==hlF) c.dataset.dim=1;   // 選択 form 以外を減光
     c.dataset.below = (layer>0 && S.vox.has(planeKeyAt(hh,vv,layer-1)) && !v)?1:0;
     c.dataset.cx=(hh+1)%4===0?1:0; c.dataset.cz=(vv+1)%4===0?1:0;
     c.dataset.origin=(hh===0&&vv===0)?1:0;     // 原点(手前左)にしるし（左=縦軸色・下=横軸色）
@@ -1280,6 +1291,11 @@ function setLabels(v){ S.labels=v;   // 3D/2D 共通のラベル表示
   syncVox(); if(S.view==='plan') renderGrid(); }
 $('#b-label').onclick = ()=>setLabels(!S.labels);
 $('#pl-label').onclick = ()=>setLabels(!S.labels);
+function setHl(v){ S.hlForm=v;   // 選択中 form を強調・他を減光（3D/2D 共通）
+  ['#b-hl','#pl-hl'].forEach(id=>{ const b=$(id); if(b) b.setAttribute('aria-pressed', v); });
+  syncVox(); if(S.view==='plan') renderGrid(); }
+$('#b-hl').onclick = ()=>setHl(!S.hlForm);
+$('#pl-hl').onclick = ()=>setHl(!S.hlForm);
 $('#b-undo').onclick = undo;
 $('#b-redo').onclick = redo;
 $('#b-clear').onclick = ()=>{ pushHist(); S.vox=new Map(); changed(); renderGrid(); renderSpine(); };
@@ -1325,6 +1341,7 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
     }
   });
   renderRoles();   // 材質なし種類では役割バーを隠す
+  if(S.hlForm){ syncVox(); if(S.view==='plan') renderGrid(); }   // 強調中は form 切替で対象を更新
 }
 function openModal(){ const g=$('#modal-grid'); if(!g) return; g.innerHTML='';
   FORM_LIST.filter(f=>!PRIMARY_SHAPES.includes(f)).forEach(f=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=f;
