@@ -223,6 +223,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn c-clear">壊す</button>
     <button class="btn c-copy">コピー</button>
     <button class="btn c-cut">切り取り</button>
+    <button class="btn c-rot" disabled>↻ 回転</button>
     <button class="btn c-paste">貼り付け</button>
   </div>
   <div class="bar sep" id="form-space"></div>
@@ -264,6 +265,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn c-clear">壊す</button>
     <button class="btn c-copy">コピー</button>
     <button class="btn c-cut">切り取り</button>
+    <button class="btn c-rot" disabled>↻ 回転</button>
     <button class="btn c-paste">貼り付け</button>
   </div>
   <div class="bar sep">
@@ -394,7 +396,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.19';
+const APP_VERSION = '4.20';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1399,7 +1401,8 @@ function redrawSel(){ if(S.view==='plan') renderGrid(); else syncVox(); }   // �
 function updateCellClipUI(){ const m=S.cellClip&&S.cellClip.mode;   // コピー/切取ボタンをキャンセルに変える・貼付ボタンの準備完了（両ビュー）
   document.querySelectorAll('.c-copy').forEach(b=>{ b.setAttribute('aria-pressed', m==='copy'); b.textContent = m==='copy'?'キャンセル':'コピー'; });
   document.querySelectorAll('.c-cut').forEach(b=>{ b.setAttribute('aria-pressed', m==='cut'); b.textContent = m==='cut'?'キャンセル':'切り取り'; });
-  document.querySelectorAll('.c-paste').forEach(b=>b.setAttribute('aria-pressed', !!S.cellClip)); }
+  document.querySelectorAll('.c-paste').forEach(b=>b.setAttribute('aria-pressed', !!S.cellClip));
+  document.querySelectorAll('.c-rot').forEach(b=>b.disabled = !S.cellClip); }
 function cancelCellClip(){ if(!S.cellClip) return; S.cellClip=null; updateCellClipUI(); redrawSel(); status('コピー/切り取りをキャンセル'); }
 function grabCells(mode){ if(!S.sel){ status('セルを選択してください'); return; }
   const pl=S.sel.plane, layer=S.sel.layer, a=S.sel.a, b=S.sel.b;
@@ -1419,6 +1422,23 @@ document.querySelectorAll('.c-fill').forEach(b=>b.onclick=fillSel);
 document.querySelectorAll('.c-clear').forEach(b=>b.onclick=clearSel);
 document.querySelectorAll('.c-copy').forEach(b=>b.onclick=()=>{ if(S.cellClip&&S.cellClip.mode==='copy') cancelCellClip(); else grabCells('copy'); });   // コピー状態ならキャンセル
 document.querySelectorAll('.c-cut').forEach(b=>b.onclick=()=>{ if(S.cellClip&&S.cellClip.mode==='cut') cancelCellClip(); else grabCells('cut'); });      // 切取状態ならキャンセル
+/* ---- クリップボードの90°回転（面の法線＝層軸まわり・時計回り）。位置と向き(facing/axis)を同時に回す ---- */
+function rotVec90(vec, plane){ const P=PLANES[plane], ih=AXI[P.h], iv=AXI[P.v], il=AXI[P.l];   // 面内(h,v)→(v,-h)、層軸lは不変
+  const out=[0,0,0]; out[ih]=vec[iv]; out[iv]=-vec[ih]; out[il]=vec[il]; return out; }
+function rotFacingIdx(fi, plane){ const nd=rotVec90(FDIR[fi%6], plane);
+  for(let i=0;i<6;i++){ const e=FDIR[i]; if(e[0]===nd[0]&&e[1]===nd[1]&&e[2]===nd[2]) return i; } return fi; }
+function rotAxisTok(ax, plane){ const nA=rotVec90(AXV[ax]||AXV.VERTICAL, plane);   // 軸は無向：絶対値で照合
+  for(const k in AXV){ const e=AXV[k]; if(Math.abs(e[0])===Math.abs(nA[0])&&Math.abs(e[1])===Math.abs(nA[1])&&Math.abs(e[2])===Math.abs(nA[2])) return k; } return ax; }
+function rotVal(val, plane){ const n=norm(val), props={...n.props};   // facing/axis を回転（half/hinge 等はそのまま＝水平回転で不変）
+  props.facing = FAC[ rotFacingIdx(FAC_I[props.facing]||0, plane) ];
+  props.axis   = rotAxisTok(props.axis, plane);
+  return {r:n.r, s:n.s, ot:n.ot, props}; }
+function rotateClip(){ const cc=S.cellClip; if(!cc){ status('コピー / 切り取り中に回転できます'); return; }
+  const w=cc.w;
+  cc.cells = cc.cells.map(c=>({ dh:c.dv, dv:(w-1)-c.dh, val:rotVal(c.val, cc.srcPlane) }));   // CW：(dh,dv)→(dv, w-1-dh)
+  const t=cc.w; cc.w=cc.h; cc.h=t;
+  redrawSel(); status('90°回転（'+cc.w+'×'+cc.h+'）'); }
+document.querySelectorAll('.c-rot').forEach(b=>b.onclick=rotateClip);
 const doPaste=()=>{ const cc=S.cellClip;
   if(!cc){ status('クリップボードが空です'); return; }
   if(!S.sel){ status('貼り付け先を選択してください'); return; }
