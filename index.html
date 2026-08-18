@@ -396,7 +396,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.21';
+const APP_VERSION = '4.22';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -416,14 +416,12 @@ const AXES = ['VERTICAL','DEPTH','WIDTH'];                 // axis（相対軸 R
    - PRIMARY_SHAPES: 形バーに出す基本形（残りは others モーダルへ・form_dict から導出）
    - STATE_OPTIN: 状態プロパティを出す form の例外（open はトラップドアのみ）
    - NOMAT_FORMS: mat が「材質パレット(role)」でなく「変種選択」の form（松明系）
-   - FORM_GEO: 3D 見た目（form→geoキー）。未定義 form は 'other' フォールバック（DOOR は o_door_{hinge}）。
-   others に出す form／各 form のプロパティボタンは form_dict から導出。ラベルは form 名（日本語不要）。 */
+   - 3D 見た目（others form の形状）は buildGeos() の「形状レジストリ」1か所に form 名で登録。未登録 form は 'other' フォールバック（DOOR は hinge 別）。
+   others に出す form／各 form のプロパティボタンは form_dict から導出。ラベルは form 名（そのまま）。 */
 const PRIMARY_SHAPES = ['FULLBLOCK','SLAB','STAIRS','TRAPDOOR'];
 const STATE_OPTIN = { open: ['TRAPDOOR'] };            // 既定 close 固定、ここに挙げた form だけ open ボタン
 const SHOW   = new Set(['facing','axis','half','type','hinge','open','hanging','face']);   // allowlist(実装済みハンドラ)
 const MIRROR = new Set(['facing','hinge']);            // 左右ミラー対象(I/O時に反転)。②で描画層へ移す予定
-const FORM_GEO = { TORCH:'o_torch', WALL_TORCH:'o_wtorch', LANTERN:'o_lantern', CAMPFIRE:'o_campfire', CHAIN:'o_chain', FENCE:'o_fence', FENCE_GATE:'o_fencegate',
-                   BUTTON:'o_button', PANE:'o_pane', GRATE:'o_grate', POPPY:'o_poppy', VINE:'o_vine', BAMBOO_PLANT:'o_bamboo', AIR:'o_air' };
 const OTHER_KEY2FORM = { door:'DOOR', torch:'TORCH', wall_torch:'WALL_TORCH', lantern:'LANTERN', campfire:'CAMPFIRE', chain:'CHAIN', fence:'FENCE', fence_gate:'FENCE_GATE' };  // 旧 other-key → form 移行
 let FORM_PROPS = {};   // form -> { propName: [values...] }（form_dict 由来）
 let FORM_LIST  = [];   // unregistered 以外の全 form（form_dict 由来）
@@ -604,28 +602,30 @@ function buildGeos(){
     trapdoor_open:   boxAt(1,1,T,0,0.5-T/2),   // 開＝facing 側(+z)に立つ縦板（MC準拠・door とは逆／half 非依存）
     stairs_bottom: mergeGeo(boxAt(1,0.5,1,-0.25,0), boxAt(1,0.5,0.5,0.25,-0.25)), // 高段=facingの反対(-z=BACK側)
     stairs_top:    mergeGeo(boxAt(1,0.5,1,0.25,0),  boxAt(1,0.5,0.5,-0.25,-0.25)),
-    other:    boxAt(0.4,0.92,0.4,0,0),                       // その他の汎用フォールバック
-    o_door_left:  doorGeo(true),                             // ドア（蝶番=左）2ブロック高
-    o_door_right: doorGeo(false),                            // ドア（蝶番=右）
-    o_torch:  boxAt(0.16,0.62,0.16,-0.19,0),                 // 松明(床)＝中央の細い棒
-    o_wtorch: boxAt(0.16,0.55,0.16,0.02,-0.36),              // 壁松明＝facing壁際(-z)の細い棒
-    o_lantern:  boxAt(0.34,0.5,0.34,-0.12,0),                // ランタン＝小さな箱
-    o_campfire: boxAt(0.86,0.24,0.86,-0.38,0),               // 焚き火＝低く幅広（薪）
-    o_chain:    boxAt(0.14,1,0.14,0,0),                      // チェーン＝細い縦棒
-    o_fence:    boxAt(0.22,1,0.22,0,0),                      // 柵＝中央の支柱
-    o_fencegate:boxAt(0.92,0.42,0.16,0.02,0),               // フェンスゲート＝幅広の薄板（facingで回転）
-    o_button:  boxAt(0.32,0.14,0.18,-0.32,-0.40),           // ボタン＝小さい低いポッチ（facing壁際）
-    o_pane:    mergeGeo(boxAt(0.12,1,1,0,0), boxAt(1,1,0.12,0,0)),  // ガラス板＝薄い十字
-    o_grate:   boxAt(1,1,1,0,0),                            // 格子(copper_grate)＝全ブロック・無方向（薄板は誤誘導のため廃止）
-    o_poppy:   mergeGeo(boxAt(0.08,0.6,0.6,-0.2,0), boxAt(0.6,0.6,0.08,-0.2,0)),  // 花＝小さい十字
-    o_vine:    boxAt(1,1,0.1,0,-0.45),                      // つた＝壁面(-z)の薄い全面板
-    o_bamboo:  boxAt(0.3,1,0.3,0,0),                        // 竹＝細い縦の茎
-    o_air:     boxAt(0.22,0.22,0.22,0,0),                   // 空気＝小さいドット（マーカー）
+    other:    boxAt(0.4,0.92,0.4,0,0),                       // 未登録 form の汎用フォールバック
+    door_left:  doorGeo(true),                               // ドア（蝶番=左）2ブロック高・hinge 別の特例
+    door_right: doorGeo(false),                              // ドア（蝶番=右）
+    // ▼▼ others form の形状レジストリ：新しい form の 3D 見た目はここに「聖典 form 名」で1行足すだけ ▼▼
+    TORCH:        boxAt(0.16,0.62,0.16,-0.19,0),             // 松明(床)＝中央の細い棒
+    WALL_TORCH:   boxAt(0.16,0.55,0.16,0.02,-0.36),          // 壁松明＝facing壁際(-z)の細い棒
+    LANTERN:      boxAt(0.34,0.5,0.34,-0.12,0),              // ランタン＝小さな箱
+    CAMPFIRE:     boxAt(0.86,0.24,0.86,-0.38,0),             // 焚き火＝低く幅広（薪）
+    CHAIN:        boxAt(0.14,1,0.14,0,0),                    // チェーン＝細い縦棒
+    FENCE:        boxAt(0.22,1,0.22,0,0),                    // 柵＝中央の支柱
+    FENCE_GATE:   boxAt(0.92,0.42,0.16,0.02,0),              // フェンスゲート＝幅広の薄板（facingで回転）
+    BUTTON:       boxAt(0.32,0.14,0.18,-0.32,-0.40),         // ボタン＝小さい低いポッチ（facing壁際）
+    PANE:         mergeGeo(boxAt(0.12,1,1,0,0), boxAt(1,1,0.12,0,0)),  // ガラス板＝薄い十字
+    GRATE:        boxAt(1,1,1,0,0),                          // 格子(copper_grate)＝全ブロック・無方向
+    POPPY:        mergeGeo(boxAt(0.08,0.6,0.6,-0.2,0), boxAt(0.6,0.6,0.08,-0.2,0)),  // 花＝小さい十字
+    VINE:         boxAt(1,1,0.1,0,-0.45),                    // つた＝壁面(-z)の薄い全面板
+    BAMBOO_PLANT: boxAt(0.3,1,0.3,0,0),                      // 竹＝細い縦の茎
+    AIR:          boxAt(0.22,0.22,0.22,0,0),                 // 空気＝小さいドット（マーカー）
+    // ▲▲ ここまで（DOOR は上の door_left/right が特例） ▲▲
   };
   geo = GEOS.full;
 }
 const geoKey = (v)=> v.s==='fullblock' ? 'full'
-  : v.s==='others' ? (v.ot==='DOOR' ? 'o_door_'+(v.hg||'left') : (FORM_GEO[v.ot]||'other'))  // 種類別の見た目（facing で回転）
+  : v.s==='others' ? (v.ot==='DOOR' ? 'door_'+(v.hg||'left') : (GEOS[v.ot] ? v.ot : 'other'))  // 聖典 form 名で直接引く（未登録は 'other'）
   : (v.s==='trapdoor' && v.o==='true') ? 'trapdoor_open'   // 開はhalf非依存で同一形状
   : v.s+'_'+v.h;
 
@@ -804,25 +804,26 @@ function makeAxisFaces(entries, material){
   const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
   return new THREE.Mesh(g, material);
 }
-/* ---- form ラベル（トグル・案3）: form 名の短ラベルをブロック上にスプライトで重畳。FULLBLOCK は多数派なので省略 ---- */
+/* ---- form ラベル（トグル）: 聖典(form_dict)の form 名をそのままブロック上に重畳。FULLBLOCK は多数派なので省略 ---- */
 let labelMeshes=[];
-const FORM_LABEL={DOOR:'door',FENCE:'fence',FENCE_GATE:'gate',BUTTON:'btn',PANE:'pane',GRATE:'grate',TORCH:'torch',WALL_TORCH:'wtorch',LANTERN:'lantern',CAMPFIRE:'fire',CHAIN:'chain',POPPY:'poppy',VINE:'vine',BAMBOO_PLANT:'bamboo',AIR:'air'};   // others のみ（3Dは形で区別できるため primary は省略）
-const PLAB2={SLAB:'slab',STAIRS:'stair',TRAPDOOR:'trap'};   // 2D追加分（四角で見分けられないため slab/stairs/trapdoor も表示。fullblock は多数のため除外）
+const labelOf = (v)=>{ const f=formOf(v); return (f && f!=='FULLBLOCK') ? f : ''; };   // ラベル文字＝聖典 form 名（FULLBLOCK除外）
 const _labelMat={};
 function labelMat(txt){
   if(_labelMat[txt]) return _labelMat[txt];
-  const c=document.createElement('canvas'); c.width=160; c.height=64;
-  const g=c.getContext('2d'); g.font='bold 40px ui-monospace,monospace'; g.textAlign='center'; g.textBaseline='middle';
-  g.lineWidth=7; g.strokeStyle='rgba(0,0,0,0.85)'; g.strokeText(txt,80,34);
-  g.fillStyle='#ffe6a8'; g.fillText(txt,80,34);
+  const c=document.createElement('canvas'); c.width=224; c.height=64;
+  const g=c.getContext('2d'); let fs=40; const setF=()=>g.font='bold '+fs+'px ui-monospace,monospace';
+  setF(); while(g.measureText(txt).width>c.width-14 && fs>10){ fs-=2; setF(); }   // 長い form 名は自動縮小して収める
+  g.textAlign='center'; g.textBaseline='middle';
+  g.lineWidth=Math.max(4,fs*0.18); g.strokeStyle='rgba(0,0,0,0.85)'; g.strokeText(txt,c.width/2,34);
+  g.fillStyle='#ffe6a8'; g.fillText(txt,c.width/2,34);
   const t=new THREE.CanvasTexture(c); t.minFilter=THREE.LinearFilter;
   return _labelMat[txt]=new THREE.SpriteMaterial({map:t, depthTest:false, transparent:true});
 }
 function makeLabels(entries){
   const arr=[];
-  for(const {p,v} of entries){ const txt=FORM_LABEL[formOf(v)]; if(!txt) continue;   // FULLBLOCK 等は省略
+  for(const {p,v} of entries){ const txt=labelOf(v); if(!txt) continue;   // FULLBLOCK 等は省略
     const spr=new THREE.Sprite(labelMat(txt)); spr.position.set(p[0]+0.5, p[1]+1.02, p[2]+0.5);
-    spr.scale.set(0.85,0.34,1); arr.push(spr); }
+    spr.scale.set(1.1,0.31,1); arr.push(spr); }
   return arr;
 }
 const _axLabMat={};
@@ -1093,7 +1094,7 @@ function renderGrid(){
     if(inR(selR,hh,vv)) c.dataset.sel=1;                          // 選択範囲
     if(inR(srcR,hh,vv)) c.dataset.clipsrc=cc.mode;                // 切取/コピー元
     if(inR(dstR,hh,vv)) c.dataset.clipdst=1;                      // 貼り付け先プレビュー
-    if(S.labels && v && S.cell>=9){ const fm=formOf(v); const lab=FORM_LABEL[fm]||PLAB2[fm]; if(lab){ c.textContent=lab; c.style.fontSize=Math.max(6,Math.min(9,Math.floor(S.cell*0.5)))+'px'; } }   // 2Dは非fullblock（others＋slab/stairs/trapdoor）
+    if(S.labels && v && S.cell>=9){ const lab=labelOf(v); if(lab){ c.textContent=lab; c.style.fontSize=Math.max(6,Math.min(9,Math.floor(S.cell*0.5)))+'px'; } }   // 聖典 form 名（FULLBLOCK除外）
     c.dataset.below = (layer>0 && S.vox.has(planeKeyAt(hh,vv,layer-1)) && !v)?1:0;
     c.dataset.cx=(hh+1)%4===0?1:0; c.dataset.cz=(vv+1)%4===0?1:0;
     c.dataset.origin=(hh===0&&vv===0)?1:0;     // 原点(手前左)にしるし（左=縦軸色・下=横軸色）
