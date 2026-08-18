@@ -279,7 +279,6 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="bar sep" id="form-plan"></div>
   <div class="bar" id="dir-plan"></div>
   <div class="bar sep" id="roles-plan"></div>
-  <p class="note">面をタブで切替（上面 W×D / 正面 W×H / 側面 D×H）。原点(0,0)は左下＝3Dと同じ向き（左=縦軸色・下=横軸色）。タップ=単発・ドラッグ=矩形・ダブルタップ(+ドラッグ)=削除(範囲)・2本指=ズーム/移動。左の帯は層（残り1軸）のブロック量、ドラッグで層移動。色＝役割。</p>
 </section>
 
 <section id="v-json" class="hidden">
@@ -292,7 +291,6 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="j-apply">✓ 反映</button>
     <button class="btn" id="j-copy">コピー</button>
   </div>
-  <p class="note" id="j-note"></p>
 </section>
 </div><!-- /place-root -->
 
@@ -311,7 +309,6 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
       <button class="btn" id="pal-apply">✓ 反映</button>
       <button class="btn" id="pal-copy">コピー</button>
     </div>
-    <p class="note">palette は slot→mat の対応表。テキストを編集して「反映」で取り込みます（{ "palette": { "slot": "mat" } }）。</p>
   </section>
   <input id="pal-file" type="file" accept="application/json,.json" class="hidden">
   <input id="pal-file2" type="file" accept="application/json,.json" class="hidden">
@@ -324,40 +321,43 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 <div id="vmodal"><div class="panel"><h3>バージョン情報</h3><div id="vmodal-body"></div></div></div>
 <div id="pmodal"><div class="panel"><h3>palette / structure の使い方</h3>
   <div class="hgrp">
-    <div class="hrow">・place を読み込むと、使われているスロットが form 別に並びます。各スロットに mat を割り当てて保存。</div>
-    <div class="hrow">・palette を読み込むと既存の割当を復元（任意）。place に無いスロットは place 優先で無視。</div>
-    <div class="hrow">・save ▸ structure ＝ place＋palette を合成（slot→mat 解決）して出力。</div>
-    <div class="hrow">・load ▸ structure ＝ structure を place＋palette へ分解して取り込み（form 毎に mat を FORM_n へ採番）。</div>
+    <div class="hrow">・palette ＝ slot→mat の対応表。place のスロットに mat を割り当てる。</div>
+    <div class="hrow">・place 読込でスロットが form 別に並ぶ。palette 読込で既存の割当を復元（place に無い slot は無視）。</div>
+    <div class="hrow">・structure 保存 ＝ place＋palette を合成（slot→mat 解決）。</div>
+    <div class="hrow">・structure 読込 ＝ place＋palette へ分解（form 毎に mat を FORM_n へ採番）。</div>
+    <div class="hrow">・JSON タブで直接編集も可：{ "palette": { "slot": "mat" } }</div>
   </div>
 </div></div>
-<div id="hmodal"><div class="panel"><h3>操作方法</h3>
+<div id="hmodal"><div class="panel"><h3>使い方</h3>
+  <div class="hgrp">
+    <div class="hrow"><b>モード</b>（描画エリア上のボタン）</div>
+    <div class="hrow">・<b>選択</b> … ドラッグで範囲選択 → コピー / 切り取り / 貼り付け、選択内に一括で置く / 壊す。タップで1マスの情報。</div>
+    <div class="hrow">・<b>置く / 壊す</b> … タップで1マス、ドラッグで矩形。</div>
+  </div>
   <div class="hgrp">
     <div class="hrow"><b>指操作</b></div>
-    <div class="hrow">・1本指（面の上）＝ 編集</div>
-    <div class="hrow">・1本指（面の外）＝ 視点移動</div>
-    <div class="hrow">・2本指 ＝ 拡大・回転</div>
-    <div class="hrow">・タップ / ドラッグ（矩形）＝ 現在のモードを実行</div>
-    <div class="hrow">・ダブルタップ ＝ 削除</div>
+    <div class="hrow">・2本指 ＝ ズーム / 移動（3D は回転も）</div>
+    <div class="hrow">・3D で面の外を1本指ドラッグ ＝ 視点回転</div>
+    <div class="hrow">・ダブルタップ ＝ 削除。選択 / コピー中はキャンセル</div>
   </div>
   <div class="hgrp">
-    <div class="hrow"><b>モード</b></div>
-    <div class="hrow">・置く … ブロックを配置</div>
-    <div class="hrow">・壊す … ブロックを削除</div>
-    <div class="hrow">・情報モード … ブロックをタップ → その form / mat / 向き を右下に表示</div>
-    <div class="hnote">タップした1個の情報を表示。別のブロックをタップすると切替。空セルのタップは無反応。</div>
-    <div class="hnote">できないこと：置く／壊す／ドラッグの矩形配置／ダブルタップ削除（＝編集は無効）。</div>
-    <div class="hnote">できること：視点の拡大・回転・移動、作業面の上下、他モードへの切替。</div>
+    <div class="hrow"><b>層</b></div>
+    <div class="hrow">・緑の作業面の層を編集。上の層は半透明で編集不可。</div>
+    <div class="hrow">・2D 左の帯 ＝ 各層のブロック量。ドラッグで層移動。</div>
+    <div class="hrow">・2D の層ボタン ＝ 層をコピー / 切取 / 貼付 / 挿入 / 追加 / 削除。</div>
   </div>
   <div class="hgrp">
-    <div class="hrow"><b>作業面・表示</b></div>
-    <div class="hrow">・緑の面が作業面。作業面より上の層は半透明で編集不可。</div>
-    <div class="hrow">・タップで1個、ドラッグで矩形配置。</div>
-    <div class="hrow">・ダブルタップ/クリックで削除、ダブル→ドラッグで削除範囲。</div>
-    <div class="hrow">・色＝役割（place の mat）。</div>
+    <div class="hrow"><b>色・ラベル</b></div>
+    <div class="hrow">・色 ＝ 役割（slot）。ラベルで form 名と原点の軸ラベルを表示。</div>
   </div>
   <div class="hgrp">
     <div class="hrow"><b>軸</b>　原点(0,0,0) ＝ 手前・下・左</div>
-    <div class="hrow"><span style="color:#ff8a8a">赤 = W →</span>　<span style="color:#7ad79a">緑 = H ↑</span>　<span style="color:#8aa8ff">青 = D 奥</span></div>
+    <div class="hrow"><span style="color:#ff8a8a">赤 W →</span>　<span style="color:#7ad79a">緑 H ↑</span>　<span style="color:#8aa8ff">青 D 奥</span></div>
+  </div>
+  <div class="hgrp">
+    <div class="hrow"><b>JSON タブ</b></div>
+    <div class="hrow">・blocks ＝ 座標・slot・向きを保持（推奨）。</div>
+    <div class="hrow">・layers ＝ 位置のみ。form / mat / 向きは失われ、読込で全て fullblock になる。</div>
   </div>
 </div></div>
 <div id="smodal"><div class="panel"><h3>設定</h3>
@@ -394,7 +394,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.17';
+const APP_VERSION = '4.18';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1236,9 +1236,6 @@ function buildJson(mode){
 }
 function renderJson(){
   $('#json').value = buildJson();
-  $('#j-note').textContent = S.jsonMode==='layers'
-    ? 'layers のキーが H。各要素が1行（D）で、文字の位置が W。# がブロック、. が空。size は [D,H,W]。⚠ layers は位置のみ保存＝form/mat/向きは失われ、読込で全て fullblock になります。形を保つには blocks を使ってください。'
-    : 'blocks は structure 準拠。pos は d=奥/h=上/w=左右、slot=スロット(役割・色)。palette 側で slot→具体 mat に対応づける。size は [D,H,W]。';
 }
 
 /* ---------- view switching ---------- */
