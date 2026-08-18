@@ -86,7 +86,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   font-family:inherit;font-size:12px;border-radius:3px}
 .tabs button[aria-selected="true"]{background:var(--panel2);color:var(--brass)}
 .bar{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
-.bar.sep{border-top:1px solid var(--verdigris);padding-top:14px;margin-top:14px}
+.bar.sep{border-top:1px solid var(--verdigris);padding-top:7px;margin-top:7px}
 .palbar{display:flex;align-items:center;gap:6px;margin-top:8px}
 .palbar-t{font-size:10px;color:var(--dim);min-width:36px;letter-spacing:.06em}
 .palbar .btn{min-width:0}
@@ -229,7 +229,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="bar" id="dir-space"></div>
   <div class="bar sep" id="roles-space"></div>
   <div class="bar sep"><button class="btn" id="b-clear">すべて消去</button></div>
-  <p class="note">合計 <span id="tot">0</span>ブロック</p>
+  <p class="note">合計 <span id="tot">0</span></p>
 </section>
 
 <section id="v-plan" class="hidden">
@@ -394,7 +394,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.18';
+const APP_VERSION = '4.19';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
