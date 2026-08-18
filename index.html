@@ -367,12 +367,15 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 <div id="smodal"><div class="panel"><h3>設定</h3>
   <div class="hgrp">
     <div class="hrow"><b>保存先フォルダ</b>（place / palette / structure を個別に指定）</div>
-    <div class="bar" style="margin-top:6px"><button class="btn" id="s-dir-place">📁 place の保存先</button></div>
-    <p class="note" id="dirlabel-place"></p>
-    <div class="bar" style="margin-top:6px"><button class="btn" id="s-dir-palette">📁 palette の保存先</button></div>
-    <p class="note" id="dirlabel-palette"></p>
-    <div class="bar" style="margin-top:6px"><button class="btn" id="s-dir-structure">📁 structure の保存先</button></div>
-    <p class="note" id="dirlabel-structure"></p>
+    <p class="note" id="fs-note" style="display:none">この端末はフォルダ保存に非対応です。保存はすべてダウンロード（ファイル）になります。</p>
+    <div id="fs-rows">
+      <div class="bar" style="margin-top:6px"><button class="btn" id="s-dir-place">📁 place の保存先</button></div>
+      <p class="note" id="dirlabel-place"></p>
+      <div class="bar" style="margin-top:6px"><button class="btn" id="s-dir-palette">📁 palette の保存先</button></div>
+      <p class="note" id="dirlabel-palette"></p>
+      <div class="bar" style="margin-top:6px"><button class="btn" id="s-dir-structure">📁 structure の保存先</button></div>
+      <p class="note" id="dirlabel-structure"></p>
+    </div>
   </div>
 </div></div>
 <div id="savemodal"><div class="panel"><h3>保存</h3>
@@ -398,7 +401,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.25';
+const APP_VERSION = '4.26';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1483,9 +1486,12 @@ async function ensurePerm(h){
 }
 const DIR_KINDS=['place','palette','structure'];               // 保存先はこの3種を個別に持つ
 function updateDirLabels(){
+  const note=$('#fs-note'), rows=$('#fs-rows');   // 非対応端末はフォルダ選択UIを隠し、説明を1行に集約
+  if(note) note.style.display = FS_OK ? 'none' : '';
+  if(rows) rows.style.display = FS_OK ? '' : 'none';
+  if(!FS_OK) return;
   for(const k of DIR_KINDS){ const el=$('#dirlabel-'+k); if(!el) continue; const h=S.dirs[k];
-    el.textContent = h ? (k+' → '+h.name+'/ に上書き保存')
-      : (FS_OK ? k+' → 未設定（ダウンロード）' : k+' → 非対応端末（ダウンロード）'); }
+    el.textContent = h ? (k+' → '+h.name+'/ に上書き保存') : (k+' → 未設定（ダウンロード）'); }
 }
 async function pickDir(kind){
   if(!FS_OK){ status('この端末は保存先指定に非対応'); return; }
