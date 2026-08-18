@@ -402,7 +402,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.29';
+const APP_VERSION = '4.30';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -426,8 +426,10 @@ const AXES = ['VERTICAL','DEPTH','WIDTH'];                 // axis（相対軸 R
    others に出す form／各 form のプロパティボタンは form_dict から導出。ラベルは form 名（そのまま）。 */
 const PRIMARY_SHAPES = ['FULLBLOCK','SLAB','STAIRS','TRAPDOOR'];
 const STATE_OPTIN = { open: ['TRAPDOOR'] };            // 既定 close 固定、ここに挙げた form だけ open ボタン
-const SHOW   = new Set(['facing','axis','half','type','hinge','open','hanging','face']);   // allowlist(実装済みハンドラ)
-const MIRROR = new Set(['facing','hinge']);            // 左右ミラー対象(I/O時に反転)。②で描画層へ移す予定
+const SHOW   = new Set(['facing','axis','half','type','hinge','open','hanging','face',
+                        'up','north','south','east','west',   // VINE：付く面
+                        'age','leaves','stage']);             // BAMBOO_PLANT：太さ/葉/成長
+const MIRROR = new Set(['facing','hinge','east','west']);            // 左右ミラー対象(I/O時に反転)。east↔west は W 反転で入替
 const OTHER_KEY2FORM = { door:'DOOR', torch:'TORCH', wall_torch:'WALL_TORCH', lantern:'LANTERN', campfire:'CAMPFIRE', chain:'CHAIN', fence:'FENCE', fence_gate:'FENCE_GATE' };  // 旧 other-key → form 移行
 let FORM_PROPS = {};   // form -> { propName: [values...] }（form_dict 由来）
 let FORM_LIST  = [];   // unregistered 以外の全 form（form_dict 由来）
@@ -447,7 +449,8 @@ function buildFormProps(classes){
 function isMultiHalf(form){ const p=FORM_PROPS[form]; return !!(p && (p.half||[]).includes('upper')); }  // half=upper/lower→複数ブロック
 function shownProps(form){
   const p = FORM_PROPS[form] || {};
-  const order = ['facing','axis','half','type','hinge','hanging','face','open'];   // ボタン表示順
+  const order = ['facing','axis','half','type','hinge','hanging','face','open',
+                 'up','north','south','east','west','leaves','age','stage'];   // ボタン表示順（末尾＝vine面/bamboo状態）
   const out = [];
   for(const name of order){
     if(!(name in p) || !SHOW.has(name)) continue;
@@ -510,7 +513,9 @@ const S = {
   top:'place', pal:{map:{}}, plane:'WD', lay:{x:0,z:0}, inspect:null, clip:null, clipMode:null, clipLayer:0, clipPlane:null, sel:null, cellClip:null
 };
 const cur = ()=>({r:S.role, s:S.shape, ot:S.other, props:{...S.props}});
-const sig = (v)=>{ if(!v) return ''; const n=norm(v); return [n.r,n.s,n.ot,n.f,n.h,n.ax,n.hg,n.o,n.hang,n.fc].join('|'); };
+const sig = (v)=>{ if(!v) return ''; const n=norm(v), p=n.props;
+  return [n.r,n.s,n.ot,n.f,n.h,n.ax,n.hg,n.o,n.hang,n.fc,
+          p.up,p.north,p.south,p.east,p.west,p.age,p.leaves,p.stage].join('|'); };   // vine面/bamboo状態も同一性に含める
 const norm = (v)=>{
   if(typeof v==='string') v={r:v};
   let props = v.props;
@@ -623,15 +628,45 @@ function buildGeos(){
     PANE:         mergeGeo(boxAt(0.12,1,1,0,0), boxAt(1,1,0.12,0,0)),  // ガラス板＝薄い十字
     GRATE:        boxAt(0.86,0.86,0.86,0,0),                 // 格子(copper_grate)＝無方向。フルブロックより一回り小さい立方体で区別（対称＝回転不変）
     POPPY:        mergeGeo(boxAt(0.08,0.6,0.6,-0.2,0), boxAt(0.6,0.6,0.08,-0.2,0)),  // 花＝小さい十字
-    VINE:         boxAt(1,1,0.1,0,-0.45),                    // つた＝壁面(-z)の薄い全面板
-    BAMBOO_PLANT: boxAt(0.3,1,0.3,0,0),                      // 竹＝細い縦の茎
     AIR:          boxAt(0.22,0.22,0.22,0,0),                 // 空気＝小さいドット（マーカー）
-    // ▲▲ ここまで（DOOR は上の door_left/right が特例） ▲▲
+    // ▲▲ ここまで（DOOR=door_left/right・VINE/BAMBOO_PLANT=下の状態依存ジオメトリが特例） ▲▲
   };
   geo = GEOS.full;
 }
+/* ---- 状態依存ジオメトリ（プロパティで形が変わる form）。キーに状態を畳み込み、遅延生成して GEOS にキャッシュ ---- */
+function box3(w,h,d,ox,oy,oz){ const g=new THREE.BoxGeometry(w,h,d); g.translate(ox||0,oy||0,oz||0); return g; }
+const FACE_DIR = { north:[0,0,-1], south:[0,0,1], east:[1,0,0], west:[-1,0,0], up:[0,1,0] };   // vine 面→内部方向
+const faceOfVec = (d)=>{ for(const f in FACE_DIR){ const e=FACE_DIR[f]; if(e[0]===d[0]&&e[1]===d[1]&&e[2]===d[2]) return f; } return null; };
+const pTrue = (P,k)=> (P&&P[k])==='true';
+function buildVineGeo(v){   // 付く面ごとに薄板を貼る（無指定は -z の1枚でフォールバック）
+  const P=v.props||{}, t=0.08, parts=[];
+  if(pTrue(P,'north')) parts.push(box3(1,1,t, 0,0,-0.5+t/2));
+  if(pTrue(P,'south')) parts.push(box3(1,1,t, 0,0, 0.5-t/2));
+  if(pTrue(P,'west'))  parts.push(box3(t,1,1, -0.5+t/2,0,0));
+  if(pTrue(P,'east'))  parts.push(box3(t,1,1,  0.5-t/2,0,0));
+  if(pTrue(P,'up'))    parts.push(box3(1,t,1, 0, 0.5-t/2,0));
+  if(!parts.length) parts.push(box3(1,1,t, 0,0,-0.5+t/2));
+  return parts.reduce((a,b)=>a?mergeGeo(a,b):b, null);
+}
+function buildBambooGeo(v){   // 太さ=age・葉=leaves（stage は見た目ほぼ不変で無視）
+  const P=v.props||{}, th = P.age==='1' ? 0.36 : 0.22;
+  let g = box3(th,1,th,0,0,0);
+  const lv=P.leaves; if(lv==='small'||lv==='large'){ const s=lv==='large'?0.72:0.5;
+    g = mergeGeo(g, box3(s,0.44,0.05, 0,0.24,0)); g = mergeGeo(g, box3(0.05,0.44,s, 0,0.24,0)); }
+  return g;
+}
+function geoFor(gk, v){   // gk が静的登録に無ければ状態依存で生成
+  if(GEOS[gk]) return GEOS[gk];
+  if(gk.startsWith('VINE_'))   return GEOS[gk]=buildVineGeo(v);
+  if(gk.startsWith('BAMBOO_')) return GEOS[gk]=buildBambooGeo(v);
+  return GEOS.other;
+}
+const vineKey   = (v)=>{ const P=v.props||{}; const b=k=>pTrue(P,k)?1:0; return 'VINE_'+b('up')+b('north')+b('south')+b('east')+b('west'); };
+const bambooKey = (v)=>{ const P=v.props||{}; return 'BAMBOO_'+(P.age||'0')+'_'+(P.leaves||'none'); };
 const geoKey = (v)=> v.s==='fullblock' ? 'full'
-  : v.s==='others' ? (v.ot==='DOOR' ? 'door_'+(v.hg||'left') : (GEOS[v.ot] ? v.ot : 'other'))  // 聖典 form 名で直接引く（未登録は 'other'）
+  : v.s==='others' ? (v.ot==='DOOR' ? 'door_'+(v.hg||'left')
+      : v.ot==='VINE' ? vineKey(v) : v.ot==='BAMBOO_PLANT' ? bambooKey(v)   // 状態依存
+      : (GEOS[v.ot] ? v.ot : 'other'))  // 聖典 form 名で直接引く（未登録は 'other'）
   : (v.s==='trapdoor' && v.o==='true') ? 'trapdoor_open'   // 開はhalf非依存で同一形状
   : v.s+'_'+v.h;
 
@@ -871,10 +906,10 @@ function syncVox(){
     if(v.s==='fullblock') (solid?belowFull:aboveFull).push({p,v}); });
   if(S.labels){ makeLabels(labelSet).forEach(s=>{ scene.add(s); labelMeshes.push(s); });
     makeOriginAxisLabels().forEach(s=>{ scene.add(s); labelMeshes.push(s); }); }
-  for(const gk in below){ const im=makeInstShape(below[gk],GEOS[gk],mat); scene.add(im); editMeshes.push(im); }
-  for(const gk in above){ const im=makeInstShape(above[gk],GEOS[gk],ghostMat); scene.add(im); ghostMeshes.push(im); }
-  for(const gk in belowDim){ const im=makeInstShape(belowDim[gk],GEOS[gk],dimMat); scene.add(im); ghostMeshes.push(im); }
-  for(const gk in aboveDim){ const im=makeInstShape(aboveDim[gk],GEOS[gk],ghostDimMat); scene.add(im); ghostMeshes.push(im); }
+  for(const gk in below){ const im=makeInstShape(below[gk],geoFor(gk,below[gk][0].v),mat); scene.add(im); editMeshes.push(im); }
+  for(const gk in above){ const im=makeInstShape(above[gk],geoFor(gk,above[gk][0].v),ghostMat); scene.add(im); ghostMeshes.push(im); }
+  for(const gk in belowDim){ const im=makeInstShape(belowDim[gk],geoFor(gk,belowDim[gk][0].v),dimMat); scene.add(im); ghostMeshes.push(im); }
+  for(const gk in aboveDim){ const im=makeInstShape(aboveDim[gk],geoFor(gk,aboveDim[gk][0].v),ghostDimMat); scene.add(im); ghostMeshes.push(im); }
   if(S.mode==='info' && S.inspect && S.vox.has(S.inspect)){ const ip=S.inspect.split(',').map(Number);   // 選択モード：起点ブロックを強調枠
     const o=makeOutline([ip],inspectMat); scene.add(o); outlineMeshes.push(o); }
   if(S.mode==='info' && S.sel && S.sel.plane==='WD'){   // 選択範囲（作業面 WD 上）
@@ -1228,7 +1263,9 @@ function blockRecs(fieldFn){   // S.vox を structure レコード(1行文字列
     const form=formOf({s:v.s,ot:v.ot}); rec.form=form;                 // form 先（dict と統一・2026-08-15）
     Object.assign(rec, fieldFn(v.r));                                  // slot（place）または mat（structure）
     for(const {name} of shownProps(form)){ let val=v.props[name];      // 汎用: 出すプロパティを素直に書く
-      if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); rec[name]=val; }
+      if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val);
+      else if(name==='east') val=v.props['west']; else if(name==='west') val=v.props['east'];   // W反転で東西入替
+      rec[name]=val; }
     if(isMultiHalf(form)){ rec.half='lower';                           // upper/lower の form（ドア等）は2レコードに展開
       const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},form:form}; Object.assign(up, fieldFn(v.r)); up.half='upper';
       if(rec.facing) up.facing=rec.facing; if(rec.hinge) up.hinge=rec.hinge;
@@ -1453,10 +1490,16 @@ function rotFacingIdx(fi, plane){ const nd=rotVec90(FDIR[fi%6], plane);
   for(let i=0;i<6;i++){ const e=FDIR[i]; if(e[0]===nd[0]&&e[1]===nd[1]&&e[2]===nd[2]) return i; } return fi; }
 function rotAxisTok(ax, plane){ const nA=rotVec90(AXV[ax]||AXV.VERTICAL, plane);   // 軸は無向：絶対値で照合
   for(const k in AXV){ const e=AXV[k]; if(Math.abs(e[0])===Math.abs(nA[0])&&Math.abs(e[1])===Math.abs(nA[1])&&Math.abs(e[2])===Math.abs(nA[2])) return k; } return ax; }
+function rotVineFaces(props, plane){   // つたの付く面（north/south/east/west/up）を回転
+  const res={up:'false',north:'false',south:'false',east:'false',west:'false'};
+  for(const f in FACE_DIR){ if(props[f]!=='true') continue;
+    const nf=faceOfVec(rotVec90(FACE_DIR[f], plane)); if(nf) res[nf]='true'; }   // 縦回転で down になる面は消える（vine に down 無し）
+  return res; }
 function rotVal(val, plane){ const n=norm(val), props={...n.props};   // facing/axis を回転（half/hinge 等はそのまま＝水平回転で不変）
   const fp = FORM_PROPS[formOf(n)] || {};   // その form が実際に持つ向きプロパティだけ回す（GRATE等の無方向は不変）
   if(fp.facing) props.facing = FAC[ rotFacingIdx(FAC_I[props.facing]||0, plane) ];
   if(fp.axis)   props.axis   = rotAxisTok(props.axis, plane);
+  if(fp.north)  Object.assign(props, rotVineFaces(props, plane));   // つた面
   return {r:n.r, s:n.s, ot:n.ot, props}; }
 function rotateClip(){ const cc=S.cellClip; if(!cc){ status('コピー / 切り取り中に回転できます'); return; }
   const w=cc.w;
@@ -1559,8 +1602,10 @@ function importJson(text){
         const SF={FULLBLOCK:'fullblock',SLAB:'slab',STAIRS:'stairs',TRAPDOOR:'trapdoor'};
         const s = SF[fm] || 'others', ot = SF[fm] ? 'DOOR' : fm;
         const props = {facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall'};
-        for(const {name} of shownProps(fm)){ if(b[name]==null) continue;   // 汎用: 出すプロパティを素直に読む
-          let val=b[name]; if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); props[name]=String(val); }
+        for(const {name} of shownProps(fm)){   // 汎用: 出すプロパティを素直に読む（east/west は W反転で入替）
+          let val = (name==='east') ? b['west'] : (name==='west') ? b['east'] : b[name];
+          if(val==null) continue;
+          if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); props[name]=String(val); }
         set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.slot||b.mat||(fm||'FULLBLOCK')+'_1', s, ot, props}); });   // slot 優先・旧 mat も後方互換
     }
     else if(Array.isArray(d.voxels))   // 旧形式（後方互換・ミラー前のアプリ内部座標）

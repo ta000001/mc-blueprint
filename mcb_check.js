@@ -1,0 +1,1452 @@
+
+const APP_VERSION = '4.29';
+const $ = (s) => document.querySelector(s);
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const K=(x,y,z)=>x+','+y+','+z;
+
+/* 役割（色）＝place の mat。palette 側で 役割→dict mat を対応づける */
+const ROLE_COLORS = [0xC0533F,0x3F63B0,0x4E9A5A,0xB8862F,0x9B5AC0,0x5AB6D0,0xC05A9B,0xC0A03F,0x5AC0A0,0x8A8F94];  // 役割番号1〜10の色
+const roleForm  = (role)=> String(role).replace(/_\d+$/,'');                 // 'FULLBLOCK_2' -> 'FULLBLOCK'
+const roleColor = (role)=>{ const n=parseInt(String(role).split('_').pop(),10); return ROLE_COLORS[(((n||1)-1)%10+10)%10]; };
+const roleHex   = (role)=> '#'+roleColor(role).toString(16).padStart(6,'0');
+
+const SHAPES = ['fullblock','slab','stairs','trapdoor'];   // 形（MOD form: FULLBLOCK/SLAB/STAIRS/TRAPDOOR）
+const FAC = ['FRONT','RIGHT','BACK','LEFT','UP','DOWN'];   // facing（相対トークン, full は6方向）
+const FAC_I = {FRONT:0,RIGHT:1,BACK:2,LEFT:3,UP:4,DOWN:5};
+const AXES = ['VERTICAL','DEPTH','WIDTH'];                 // axis（相対軸 RelAxis, 原木/柱など）
+
+/* app 側に残す最小情報（聖典＝dict/form_dict 以外）:
+   - PRIMARY_SHAPES: 形バーに出す基本形（残りは others モーダルへ・form_dict から導出）
+   - STATE_OPTIN: 状態プロパティを出す form の例外（open はトラップドアのみ）
+   - NOMAT_FORMS: mat が「材質パレット(role)」でなく「変種選択」の form（松明系）
+   - 3D 見た目（others form の形状）は buildGeos() の「形状レジストリ」1か所に form 名で登録。未登録 form は 'other' フォールバック（DOOR は hinge 別）。
+   others に出す form／各 form のプロパティボタンは form_dict から導出。ラベルは form 名（そのまま）。 */
+const PRIMARY_SHAPES = ['FULLBLOCK','SLAB','STAIRS','TRAPDOOR'];
+const STATE_OPTIN = { open: ['TRAPDOOR'] };            // 既定 close 固定、ここに挙げた form だけ open ボタン
+const SHOW   = new Set(['facing','axis','half','type','hinge','open','hanging','face',
+                        'up','north','south','east','west',   // VINE：付く面
+                        'age','leaves','stage']);             // BAMBOO_PLANT：太さ/葉/成長
+const MIRROR = new Set(['facing','hinge','east','west']);            // 左右ミラー対象(I/O時に反転)。east↔west は W 反転で入替
+const OTHER_KEY2FORM = { door:'DOOR', torch:'TORCH', wall_torch:'WALL_TORCH', lantern:'LANTERN', campfire:'CAMPFIRE', chain:'CHAIN', fence:'FENCE', fence_gate:'FENCE_GATE' };  // 旧 other-key → form 移行
+let FORM_PROPS = {};   // form -> { propName: [values...] }（form_dict 由来）
+let FORM_LIST  = [];   // unregistered 以外の全 form（form_dict 由来）
+function buildFormProps(classes){
+  const fp={}, order=[];
+  for(const r of (classes||[])){ const f=r.form; if(!f || f==='unregistered') continue;
+    if(!(f in fp)){ fp[f]={}; order.push(f); }
+    for(const pr of (r.properties||[])){ const cur=fp[f][pr.name]||[];
+      for(const v of (pr.values||[])) if(!cur.includes(v)) cur.push(v); fp[f][pr.name]=cur; } }
+  FORM_PROPS=fp; FORM_LIST=order;
+  const KNOWN=SHOW;   // 実装済みハンドラ(allowlist)
+  const EXCLUDE=new Set(['waterlogged','powered','extended','triggered','signal_fire','lit','shape','in_wall','north','east','south','west','up']);
+  const seen=new Set(); for(const f in fp) for(const n in fp[f]) seen.add(n);
+  for(const n of seen) if(!KNOWN.has(n)&&!EXCLUDE.has(n)) console.warn('[form_dict] 未分類プロパティ:', n, '- ボタン化するか除外か要判断');
+}
+// 汎用ハンドラ: form_dict + allowlist(SHOW) + 例外 から、出すプロパティを [{name,values}] で返す
+function isMultiHalf(form){ const p=FORM_PROPS[form]; return !!(p && (p.half||[]).includes('upper')); }  // half=upper/lower→複数ブロック
+function shownProps(form){
+  const p = FORM_PROPS[form] || {};
+  const order = ['facing','axis','half','type','hinge','hanging','face','open',
+                 'up','north','south','east','west','leaves','age','stage'];   // ボタン表示順（末尾＝vine面/bamboo状態）
+  const out = [];
+  for(const name of order){
+    if(!(name in p) || !SHOW.has(name)) continue;
+    if(name==='half' && (p.half||[]).includes('upper')) continue;              // 複数ブロック→自動(非ボタン)
+    if(STATE_OPTIN[name] && !STATE_OPTIN[name].includes(form)) continue;        // 状態 opt-in(open→trapdoorのみ)
+    out.push({name, values:p[name]});
+  }
+  return out;
+}
+
+/* dict.json（block/form/mat 対応）を起動時に ./dict.json から fetch して読む（下記 loadDict）。
+   単一ソースは MOD の data/master/block/dict.json。
+   ★このアプリ側で dict を編集しない。更新は必ず MOD 側 dict.json を直し、それを一方向 sync（コピー）して反映する（厳守）。 */
+let DICT_ENTRIES = [];   // loadDict() が ./dict.json から投入（ここに直書きしない）
+let DICT_VERSION = null;
+let FORM_DICT_VERSION = null;   // form_dict.json の version（表示用・アプリ本体は未使用）
+let NAMES_JA = {};              // block_id -> 和名（names_ja.json・任意・MOD /abtest exporttex 生成）
+let NAMES_JA_VERSION = null;    // names_ja.json の version（[番号](yyyymmdd)）
+let BLOCKTEX_VERSION = null;    // blocktex.json の version（[番号](yyyymmdd)）
+let BLOCK_BY_FORMMAT = {};      // 'FORM|MAT' -> block_id（画像/和名は block id キー。form 毎に別ブロック）
+function buildBlockIndex(){ BLOCK_BY_FORMMAT={}; for(const e of DICT_ENTRIES){ if(e.mat && e.block) BLOCK_BY_FORMMAT[e.form+'|'+e.mat]=String(e.block).replace(/:/g,'__'); } }
+async function loadDict(){
+  const res = await fetch('./dict.json?v='+APP_VERSION, {cache:'no-cache'});
+  if(!res.ok) throw new Error('dict.json HTTP '+res.status);
+  const j = await res.json();
+  DICT_ENTRIES = Array.isArray(j) ? j : (j.entries||[]);
+  buildBlockIndex();
+  DICT_VERSION = (j && j.version!=null) ? j.version : null;
+  // form_dict.json はアプリ未使用だが version 表示のため取得（失敗は無視）
+  try { const r2 = await fetch('./form_dict.json?v='+APP_VERSION, {cache:'no-cache'});
+        if(r2.ok){ const j2 = await r2.json(); FORM_DICT_VERSION = (j2 && j2.version!=null) ? j2.version : null; buildFormProps(j2.classes); } }
+  catch(_){}
+  // names_ja.json（MAT→和名・任意）。無ければ和名なしで動作。
+  try { const r3 = await fetch('./names_ja.json?v='+APP_VERSION, {cache:'no-cache'});
+        if(r3.ok){ const j3 = await r3.json(); NAMES_JA = (j3 && j3.names) ? j3.names : (j3||{}); NAMES_JA_VERSION = (j3 && j3.version!=null) ? j3.version : null; } }
+  catch(_){}
+  // blocktex.json（画像群の version のみ・任意）
+  try { const r4 = await fetch('./blocktex.json?v='+APP_VERSION, {cache:'no-cache'});
+        if(r4.ok){ const j4 = await r4.json(); BLOCKTEX_VERSION = (j4 && j4.version!=null) ? j4.version : null; } }
+  catch(_){}
+}
+const SHAPE_FORM = {fullblock:'FULLBLOCK', slab:'SLAB', stairs:'STAIRS', trapdoor:'TRAPDOOR'};
+const formOf  = (v)=> v.s==='others' ? (v.ot||'') : (SHAPE_FORM[v.s]||'');   // v.ot は form 文字列
+// mat auto/select は撤去。全 form が form 別役割（FORM_n）方式（A案・2026-08-14）
+const mirHinge = (h)=> h==='left'?'right':(h==='right'?'left':h);   // W ミラーで hinge も左右反転
+
+/* three.js(右手系) ⇄ Minecraft/autobuilder(左手系) の橋渡し（v3.4）。
+   これをしないと、建築結果がアプリ表示の「左右鏡像」になる（W=左右軸の利き手が逆）。
+   MOD が読む blocks/layers の入出力時にだけ W を反転し、facing の RIGHT↔LEFT を入れ替える。
+   アプリ内部（three.js 座標・localStorage）は無変換のまま。 */
+const mirW  = (w, width)=> (width-1) - w;                       // W 反転（0..width-1 内）
+const MIR_FAC = {FRONT:'FRONT', RIGHT:'LEFT', BACK:'BACK', LEFT:'RIGHT'};
+const mirFac = (tok)=> MIR_FAC[tok] || tok;
+
+const S = {
+  dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'info', tool:'draw', role:'FULLBLOCK_1',
+  shape:'fullblock', other:'DOOR', roleCount:{},
+  props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
+  view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirs:{place:null,palette:null,structure:null}, files:{place:null,palette:null,structure:null}, labels:false, hlForm:false,
+  top:'place', pal:{map:{}}, plane:'WD', lay:{x:0,z:0}, inspect:null, clip:null, clipMode:null, clipLayer:0, clipPlane:null, sel:null, cellClip:null
+};
+const cur = ()=>({r:S.role, s:S.shape, ot:S.other, props:{...S.props}});
+const sig = (v)=>{ if(!v) return ''; const n=norm(v), p=n.props;
+  return [n.r,n.s,n.ot,n.f,n.h,n.ax,n.hg,n.o,n.hang,n.fc,
+          p.up,p.north,p.south,p.east,p.west,p.age,p.leaves,p.stage].join('|'); };   // vine面/bamboo状態も同一性に含める
+const norm = (v)=>{
+  if(typeof v==='string') v={r:v};
+  let props = v.props;
+  if(!props){   // 旧個別フィールド -> props へ移行
+    props = {facing:FAC[v.f||0]||'FRONT', half:v.h||'bottom', type:v.h||'bottom', axis:v.ax||'VERTICAL',
+             hinge:v.hg||'left', open:v.o||'false', hanging:v.hang||'false', face:v.fc||'wall'};
+  }
+  props = {facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall', ...props};
+  let ot = v.ot || 'DOOR'; if(OTHER_KEY2FORM[ot]) ot=OTHER_KEY2FORM[ot];   // 旧 other-key -> form 移行
+  const o = {r:v.r||'FULLBLOCK_1', s:v.s||'fullblock', ot, props};
+  o.f=FAC_I[props.facing]||0; o.h=(o.s==='slab'?props.type:props.half)||'bottom';   // 描画互換の派生フィールド
+  o.ax=props.axis; o.hg=props.hinge; o.o=props.open; o.hang=props.hanging; o.fc=props.face;
+  return o;
+};
+
+/* ---------- persistence ---------- */
+function save(){
+  try{ localStorage.setItem('blueprint:current', JSON.stringify({
+    dims:S.dims, name:$('#name').value, voxels:[...S.vox.entries()], role:S.role, roleCount:S.roleCount
+  })); }catch(e){}
+}
+function load(){
+  try{
+    const raw = localStorage.getItem('blueprint:current');
+    if(!raw) return;
+    const d = JSON.parse(raw);
+    if(d.dims) S.dims = d.dims;
+    if(d.name) $('#name').value = d.name;
+    if(Array.isArray(d.voxels)) S.vox = new Map(d.voxels.map(([k,v])=>[k, norm(v)]));
+    if(d.role) S.role = d.role;
+    if(d.roleCount) S.roleCount = d.roleCount;
+    try{ const fs=new Set(Object.keys(S.roleCount)); S.vox.forEach(v=>fs.add(roleForm(norm(v).r))); fs.forEach(f=>{ if(f) cleanupRoles(f); }); }catch(_){}   // 読み込み時も未使用役割を整理（vox使用中の form も対象）
+  }catch(e){}
+}
+function status(m){ $('#status').textContent = m; clearTimeout(status._t);
+  status._t = setTimeout(()=>$('#status').textContent='',2600); }
+
+/* ---------- model ---------- */
+function pushHist(){ S.hist.push(new Map(S.vox)); if(S.hist.length>60) S.hist.shift(); S.redo=[]; } // 新規操作でredo破棄
+function updateHistBtns(){ const dis=S.redo.length===0; const r=$('#b-redo'), pr=$('#pl-redo'); if(r) r.disabled=dis; if(pr) pr.disabled=dis; }
+function inB(x,y,z){ const d=S.dims; return x>=0&&y>=0&&z>=0&&x<d.x&&y<d.y&&z<d.z; }
+function place(x,y,z){ if(!inB(x,y,z)) return; if(y>S.layer) return;  // 作業面より上には置かない
+  const k=K(x,y,z), v=cur(); if(sig(S.vox.get(k))===sig(v)) return; pushHist(); S.vox.set(k,v); changed(); }
+function remove(x,y,z){ const k=K(x,y,z); if(!S.vox.has(k)) return; pushHist(); S.vox.delete(k); changed(); }
+function undo(){ const p=S.hist.pop(); if(!p) return; S.redo.push(new Map(S.vox)); S.vox=p; changed(); }
+function redo(){ const n=S.redo.pop(); if(!n) return; S.hist.push(new Map(S.vox)); S.vox=n; changed(); } // 元に戻すの取り消し
+
+function changed(){ syncVox(); if(S.view==='plan'){ renderGrid(); renderSpine(); }
+  if(S.view==='json') renderJson(); $('#tot').textContent=S.vox.size; save(); updateHistBtns(); }
+
+function setDims(nd){
+  S.dims = nd;
+  const keep = new Map();
+  S.vox.forEach((role,k)=>{ const [x,y,z]=k.split(',').map(Number);
+    if(x<nd.x&&y<nd.y&&z<nd.z) keep.set(k,role); });
+  S.vox = keep;
+  S.layer = clamp(S.layer,0,nd.y-1);
+  $('#plane').max = nd.y-1; $('#plane').value = S.layer;
+  $('#ymax').textContent = '/ '+(nd.y-1);
+  buildFloor(); buildOrigin(); buildPlane(); frameCamera(); changed(); renderGrid(); renderSpine(); setLayer(S.layer);
+}
+
+function setLayer(v){
+  S.layer = clamp(v,0,S.dims.y-1);
+  $('#plane').value = S.layer;
+  $('#y3').textContent = 'H'+String(S.layer).padStart(2,'0');   // 立体スライダのラベル（平面の y2 は renderSpine が担当）
+  buildPlane(); syncVox(); renderGrid(); renderSpine();
+}
+
+/* ---------- three.js ---------- */
+let renderer,scene,camera,editMeshes=[],ghostMeshes=[],outlineMeshes=[],preview,floorObj,planeObj,originObj,geo,GEOS,mat,ghostMat,dimMat,ghostDimMat,outlineMat,outlineGhostMat,hingeMat,hingeGhostMat,HINGE_GEO,orientMat,orientGhostMat,axisFaceMat,axisFaceGhostMat,EDGE_POS,previewMat,previewBreakMat,inspectMat,clipSrcMat,clipDstMat,target,sph,dirty=true;
+function boxAt(w,h,d,oy,oz){ const g=new THREE.BoxGeometry(w,h,d); g.translate(0,oy||0,oz||0); return g; }
+function mergeGeo(a,b){   // 2つの indexed BoxGeometry を結合（階段用）
+  const g=new THREE.BufferGeometry(), cat=(n,sz)=>{ const aa=a.attributes[n].array, bb=b.attributes[n].array;
+    const out=new Float32Array(aa.length+bb.length); out.set(aa); out.set(bb,aa.length);
+    g.setAttribute(n,new THREE.BufferAttribute(out,sz)); };
+  cat('position',3); cat('normal',3); cat('uv',2);
+  const ai=a.index.array, bi=b.index.array, off=a.attributes.position.count;
+  const idx=new Uint16Array(ai.length+bi.length); idx.set(ai);
+  for(let i=0;i<bi.length;i++) idx[ai.length+i]=bi[i]+off;
+  g.setIndex(new THREE.BufferAttribute(idx,1)); return g;
+}
+function doorGeo(left){   // ドア＝2ブロック高の薄板＋蝶番側の縦バー（cell下端→上へ2マス）
+  const T=0.1875, oy=0.5;
+  const panel=new THREE.BoxGeometry(0.94,2,T); panel.translate(0,oy,-0.5+T/2);
+  const bar=new THREE.BoxGeometry(0.12,2,T+0.14); bar.translate(left?-0.42:0.42, oy, -0.5+(T+0.14)/2);
+  return mergeGeo(panel,bar);
+}
+function buildGeos(){
+  const T=0.1875;   // trapdoor 厚み
+  GEOS={
+    full: new THREE.BoxGeometry(1,1,1),
+    slab_bottom: boxAt(1,0.5,1,-0.25,0), slab_top: boxAt(1,0.5,1,0.25,0),
+    trapdoor_bottom: boxAt(1,T,1,-0.5+T/2,0), trapdoor_top: boxAt(1,T,1,0.5-T/2,0),
+    trapdoor_open:   boxAt(1,1,T,0,0.5-T/2),   // 開＝facing 側(+z)に立つ縦板（MC準拠・door とは逆／half 非依存）
+    stairs_bottom: mergeGeo(boxAt(1,0.5,1,-0.25,0), boxAt(1,0.5,0.5,0.25,-0.25)), // 高段=facingの反対(-z=BACK側)
+    stairs_top:    mergeGeo(boxAt(1,0.5,1,0.25,0),  boxAt(1,0.5,0.5,-0.25,-0.25)),
+    other:    boxAt(1,1,1,0,0),                              // 形状未登録 form の保険＝フルブロック形（form 名ラベルで区別。設計するまでの一時姿）
+    door_left:  doorGeo(true),                               // ドア（蝶番=左）2ブロック高・hinge 別の特例
+    door_right: doorGeo(false),                              // ドア（蝶番=右）
+    // ▼▼ others form の形状レジストリ：新しい form の 3D 見た目はここに「聖典 form 名」で1行足すだけ ▼▼
+    TORCH:        boxAt(0.16,0.62,0.16,-0.19,0),             // 松明(床)＝中央の細い棒
+    WALL_TORCH:   boxAt(0.16,0.55,0.16,0.02,-0.36),          // 壁松明＝facing壁際(-z)の細い棒
+    LANTERN:      boxAt(0.34,0.5,0.34,-0.12,0),              // ランタン＝小さな箱
+    CAMPFIRE:     boxAt(0.86,0.24,0.86,-0.38,0),             // 焚き火＝低く幅広（薪）
+    CHAIN:        boxAt(0.14,1,0.14,0,0),                    // チェーン＝細い縦棒
+    FENCE:        boxAt(0.22,1,0.22,0,0),                    // 柵＝中央の支柱
+    FENCE_GATE:   boxAt(0.92,0.42,0.16,0.02,0),              // フェンスゲート＝幅広の薄板（facingで回転）
+    BUTTON:       boxAt(0.32,0.14,0.18,-0.32,-0.40),         // ボタン＝小さい低いポッチ（facing壁際）
+    PANE:         mergeGeo(boxAt(0.12,1,1,0,0), boxAt(1,1,0.12,0,0)),  // ガラス板＝薄い十字
+    GRATE:        boxAt(0.86,0.86,0.86,0,0),                 // 格子(copper_grate)＝無方向。フルブロックより一回り小さい立方体で区別（対称＝回転不変）
+    POPPY:        mergeGeo(boxAt(0.08,0.6,0.6,-0.2,0), boxAt(0.6,0.6,0.08,-0.2,0)),  // 花＝小さい十字
+    AIR:          boxAt(0.22,0.22,0.22,0,0),                 // 空気＝小さいドット（マーカー）
+    // ▲▲ ここまで（DOOR=door_left/right・VINE/BAMBOO_PLANT=下の状態依存ジオメトリが特例） ▲▲
+  };
+  geo = GEOS.full;
+}
+/* ---- 状態依存ジオメトリ（プロパティで形が変わる form）。キーに状態を畳み込み、遅延生成して GEOS にキャッシュ ---- */
+function box3(w,h,d,ox,oy,oz){ const g=new THREE.BoxGeometry(w,h,d); g.translate(ox||0,oy||0,oz||0); return g; }
+const FACE_DIR = { north:[0,0,-1], south:[0,0,1], east:[1,0,0], west:[-1,0,0], up:[0,1,0] };   // vine 面→内部方向
+const faceOfVec = (d)=>{ for(const f in FACE_DIR){ const e=FACE_DIR[f]; if(e[0]===d[0]&&e[1]===d[1]&&e[2]===d[2]) return f; } return null; };
+const pTrue = (P,k)=> (P&&P[k])==='true';
+function buildVineGeo(v){   // 付く面ごとに薄板を貼る（無指定は -z の1枚でフォールバック）
+  const P=v.props||{}, t=0.08, parts=[];
+  if(pTrue(P,'north')) parts.push(box3(1,1,t, 0,0,-0.5+t/2));
+  if(pTrue(P,'south')) parts.push(box3(1,1,t, 0,0, 0.5-t/2));
+  if(pTrue(P,'west'))  parts.push(box3(t,1,1, -0.5+t/2,0,0));
+  if(pTrue(P,'east'))  parts.push(box3(t,1,1,  0.5-t/2,0,0));
+  if(pTrue(P,'up'))    parts.push(box3(1,t,1, 0, 0.5-t/2,0));
+  if(!parts.length) parts.push(box3(1,1,t, 0,0,-0.5+t/2));
+  return parts.reduce((a,b)=>a?mergeGeo(a,b):b, null);
+}
+function buildBambooGeo(v){   // 太さ=age・葉=leaves（stage は見た目ほぼ不変で無視）
+  const P=v.props||{}, th = P.age==='1' ? 0.36 : 0.22;
+  let g = box3(th,1,th,0,0,0);
+  const lv=P.leaves; if(lv==='small'||lv==='large'){ const s=lv==='large'?0.72:0.5;
+    g = mergeGeo(g, box3(s,0.44,0.05, 0,0.24,0)); g = mergeGeo(g, box3(0.05,0.44,s, 0,0.24,0)); }
+  return g;
+}
+function geoFor(gk, v){   // gk が静的登録に無ければ状態依存で生成
+  if(GEOS[gk]) return GEOS[gk];
+  if(gk.startsWith('VINE_'))   return GEOS[gk]=buildVineGeo(v);
+  if(gk.startsWith('BAMBOO_')) return GEOS[gk]=buildBambooGeo(v);
+  return GEOS.other;
+}
+const vineKey   = (v)=>{ const P=v.props||{}; const b=k=>pTrue(P,k)?1:0; return 'VINE_'+b('up')+b('north')+b('south')+b('east')+b('west'); };
+const bambooKey = (v)=>{ const P=v.props||{}; return 'BAMBOO_'+(P.age||'0')+'_'+(P.leaves||'none'); };
+const geoKey = (v)=> v.s==='fullblock' ? 'full'
+  : v.s==='others' ? (v.ot==='DOOR' ? 'door_'+(v.hg||'left')
+      : v.ot==='VINE' ? vineKey(v) : v.ot==='BAMBOO_PLANT' ? bambooKey(v)   // 状態依存
+      : (GEOS[v.ot] ? v.ot : 'other'))  // 聖典 form 名で直接引く（未登録は 'other'）
+  : (v.s==='trapdoor' && v.o==='true') ? 'trapdoor_open'   // 開はhalf非依存で同一形状
+  : v.s+'_'+v.h;
+
+function initThree(){
+  const mount = $('#space');
+  renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+  renderer.setClearColor(0x131d1f,1);
+  mount.appendChild(renderer.domElement);
+  scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x131d1f,40,220);
+  camera = new THREE.PerspectiveCamera(48,1,.1,1000);
+  scene.add(new THREE.AmbientLight(0xffffff,.66));
+  const sun=new THREE.DirectionalLight(0xfff0d0,.8); sun.position.set(1,2.2,1.4); scene.add(sun);
+  const rim=new THREE.DirectionalLight(0x6fa79a,.35); rim.position.set(-1.4,.6,-1); scene.add(rim);
+
+  // 白ベース＋枠のテクスチャ（instanceColor で役割色に着色＝縁線が残る）
+  const c=document.createElement('canvas'); c.width=c.height=16; const g=c.getContext('2d');
+  g.fillStyle='#ffffff'; g.fillRect(0,0,16,16);
+  g.fillStyle='#dcdcdc'; g.fillRect(0,0,16,1); g.fillRect(0,0,1,16);   // 上/左＝明るい縁
+  g.fillStyle='#6f6f6f'; g.fillRect(0,15,16,1); g.fillRect(15,0,1,16); // 下/右＝暗い縁
+  const tex=new THREE.CanvasTexture(c); tex.magFilter=THREE.NearestFilter; tex.minFilter=THREE.NearestFilter;
+  mat = new THREE.MeshLambertMaterial({map:tex});
+  ghostMat = new THREE.MeshLambertMaterial({map:tex, transparent:true, opacity:0.22, depthWrite:false});
+  dimMat      = new THREE.MeshLambertMaterial({map:tex, transparent:true, opacity:0.13, depthWrite:false});  // form強調：非該当（作業面下）
+  ghostDimMat = new THREE.MeshLambertMaterial({map:tex, transparent:true, opacity:0.05, depthWrite:false});  // form強調：非該当（作業面上）
+  previewMat = new THREE.MeshBasicMaterial({color:0xF0D48C, transparent:true, opacity:0.5, depthWrite:false});
+  previewBreakMat = new THREE.MeshBasicMaterial({color:0xE0604A, transparent:true, opacity:0.5, depthWrite:false});
+  buildGeos();
+  // 単位セル(1×1×1)の外枠エッジ座標（中心原点＝±0.5）。セルごとにオフセットして枠線を描く。
+  const eg=new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1));
+  EDGE_POS=eg.attributes.position.array.slice(); eg.dispose();
+  outlineMat      = new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.32});
+  inspectMat      = new THREE.LineBasicMaterial({color:0x8ff0ff, transparent:true, opacity:1, depthTest:false});  // 選択（範囲/起点）枠
+  clipSrcMat      = new THREE.LineBasicMaterial({color:0xffd24a, transparent:true, opacity:1, depthTest:false});  // 切取/コピー元
+  clipDstMat      = new THREE.LineBasicMaterial({color:0x7ad79a, transparent:true, opacity:1, depthTest:false});  // 貼り付け先
+  outlineGhostMat = new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.11});
+  hingeMat        = new THREE.MeshBasicMaterial({color:0x9aa7b0});                                 // open trapdoor の蝶番(開閉軸)＝棒
+  hingeGhostMat   = new THREE.MeshBasicMaterial({color:0x9aa7b0, transparent:true, opacity:0.3});
+  HINGE_GEO       = new THREE.BoxGeometry(1, 0.12, 0.12);   // 蝶番(開閉軸)＝ドアの蝶番バーと同じ太さ
+  orientMat       = new THREE.LineBasicMaterial({color:0xffd24a, transparent:true, opacity:0.9});  // full の facing＝正面に×
+  orientGhostMat  = new THREE.LineBasicMaterial({color:0xffd24a, transparent:true, opacity:0.3});
+  axisFaceMat      = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.22, depthWrite:false, side:THREE.DoubleSide}); // axis の貫く2面を薄く
+  axisFaceGhostMat = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.08, depthWrite:false, side:THREE.DoubleSide});
+  target = new THREE.Vector3();
+  sph = {theta:Math.PI*0.72, phi:Math.PI*0.33, r:30};
+
+  const resize=()=>{ const w=mount.clientWidth,h=mount.clientHeight;
+    renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); dirty=true; };
+  resize(); new ResizeObserver(resize).observe(mount);
+  bindGestures(renderer.domElement);
+  (function loop(){ requestAnimationFrame(loop); if(dirty){ renderer.render(scene,camera); dirty=false; } })();
+}
+
+function updateCam(){
+  const {theta,phi,r}=sph;
+  camera.position.set(
+    target.x + r*Math.sin(phi)*Math.sin(theta),
+    target.y + r*Math.cos(phi),
+    target.z + r*Math.sin(phi)*Math.cos(theta));
+  camera.lookAt(target); dirty=true;
+}
+function frameCamera(){
+  const d=S.dims;
+  target.set(d.x/2, Math.min(d.y,8)/2, d.z/2);
+  sph.theta=Math.PI*0.72; sph.phi=Math.PI*0.33;
+  sph.r = Math.max(d.x,d.y,d.z)*2.1;
+  updateCam();
+}
+function buildFloor(){
+  if(floorObj){ scene.remove(floorObj); floorObj.geometry.dispose(); }
+  const d=S.dims, pos=[];
+  for(let i=0;i<=d.x;i++) pos.push(i,0,0, i,0,d.z);
+  for(let i=0;i<=d.z;i++) pos.push(0,0,i, d.x,0,i);
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  floorObj=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0x2f4a45}));
+  scene.add(floorObj); dirty=true;
+}
+function buildOrigin(){   // MOD 原点(0,0,0)=手前・下・左 をコーナーブラケット(L字枠)で可視化
+  if(originObj){ scene.remove(originObj);
+    originObj.traverse(o=>{ if(o.geometry)o.geometry.dispose(); if(o.material)o.material.dispose(); }); }
+  const g=new THREE.Group();
+  g.position.set(S.dims.x, 0, 0);   // W ミラー後、exported w=0 は内部 x=最大側の角
+  const L=1;        // ブラケットの辺長＝1ブロック分
+  const T=0.14;     // バーの太さ
+  const bar=(w,h,d,cx,cy,cz,col)=>{ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
+      new THREE.MeshBasicMaterial({color:col})); m.position.set(cx,cy,cz); return m; };
+  g.add(bar(L,T,T, -L/2,0,0, 0xff5a5a));  // +W＝内部 -x（赤）
+  g.add(bar(T,L,T, 0,L/2,0, 0x5ad07a));   // +H＝上（緑）
+  g.add(bar(T,T,L, 0,0,L/2, 0x5a86ff));   // +D＝奥（青）
+  originObj=g; scene.add(g); dirty=true;
+}
+function buildPlane(){
+  if(planeObj){ scene.remove(planeObj); planeObj.geometry.dispose(); }
+  const d=S.dims;
+  planeObj=new THREE.Mesh(new THREE.PlaneGeometry(d.x,d.z),
+    new THREE.MeshBasicMaterial({color:0x4f8a7b,transparent:true,opacity:.13,
+      side:THREE.DoubleSide,depthWrite:false}));
+  planeObj.rotation.x=-Math.PI/2;
+  planeObj.position.set(d.x/2, S.layer+0.02, d.z/2);
+  scene.add(planeObj); dirty=true;
+}
+function makeInst(arr, material){   // プレビュー用（full box・単色 material）
+  const im=new THREE.InstancedMesh(GEOS.full,material,Math.max(1,arr.length));
+  im.count=arr.length; const m=new THREE.Matrix4();
+  arr.forEach((p,i)=>{ m.makeTranslation(p[0]+.5,p[1]+.5,p[2]+.5); im.setMatrixAt(i,m); });
+  im.instanceMatrix.needsUpdate=true; return im;
+}
+function makeInstShape(items, geometry, material){
+  const im=new THREE.InstancedMesh(geometry,material,Math.max(1,items.length));
+  im.count=items.length;
+  const m=new THREE.Matrix4(), q=new THREE.Quaternion(), pos=new THREE.Vector3(),
+        scl=new THREE.Vector3(1,1,1), up=new THREE.Vector3(0,1,0), col=new THREE.Color();
+  items.forEach((o,i)=>{ pos.set(o.p[0]+.5,o.p[1]+.5,o.p[2]+.5); q.setFromAxisAngle(up,o.v.f*Math.PI/2);
+    m.compose(pos,q,scl); im.setMatrixAt(i,m);
+    col.setHex(roleColor(o.v.r)); im.setColorAt(i,col); });
+  im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true;
+  im.userData.items=items; return im;
+}
+function makeOutline(cells, material){   // 各セルの単位立方体エッジをまとめた1本の LineSegments
+  const stride=EDGE_POS.length, arr=new Float32Array(stride*cells.length);
+  cells.forEach((p,i)=>{ const ox=p[0]+0.5, oy=p[1]+0.5, oz=p[2]+0.5, base=stride*i;
+    for(let j=0;j<stride;j+=3){ arr[base+j]=EDGE_POS[j]+ox; arr[base+j+1]=EDGE_POS[j+1]+oy; arr[base+j+2]=EDGE_POS[j+2]+oz; } });
+  const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(arr,3));
+  return new THREE.LineSegments(g, material);
+}
+const rotY=(px,py,pz,f)=>{ const c=[1,0,-1,0][f&3], s=[0,1,0,-1][f&3];   // +Y 周り f*90°（メッシュと同じ）
+  return [px*c+pz*s, py, -px*s+pz*c]; };
+function makeHingeRods(entries, material){   // trapdoor の蝶番(開閉軸)を棒で（開閉問わず／half=bottom→下端 / top→上端、facing で回転）
+  const im=new THREE.InstancedMesh(HINGE_GEO, material, entries.length); im.count=entries.length;
+  const m=new THREE.Matrix4(), q=new THREE.Quaternion(), pos=new THREE.Vector3(),
+        scl=new THREE.Vector3(1,1,1), up=new THREE.Vector3(0,1,0), col=new THREE.Color();
+  entries.forEach((o,i)=>{ const y=o.v.h==='top'?0.5:-0.5;         // 蝶番の高さ（板の外面 +z=facing側 の下/上エッジ）
+    const off=rotY(0,y,0.5,o.v.f);
+    pos.set(o.p[0]+0.5+off[0], o.p[1]+0.5+off[1], o.p[2]+0.5+off[2]);
+    q.setFromAxisAngle(up, o.v.f*Math.PI/2);                        // 幅方向の棒を facing に回す
+    m.compose(pos,q,scl); im.setMatrixAt(i,m);
+    col.setHex(roleColor(o.v.r)); im.setColorAt(i,col); });
+  im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true; return im;
+}
+// full の facing：正面(=facing方向)の面に× を描く（全方向・FRONT=手前 -z）
+const FDIR=[[0,0,-1],[1,0,0],[0,0,1],[-1,0,0],[0,1,0],[0,-1,0]]; // FRONT/RIGHT/BACK/LEFT/UP/DOWN → three.js方向
+const AXV={VERTICAL:[0,1,0],DEPTH:[0,0,1],WIDTH:[1,0,0]};        // 相対軸 → three.js軸(vertical=y, DEPTH=z, WIDTH=x)
+function makeOrient(entries, material){
+  const pos=[];
+  for(const {p,v} of entries){ const cx=p[0]+0.5, cy=p[1]+0.5, cz=p[2]+0.5;
+    const d=FDIR[(v.f||0)%6];                                    // facing の面に×
+    const fx=cx+d[0]*0.502, fy=cy+d[1]*0.502, fz=cz+d[2]*0.502;
+    let u,w;                                                     // 面内2軸（d に直交）
+    if(d[2]!==0){ u=[1,0,0]; w=[0,1,0]; }                       // ±z 面 → x,y
+    else if(d[0]!==0){ u=[0,0,1]; w=[0,1,0]; }                 // ±x 面 → z,y
+    else { u=[1,0,0]; w=[0,0,1]; }                              // ±y 面 → x,z
+    const C=(su,sw)=>[fx+(u[0]*su+w[0]*sw)*0.4, fy+(u[1]*su+w[1]*sw)*0.4, fz+(u[2]*su+w[2]*sw)*0.4];
+    pos.push(...C(1,1),...C(-1,-1), ...C(1,-1),...C(-1,1));      // 2本の対角線＝×
+  }
+  if(!pos.length) return null;
+  const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  return new THREE.LineSegments(g, material);
+}
+// full の axis：軸が貫く2面（軸に直交する上下端の面）を薄い白でオーバーレイ（全 axis）
+function makeAxisFaces(entries, material){
+  const pos=[];
+  for(const {p,v} of entries){ const cx=p[0]+0.5, cy=p[1]+0.5, cz=p[2]+0.5;
+    const A=AXV[v.ax||'VERTICAL'];
+    let u,w;                                                     // A に直交する2軸
+    if(A[1]!==0){ u=[1,0,0]; w=[0,0,1]; }                       // y軸 → x,z 面
+    else if(A[0]!==0){ u=[0,0,1]; w=[0,1,0]; }                 // x軸 → z,y
+    else { u=[1,0,0]; w=[0,1,0]; }                              // z軸 → x,y
+    for(const s of [1,-1]){ const off=0.501*s;                  // ±A の2面
+      const fx=cx+A[0]*off, fy=cy+A[1]*off, fz=cz+A[2]*off;
+      const C=(su,sw)=>[fx+(u[0]*su+w[0]*sw)*0.5, fy+(u[1]*su+w[1]*sw)*0.5, fz+(u[2]*su+w[2]*sw)*0.5];
+      const a=C(1,1),b=C(-1,1),c=C(-1,-1),e=C(1,-1);
+      pos.push(...a,...b,...c, ...a,...c,...e);                  // 四角形=2三角形
+    }
+  }
+  if(!pos.length) return null;
+  const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  return new THREE.Mesh(g, material);
+}
+/* ---- form ラベル（トグル）: 聖典(form_dict)の form 名をそのままブロック上に重畳。FULLBLOCK は多数派なので省略 ---- */
+let labelMeshes=[];
+const labelOf   = (v)=>{ const f=formOf(v); return (f && f!=='FULLBLOCK') ? f : ''; };              // 2D：FULLBLOCK以外（slab/stairs/trapdoor も四角で見分け不可のため表示）
+const labelOf3D = (v)=>{ const f=formOf(v); return (f && !PRIMARY_SHAPES.includes(f)) ? f : ''; };   // 3D：others のみ（primary は形で区別できる）
+const _labelMat={};
+function labelMat(txt){
+  if(_labelMat[txt]) return _labelMat[txt];
+  const c=document.createElement('canvas'); c.width=224; c.height=64;
+  const g=c.getContext('2d'); let fs=40; const setF=()=>g.font='bold '+fs+'px ui-monospace,monospace';
+  setF(); while(g.measureText(txt).width>c.width-14 && fs>10){ fs-=2; setF(); }   // 長い form 名は自動縮小して収める
+  g.textAlign='center'; g.textBaseline='middle';
+  g.lineWidth=Math.max(4,fs*0.18); g.strokeStyle='rgba(0,0,0,0.85)'; g.strokeText(txt,c.width/2,34);
+  g.fillStyle='#ffe6a8'; g.fillText(txt,c.width/2,34);
+  const t=new THREE.CanvasTexture(c); t.minFilter=THREE.LinearFilter;
+  return _labelMat[txt]=new THREE.SpriteMaterial({map:t, depthTest:false, transparent:true});
+}
+function makeLabels(entries){
+  const arr=[];
+  for(const {p,v} of entries){ const txt=labelOf3D(v); if(!txt) continue;   // 3Dは others のみ（primary は形で区別）
+    const spr=new THREE.Sprite(labelMat(txt)); spr.position.set(p[0]+0.5, p[1]+1.02, p[2]+0.5);
+    spr.scale.set(1.1,0.31,1); arr.push(spr); }
+  return arr;
+}
+const _axLabMat={};
+function axLabMat(txt,col){   // 原点の軸ラベル用（色付き）
+  const key=txt+col; if(_axLabMat[key]) return _axLabMat[key];
+  const c=document.createElement('canvas'); c.width=64; c.height=64;
+  const g=c.getContext('2d'); g.font='bold 46px ui-monospace,monospace'; g.textAlign='center'; g.textBaseline='middle';
+  g.lineWidth=8; g.strokeStyle='rgba(0,0,0,0.9)'; g.strokeText(txt,32,34);
+  g.fillStyle=col; g.fillText(txt,32,34);
+  const t=new THREE.CanvasTexture(c); t.minFilter=THREE.LinearFilter;
+  return _axLabMat[key]=new THREE.SpriteMaterial({map:t, depthTest:false, transparent:true});
+}
+function makeOriginAxisLabels(){   // 原点(0,0,0)=手前下左 の各軸端にラベル。色は原点バーと対応
+  const ox=S.dims.x, arr=[];
+  const mk=(txt,col,x,y,z)=>{ const s=new THREE.Sprite(axLabMat(txt,col)); s.position.set(x,y,z); s.scale.set(0.5,0.5,1); arr.push(s); };
+  mk('W','#ff5a5a', ox-1.35, 0, 0);   // +W＝内部 -x
+  mk('H','#5ad07a', ox, 1.35, 0);     // +H＝上
+  mk('D','#5a86ff', ox, 0, 1.35);     // +D＝奥
+  return arr;
+}
+function syncVox(){
+  editMeshes.forEach(m=>scene.remove(m)); ghostMeshes.forEach(m=>scene.remove(m));
+  outlineMeshes.forEach(m=>{ scene.remove(m); m.geometry.dispose(); });
+  labelMeshes.forEach(m=>scene.remove(m));
+  editMeshes=[]; ghostMeshes=[]; outlineMeshes=[]; labelMeshes=[];
+  const hl=S.hlForm, hlForm=hl?formOf({s:S.shape,ot:S.other}):null;   // 選択 form を強調・他を減光
+  const below={}, above={}, belowDim={}, aboveDim={}, belowCells=[], aboveCells=[], belowTrap=[], aboveTrap=[], belowFull=[], aboveFull=[], labelSet=[];
+  S.vox.forEach((val,k)=>{ const v=norm(val), p=k.split(',').map(Number), gk=geoKey(v), up=p[1]>S.layer;
+    labelSet.push({p,v});   // ラベルは作業面の上下に関わらず全ブロック対象
+    const match = !hl || formOf(v)===hlForm;
+    if(!match){ (up?aboveDim:belowDim)[gk] ??= []; (up?aboveDim:belowDim)[gk].push({p,v}); return; }   // 非該当は減光メッシュのみ（枠/詳細なし）
+    const solid = hl || !up;   // 強調中は該当を層に関わらず常にソリッド／通常は作業面下のみ
+    (solid?below:above)[gk] ??= []; (solid?below:above)[gk].push({p,v});
+    (solid?belowCells:aboveCells).push(p);
+    if(v.s==='trapdoor') (solid?belowTrap:aboveTrap).push({p,v});
+    if(v.s==='fullblock') (solid?belowFull:aboveFull).push({p,v}); });
+  if(S.labels){ makeLabels(labelSet).forEach(s=>{ scene.add(s); labelMeshes.push(s); });
+    makeOriginAxisLabels().forEach(s=>{ scene.add(s); labelMeshes.push(s); }); }
+  for(const gk in below){ const im=makeInstShape(below[gk],geoFor(gk,below[gk][0].v),mat); scene.add(im); editMeshes.push(im); }
+  for(const gk in above){ const im=makeInstShape(above[gk],geoFor(gk,above[gk][0].v),ghostMat); scene.add(im); ghostMeshes.push(im); }
+  for(const gk in belowDim){ const im=makeInstShape(belowDim[gk],geoFor(gk,belowDim[gk][0].v),dimMat); scene.add(im); ghostMeshes.push(im); }
+  for(const gk in aboveDim){ const im=makeInstShape(aboveDim[gk],geoFor(gk,aboveDim[gk][0].v),ghostDimMat); scene.add(im); ghostMeshes.push(im); }
+  if(S.mode==='info' && S.inspect && S.vox.has(S.inspect)){ const ip=S.inspect.split(',').map(Number);   // 選択モード：起点ブロックを強調枠
+    const o=makeOutline([ip],inspectMat); scene.add(o); outlineMeshes.push(o); }
+  if(S.mode==='info' && S.sel && S.sel.plane==='WD'){   // 選択範囲（作業面 WD 上）
+    const a=S.sel.a,b=S.sel.b,L=S.sel.layer,cs=[];
+    for(let h=Math.min(a.h,b.h);h<=Math.max(a.h,b.h);h++) for(let v=Math.min(a.v,b.v);v<=Math.max(a.v,b.v);v++) cs.push([h,L,v]);
+    if(cs.length){ const o=makeOutline(cs,inspectMat); scene.add(o); outlineMeshes.push(o); } }
+  if(S.cellClip && S.cellClip.srcPlane==='WD'){   // 切取/コピー元
+    const r=S.cellClip.rect,L=S.cellClip.srcLayer,cs=[];
+    for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++) cs.push([h,L,v]);
+    const o=makeOutline(cs,clipSrcMat); scene.add(o); outlineMeshes.push(o); }
+  if(S.cellClip && S.mode==='info' && S.sel && S.sel.plane==='WD'){   // 貼り付け先プレビュー
+    const a=S.sel.a,L=S.sel.layer,cc=S.cellClip,cs=[];
+    for(let i=0;i<cc.w;i++) for(let j=0;j<cc.h;j++) cs.push([a.h+i,L,a.v+j]);
+    const o=makeOutline(cs,clipDstMat); scene.add(o); outlineMeshes.push(o); }
+  if(belowCells.length){ const o=makeOutline(belowCells,outlineMat); scene.add(o); outlineMeshes.push(o); }
+  if(aboveCells.length){ const o=makeOutline(aboveCells,outlineGhostMat); scene.add(o); outlineMeshes.push(o); }
+  if(belowTrap.length){ const h=makeHingeRods(belowTrap,mat); scene.add(h); editMeshes.push(h); }
+  if(aboveTrap.length){ const h=makeHingeRods(aboveTrap,ghostMat); scene.add(h); ghostMeshes.push(h); }
+  if(belowFull.length){ const o=makeOrient(belowFull,orientMat); if(o){ scene.add(o); outlineMeshes.push(o); }
+    const af=makeAxisFaces(belowFull,axisFaceMat); if(af){ scene.add(af); outlineMeshes.push(af); } }
+  if(aboveFull.length){ const o=makeOrient(aboveFull,orientGhostMat); if(o){ scene.add(o); outlineMeshes.push(o); }
+    const af=makeAxisFaces(aboveFull,axisFaceGhostMat); if(af){ scene.add(af); outlineMeshes.push(af); } }
+  dirty=true;
+}
+/* ---- ドラッグ矩形（dw平面に複数配置）---- */
+function clearPreview(){ if(preview){ scene.remove(preview); preview=null; dirty=true; } }
+function showPreview(a,b,mode){
+  clearPreview();
+  const y=S.layer, cells=[];
+  let x0,x1,z0,z1;
+  if(mode==='select' && S.cellClip){ const cc=S.cellClip; x0=b.x;x1=b.x+cc.w-1;z0=b.z;z1=b.z+cc.h-1; }   // クリップ中は配置位置(クリップサイズ)を追従
+  else { x0=Math.min(a.x,b.x);x1=Math.max(a.x,b.x);z0=Math.min(a.z,b.z);z1=Math.max(a.z,b.z); }
+  for(let x=x0;x<=x1;x++)for(let z=z0;z<=z1;z++){ if(inB(x,y,z)) cells.push([x,y,z]); }
+  preview=makeInst(cells, mode==='break'?previewBreakMat:previewMat); scene.add(preview); dirty=true;
+}
+function applyRect(a,b,mode){
+  const y=S.layer, v=cur(), vs=sig(v);
+  const x0=Math.min(a.x,b.x),x1=Math.max(a.x,b.x),z0=Math.min(a.z,b.z),z1=Math.max(a.z,b.z);
+  pushHist(); let ch=false;
+  for(let x=x0;x<=x1;x++)for(let z=z0;z<=z1;z++){
+    if(!inB(x,y,z)) continue; const k=K(x,y,z);
+    if(mode==='break'){ if(S.vox.has(k)){ S.vox.delete(k); ch=true; } }
+    else { if(sig(S.vox.get(k))!==vs){ S.vox.set(k,v); ch=true; } }
+  }
+  if(ch) changed(); else S.hist.pop();
+}
+
+/* ---------- gestures ---------- */
+function bindGestures(el){
+  const pts=new Map(); let tap=null, pinch=0, mid=null, drag=null, lastUp=null, pendingPlace=null;
+  const dist=()=>{ const [a,b]=[...pts.values()]; return Math.hypot(a.x-b.x,a.y-b.y); };
+  const midp=()=>{ const [a,b]=[...pts.values()]; return {x:(a.x+b.x)/2,y:(a.y+b.y)/2}; };
+  const ray=new THREE.Raycaster(), ndc=new THREE.Vector2();
+  function panBy(dx,dy){ const f=sph.r*0.0022;
+    const right=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0);
+    const upv=new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);
+    target.addScaledVector(right,-dx*f).addScaledVector(upv,dy*f); updateCam(); }
+
+  function planeCell(cx,cy){          // 作業面（緑）のセル {x,z} or null
+    const r=el.getBoundingClientRect();
+    ndc.set(((cx-r.left)/r.width)*2-1, -((cy-r.top)/r.height)*2+1);
+    ray.setFromCamera(ndc,camera);
+    const hit = planeObj ? ray.intersectObject(planeObj,false)[0] : null;
+    if(!hit) return null;
+    const x=Math.floor(hit.point.x), z=Math.floor(hit.point.z);
+    if(x<0||z<0||x>=S.dims.x||z>=S.dims.z) return null;
+    return {x,z};
+  }
+
+  el.addEventListener('pointerdown',e=>{
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY,btn:e.button,type:e.pointerType});
+    if(pts.size===1){
+      const now=Date.now();
+      const isDbl = lastUp && now-lastUp.t<130 && Math.hypot(e.clientX-lastUp.x,e.clientY-lastUp.y)<22;
+      if(S.mode==='info' && S.cellClip && isDbl){ cancelCellClip(); tap=null; drag=null; }   // クリップ中ダブルタップ=取消
+      else {
+      const gmode = (S.mode==='info') ? 'select' : (isDbl ? 'break' : S.mode);   // 選択モードは範囲選択
+      tap={id:e.pointerId,x:e.clientX,y:e.clientY,t:now,mode:gmode,dbl:!!isDbl};
+      drag=null;
+      // 編集/選択ドラッグ開始（マウスは左のみ／タッチは1本指）。作業面上で始めたら矩形/範囲。
+      if(!(e.pointerType==='mouse' && e.button!==0)){
+        const c=planeCell(e.clientX,e.clientY);
+        if(c) drag={mode:gmode,a:c,b:c};           // ダブル時は削除範囲・選択時は選択範囲
+      }
+      if(isDbl){ clearTimeout(pendingPlace); pendingPlace=null; lastUp=null; }  // 1回目の配置を取消
+      }
+    } else { tap=null; drag=null; clearPreview();
+      if(pts.size===2){ pinch=dist(); mid=midp(); } }
+  });
+  el.addEventListener('contextmenu',e=>e.preventDefault());
+  addEventListener('pointermove',e=>{
+    const p=pts.get(e.pointerId); if(!p) return;
+    const dx=e.clientX-p.x, dy=e.clientY-p.y; p.x=e.clientX; p.y=e.clientY;
+    if(pts.size===1){
+      if(tap && Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>8) tap=null;
+      if(drag){                       // 矩形編集ドラッグ（半透明プレビュー・削除は赤）
+        const c=planeCell(e.clientX,e.clientY); if(c){ drag.b=c; showPreview(drag.a,drag.b,drag.mode); }
+        return;
+      }
+      if(p.type==='mouse'){           // マウス：左(空間)=回転 / 右=パン
+        if(p.btn===0){ sph.theta-=dx*0.008; sph.phi=clamp(sph.phi-dy*0.008,0.06,Math.PI*0.495); updateCam(); }
+        else panBy(dx,dy);
+      } else panBy(dx,dy);            // タッチ1本指・作業面外＝移動(パン)
+    } else if(pts.size===2){          // 2本指＝拡大＋回転（パンは1本指へ）
+      const d=dist(); if(pinch) sph.r=clamp(sph.r*(pinch/d),3,400); pinch=d;
+      const m=midp();
+      if(mid){ sph.theta-=(m.x-mid.x)*0.008; sph.phi=clamp(sph.phi-(m.y-mid.y)*0.008,0.06,Math.PI*0.495); }
+      mid=m; updateCam();
+    }
+  });
+  function set3DSel(a,b){   // a,b:{x,z}作業面上 → S.sel(WD基準)。情報は起点セルのみ
+    S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:S.layer, plane:'WD'};
+    const k=K(a.x,S.layer,a.z), val=S.vox.get(k);
+    if(val) showInfo(norm(val)); else $('#inspect').classList.remove('on');
+    S.inspect = val ? k : null; syncVox(); }
+  const up=e=>{
+    const was=pts.get(e.pointerId); pts.delete(e.pointerId);
+    if(pts.size<2){ pinch=0; mid=null; }
+    if(tap && tap.id===e.pointerId && was && Date.now()-tap.t<600){
+      const x=was.x, y=was.y;
+      if(tap.mode==='break'){
+        doTap(x,y,'break'); lastUp=null;    // 削除は即時（ダブル/壊すモード）
+      } else if(tap.mode==='select'){
+        const c=planeCell(x,y); if(c){ if(S.cellClip) set3DSel(c,c); else set3DSel(c,c); } else { S.sel=null; $('#inspect').classList.remove('on'); S.inspect=null; syncVox(); } lastUp={x,y,t:Date.now()};   // 単セル選択/配置位置。lastUp=ダブルタップ取消用
+      } else {                              // 置く単発はダブル判定のため遅延（ダブルなら次のdownで取消）
+        lastUp={x,y,t:Date.now()};
+        clearTimeout(pendingPlace);
+        pendingPlace=setTimeout(()=>{ doTap(x,y,'place'); pendingPlace=null; }, 130);
+      }
+    } else if(drag){
+      clearTimeout(pendingPlace); pendingPlace=null;
+      if(drag.mode==='select'){ if(S.cellClip) set3DSel(drag.b,drag.b); else set3DSel(drag.a,drag.b); lastUp=was?{x:was.x,y:was.y,t:Date.now()}:null; }   // クリップ中は配置位置・そうでなければ範囲選択
+      else { if(drag.a.x!==drag.b.x || drag.a.z!==drag.b.z) applyRect(drag.a,drag.b,drag.mode); lastUp=null; }   // 1ブロックのみはキャンセル
+    }
+    clearPreview();
+    if(pts.size===0){ tap=null; drag=null; }
+  };
+  addEventListener('pointerup',up); addEventListener('pointercancel',up);
+  el.addEventListener('wheel',e=>{ e.preventDefault();
+    sph.r=clamp(sph.r*(1+Math.sign(e.deltaY)*0.12),3,400); updateCam(); },{passive:false});
+
+  function doTap(cx,cy,mode){
+    mode = mode || S.mode;
+    const r=el.getBoundingClientRect();
+    ndc.set(((cx-r.left)/r.width)*2-1, -((cy-r.top)/r.height)*2+1);
+    ray.setFromCamera(ndc,camera);
+    const targets=editMeshes.filter(m=>m.count).slice(); if(planeObj) targets.push(planeObj);
+    const hit=ray.intersectObjects(targets,false)[0]; if(!hit) return;
+    if(hit.object!==planeObj){
+      const im=hit.object, o=im.userData.items[hit.instanceId]; if(!o) return; const p=o.p;
+      if(mode==='break') remove(p[0],p[1],p[2]);
+      else if(mode==='info'){ showInfo(o.v); S.inspect=K(p[0],p[1],p[2]); syncVox(); }   // 選択中ブロックを強調
+      else { const m4=new THREE.Matrix4(); im.getMatrixAt(hit.instanceId,m4);
+        const nm=new THREE.Matrix3().getNormalMatrix(m4);
+        const n=hit.face.normal.clone().applyMatrix3(nm).normalize();
+        place(p[0]+Math.round(n.x),p[1]+Math.round(n.y),p[2]+Math.round(n.z)); }
+    } else {                                   // 作業面
+      const x=Math.floor(hit.point.x), z=Math.floor(hit.point.z);
+      if(mode==='break') remove(x,S.layer,z);  // 平面セルの削除（ダブルタップ削除）
+      else if(mode!=='info') place(x,S.layer,z);   // 情報モードは空セルタップで置かない
+    }
+  }
+}
+
+/* ---------- plan view ---------- */
+// 3面：WD(上面 横W×縦D 層H) / WH(正面 横W×縦H 層D) / DH(側面 横D×縦H 層W)。色 W=赤 D=青 H=緑。
+const PLANES = {
+  WD:{h:'x',v:'z',l:'y',llab:'H',hcol:'#ff8a8a',vcol:'#8aa8ff'},
+  WH:{h:'x',v:'y',l:'z',llab:'D',hcol:'#ff8a8a',vcol:'#7ad79a'},
+  DH:{h:'z',v:'y',l:'x',llab:'W',hcol:'#8aa8ff',vcol:'#7ad79a'},
+};
+const AXI = {x:0,y:1,z:2};
+const AXLAB = {x:'W',y:'H',z:'D'};   // 内部軸→表示ラベル
+const curLayer = ()=>{ const l=PLANES[S.plane].l; return l==='y'?S.layer:(S.lay[l]||0); };
+function planeKeyAt(h,v,layer){ const P=PLANES[S.plane], c={}; c[P.h]=h; c[P.v]=v; c[P.l]=layer; return K(c.x,c.y,c.z); }
+function planeKeyP(plane,h,v,layer){ const P=PLANES[plane], c={}; c[P.h]=h; c[P.v]=v; c[P.l]=layer; return K(c.x,c.y,c.z); }   // 面指定版（3D=WD / 2D=S.plane 両対応）
+const planeKey = (h,v)=> planeKeyAt(h,v,curLayer());
+function setPlanLayer(v){ const P=PLANES[S.plane], n=S.dims[P.l]; v=clamp(v,0,n-1);
+  if(P.l==='y') setLayer(v);                        // H は立体の作業面と共有
+  else { S.lay[P.l]=v; renderGrid(); renderSpine(); } }
+function layerCounts(){ const P=PLANES[S.plane], n=S.dims[P.l], c=new Array(n).fill(0), idx=AXI[P.l];
+  S.vox.forEach((val,k)=>{ const a=+k.split(',')[idx]; if(a<n) c[a]++; }); return c; }   // 現平面の層軸ごとの数
+function setPlane(p){ S.plane=p; S.manualZoom=false;
+  ['WD','WH','DH'].forEach(n=>{ const b=$('#pt-'+n); if(b) b.setAttribute('aria-selected', n===p); });
+  renderGrid(); renderSpine(); }
+function counts(){   // ※ H(y) 基準（buildJson の layers 用）。スパインは layerCounts を使う。
+  const c=new Array(S.dims.y).fill(0);
+  S.vox.forEach((role,k)=>{ const y=+k.split(',')[1]; if(y<S.dims.y) c[y]++; });
+  return c;
+}
+function renderSpine(){
+  const P=PLANES[S.plane], n=S.dims[P.l], layer=curLayer();
+  const c=layerCounts(), mx=Math.max(1,...c), sp=$('#spine'); sp.innerHTML='';
+  for(let i=0;i<n;i++){
+    const d=document.createElement('div');
+    d.className='seg'; d.dataset.cur = i===layer?1:0;
+    d.dataset.clip = (S.clipMode && S.clip && S.clipPlane===S.plane && i===S.clipLayer) ? S.clipMode : '';   // 切取/コピー元の層
+    const f=document.createElement('span'); f.className='f';
+    f.style.opacity = c[i] ? (0.18+0.72*(c[i]/mx)) : 0;
+    d.appendChild(f);
+    if(i%4===0||i===layer){ const nn=document.createElement('span'); nn.className='n'; nn.textContent=i; d.appendChild(nn); }
+    sp.appendChild(d);
+  }
+  $('#cnt').textContent = 'この層 '+(c[layer]||0)+' · 合計 '+S.vox.size;
+  const y=$('#y2'); if(y) y.textContent = P.llab+String(layer).padStart(2,'0');
+  const ym=$('#ymax'); if(ym) ym.textContent = '/ '+(n-1);
+}
+function fitCells(){
+  const w=$('#gridwrap').clientWidth-14;
+  S.cell = clamp(Math.floor(w/S.dims[PLANES[S.plane].h]),6,34);
+}
+function renderGrid(){
+  if(!S.manualZoom) fitCells();
+  const P=PLANES[S.plane], g=$('#grid'), f=document.createDocumentFragment();
+  const dimH=S.dims[P.h], dimV=S.dims[P.v], layer=curLayer();
+  const nr=(a,b)=>({x0:Math.min(a.h,b.h),x1:Math.max(a.h,b.h),z0:Math.min(a.v,b.v),z1:Math.max(a.v,b.v)});
+  const selR=(S.mode==='info'&&S.sel&&S.sel.plane===S.plane&&S.sel.layer===layer)?nr(S.sel.a,S.sel.b):null;   // 選択範囲
+  const cc=S.cellClip;
+  const srcR=(cc&&cc.srcPlane===S.plane&&cc.srcLayer===layer)?cc.rect:null;                                   // 切取/コピー元
+  const dstR=(cc&&S.mode==='info'&&S.sel&&S.sel.plane===S.plane&&S.sel.layer===layer)?{x0:S.sel.a.h,x1:S.sel.a.h+cc.w-1,z0:S.sel.a.v,z1:S.sel.a.v+cc.h-1}:null;  // 移動先
+  const inR=(R,h,v)=>R&&h>=R.x0&&h<=R.x1&&v>=R.z0&&v<=R.z1;
+  const hlF = S.hlForm ? formOf({s:S.shape,ot:S.other}) : null;   // 選択 form 以外を減光
+  g.style.gridTemplateColumns='repeat('+dimH+','+S.cell+'px)';
+  g.style.setProperty('--hcol',P.hcol); g.style.setProperty('--vcol',P.vcol);   // 原点マーカーの軸色
+  g.innerHTML='';
+  for(let vv=dimV-1;vv>=0;vv--) for(let hh=0;hh<dimH;hh++){   // 縦軸を逆順で並べ原点を下端に（立体と同じ向き）
+    const c=document.createElement('div');
+    c.className='cell'; c.dataset.x=hh; c.dataset.z=vv;       // x=横index h, z=縦index v
+    const key=planeKeyAt(hh,vv,layer), v=S.vox.get(key);
+    c.dataset.on = v?1:0;
+    if(v) c.style.background = roleHex(v.r);   // 役割色でセル表示
+    if(S.mode==='info' && S.inspect===key) c.dataset.inspect=1;   // 選択の起点セル（情報表示元）
+    if(inR(selR,hh,vv)) c.dataset.sel=1;                          // 選択範囲
+    if(inR(srcR,hh,vv)) c.dataset.clipsrc=cc.mode;                // 切取/コピー元
+    if(inR(dstR,hh,vv)) c.dataset.clipdst=1;                      // 貼り付け先プレビュー
+    if(S.labels && v && S.cell>=9){ const lab=labelOf(v); if(lab){ c.textContent=lab; c.style.fontSize=Math.max(6,Math.min(9,Math.floor(S.cell*0.5)))+'px'; } }   // 聖典 form 名（FULLBLOCK除外）
+    if(hlF && v && formOf(v)!==hlF) c.dataset.dim=1;   // 選択 form 以外を減光
+    c.dataset.below = (layer>0 && S.vox.has(planeKeyAt(hh,vv,layer-1)) && !v)?1:0;
+    c.dataset.cx=(hh+1)%4===0?1:0; c.dataset.cz=(vv+1)%4===0?1:0;
+    c.dataset.origin=(hh===0&&vv===0)?1:0;     // 原点(手前左)にしるし（左=縦軸色・下=横軸色）
+    if(hh===0&&vv===0&&S.labels){              // 原点マークの横に軸ラベル（縦=左上/横=右下）
+      const fs=Math.max(6,Math.min(10,Math.floor(S.cell*0.5)))+'px';
+      const mkax=(cls,txt,col)=>{ const s=document.createElement('span'); s.className='axlab '+cls; s.textContent=txt; s.style.color=col; s.style.fontSize=fs; c.appendChild(s); };
+      mkax('axlab-v', AXLAB[P.v], P.vcol); mkax('axlab-h', AXLAB[P.h], P.hcol);
+    }
+    c.style.width=c.style.height=S.cell+'px';
+    f.appendChild(c);
+  }
+  g.appendChild(f);
+  g.dataset.clip = (S.clipMode && S.clip && S.clipPlane===S.plane && layer===S.clipLayer) ? S.clipMode : '';   // 切取/コピー元を表示中なら枠
+}
+(function bindPlan(){   // 立体と同じ操作感：タップ=単発 / ドラッグ=矩形(プレビュー) / ダブルタップ(+ドラッグ)=削除(範囲) / 2本指=ズーム+パン
+  const wrap=$('#gridwrap');
+  const pts=new Map(); let tap=null, drag=null, pinch=0, mid=null, lastUp=null, pendingPlace=null;
+  const cellAt=(x,y)=>{ const el=document.elementFromPoint(x,y);
+    return (el&&el.dataset&&el.dataset.x!==undefined)?{x:+el.dataset.x,z:+el.dataset.z}:null; };
+  const dist=()=>{ const a=[...pts.values()]; return Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y); };
+  const midp=()=>{ const a=[...pts.values()]; return {x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2}; };
+  function preview(a,b,mode){   // 矩形プレビュー（セルに data-preview）。クリップ中の select は配置位置(クリップサイズ)を指先に追従
+    let x0,x1,z0,z1,kind;
+    if(mode==='select' && S.cellClip){ const cc=S.cellClip; x0=b.x; x1=b.x+cc.w-1; z0=b.z; z1=b.z+cc.h-1; kind='dst'; }
+    else { x0=Math.min(a.x,b.x); x1=Math.max(a.x,b.x); z0=Math.min(a.z,b.z); z1=Math.max(a.z,b.z); kind=mode==='break'?'break':mode==='select'?'select':'draw'; }
+    for(const c of $('#grid').children){ const h=+c.dataset.x, v=+c.dataset.z;
+      c.dataset.preview=(h>=x0&&h<=x1&&v>=z0&&v<=z1)?kind:''; } }
+  function selectRange(a,b){   // 範囲選択。情報は開始セル(a=ドラッグ開始)のみ表示
+    S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:curLayer(), plane:S.plane};
+    const k=planeKey(a.x,a.z), val=S.vox.get(k), pi=$('#pinspect');
+    if(val){ const f=formOf(val), parts=['form='+f,'slot='+val.r];
+      for(const {name} of shownProps(f)) if(val.props[name]!=null) parts.push(name+'='+val.props[name]);
+      pi.innerHTML=parts.join('<br>'); pi.classList.add('on'); S.inspect=k; }
+    else { pi.classList.remove('on'); S.inspect=null; }
+    renderGrid(); }
+  function setDest(c){ S.sel={a:{h:c.x,v:c.z}, b:{h:c.x,v:c.z}, layer:curLayer(), plane:S.plane}; renderGrid(); }   // クリップ中の貼付先アンカー
+  const clearPrev=()=>{ for(const c of $('#grid').children) c.dataset.preview=''; };
+  function rect(a,b,mode){   // 矩形を確定
+    const x0=Math.min(a.x,b.x),x1=Math.max(a.x,b.x),z0=Math.min(a.z,b.z),z1=Math.max(a.z,b.z);
+    pushHist(); const v=cur(), vs=sig(v); let ch=false;
+    for(let h=x0;h<=x1;h++) for(let vv=z0;vv<=z1;vv++){ const k=planeKey(h,vv);
+      if(mode==='break'){ if(S.vox.has(k)){ S.vox.delete(k); ch=true; } }
+      else { if(sig(S.vox.get(k))!==vs){ S.vox.set(k,v); ch=true; } } }
+    if(ch) changed(); else S.hist.pop(); renderGrid(); renderSpine(); }
+  function single(c,mode){   // 単発（tap）
+    const k=planeKey(c.x,c.z);
+    if(mode==='break'){ if(S.vox.has(k)){ pushHist(); S.vox.delete(k); changed(); renderGrid(); renderSpine(); } }
+    else if(mode==='info'){ const val=S.vox.get(k), pi=$('#pinspect');
+      if(val){ const f=formOf(val), parts=['form='+f,'slot='+val.r];
+        for(const {name} of shownProps(f)) if(val.props[name]!=null) parts.push(name+'='+val.props[name]);
+        pi.innerHTML=parts.join('<br>'); pi.classList.add('on'); S.inspect=k; }
+      else { pi.classList.remove('on'); S.inspect=null; }
+      renderGrid(); }   // 選択セルを強調
+    else { const v=cur(); if(sig(S.vox.get(k))!==sig(v)){ pushHist(); S.vox.set(k,v); changed(); renderGrid(); renderSpine(); } } }
+  document.addEventListener('pointerdown',e=>{
+    if(S.view!=='plan' || !wrap.contains(e.target)) return;
+    if(e.target.releasePointerCapture){ try{ e.target.releasePointerCapture(e.pointerId); }catch(_){} }  // 再描画でセルが消えても move/up が届くように
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===1){
+      const now=Date.now();
+      const isDbl = lastUp && now-lastUp.t<300 && Math.hypot(e.clientX-lastUp.x,e.clientY-lastUp.y)<22;
+      const c=cellAt(e.clientX,e.clientY);
+      if(S.mode==='info' && S.cellClip && isDbl){ cancelCellClip(); lastUp=null; tap=null; drag=null; e.preventDefault(); }   // クリップ中ダブルタップ=取消
+      else {
+        const gmode = (S.mode==='info')?'select':(isDbl?'break':S.mode);
+        tap  = c ? {x:e.clientX,y:e.clientY,cell:c,mode:gmode,t:now} : null;
+        drag = c ? {mode:gmode,a:c,b:c} : null;   // select も範囲ドラッグ可
+        if(isDbl){ clearTimeout(pendingPlace); pendingPlace=null; lastUp=null; }   // 1回目の配置を取消
+        e.preventDefault();
+      }
+    } else { tap=null; drag=null; clearPrev(); if(pts.size===2){ pinch=dist(); mid=midp(); } }
+  });
+  addEventListener('pointermove',e=>{
+    const p=pts.get(e.pointerId); if(!p) return; p.x=e.clientX; p.y=e.clientY;
+    if(pts.size===1){
+      if(tap && Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>8) tap=null;
+      if(drag){ e.preventDefault(); const c=cellAt(e.clientX,e.clientY); if(c){ drag.b=c; preview(drag.a,drag.b,drag.mode); } }
+    } else if(pts.size===2){
+      const d=dist(); if(pinch){ const ns=clamp(Math.round(S.cell*(d/pinch)),6,40); if(ns!==S.cell){ S.cell=ns; S.manualZoom=true; renderGrid(); } } pinch=d;
+      const m=midp(); if(mid){ wrap.scrollLeft-=(m.x-mid.x); wrap.scrollTop-=(m.y-mid.y); } mid=m;
+    }
+  });
+  const up=e=>{ const was=pts.get(e.pointerId); pts.delete(e.pointerId);
+    if(pts.size<2){ pinch=0; mid=null; }
+    if(tap && was && Date.now()-tap.t<600){
+      const c=tap.cell, mode=tap.mode;
+      if(mode==='break'){ single(c,'break'); lastUp=null; }
+      else if(mode==='select'){ if(S.cellClip) setDest(c); else selectRange(c,c); lastUp={x:tap.x,y:tap.y,t:Date.now()}; }   // クリップ中は配置位置・そうでなければ選択。lastUp記録(ダブルタップ取消用)
+      else { lastUp={x:tap.x,y:tap.y,t:Date.now()}; clearTimeout(pendingPlace);   // 置く単発はダブル判定のため遅延
+        pendingPlace=setTimeout(()=>{ single(c,'place'); pendingPlace=null; },130); }
+    } else if(drag && (drag.a.x!==drag.b.x||drag.a.z!==drag.b.z)){   // 1セルのみの範囲はキャンセル
+      clearTimeout(pendingPlace); pendingPlace=null;
+      if(drag.mode==='select'){ if(S.cellClip) setDest(drag.b); else selectRange(drag.a,drag.b); lastUp=was?{x:was.x,y:was.y,t:Date.now()}:null; }
+      else { rect(drag.a,drag.b,drag.mode); lastUp=null; }
+    }
+    clearPrev();
+    if(pts.size===0){ tap=null; drag=null; } };
+  addEventListener('pointerup',up); addEventListener('pointercancel',up);
+
+  let scrub=false;
+  $('#spine').addEventListener('pointerdown',e=>{ scrub=true; scrubTo(e.clientY); e.preventDefault(); });
+  addEventListener('pointermove',e=>{ if(scrub) scrubTo(e.clientY); });
+  addEventListener('pointerup',()=>scrub=false);
+  function scrubTo(cy){ const P=PLANES[S.plane], n=S.dims[P.l], r=$('#spine').getBoundingClientRect();
+    setPlanLayer(Math.floor((1-(cy-r.top)/r.height)*n)); }
+})();
+
+/* ---------- json ---------- */
+function blockRecs(fieldFn){   // S.vox を structure レコード(1行文字列)配列へ。fieldFn(slot)=slot/mat 等のフィールドを付与
+  const W=S.dims.x;
+  const arr=[...S.vox.entries()].map(([k,v])=>({p:k.split(',').map(Number),v:norm(v)}))
+    .sort((a,b)=>a.p[2]-b.p[2]||a.p[1]-b.p[1]||b.p[0]-a.p[0]); // d(z) → h(y) → 出力W昇順(=x降順)
+  return arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:mirW(p[0],W)}};
+    const form=formOf({s:v.s,ot:v.ot}); rec.form=form;                 // form 先（dict と統一・2026-08-15）
+    Object.assign(rec, fieldFn(v.r));                                  // slot（place）または mat（structure）
+    for(const {name} of shownProps(form)){ let val=v.props[name];      // 汎用: 出すプロパティを素直に書く
+      if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val);
+      else if(name==='east') val=v.props['west']; else if(name==='west') val=v.props['east'];   // W反転で東西入替
+      rec[name]=val; }
+    if(isMultiHalf(form)){ rec.half='lower';                           // upper/lower の form（ドア等）は2レコードに展開
+      const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},form:form}; Object.assign(up, fieldFn(v.r)); up.half='upper';
+      if(rec.facing) up.facing=rec.facing; if(rec.hinge) up.hinge=rec.hinge;
+      return '  '+JSON.stringify(rec)+',\n  '+JSON.stringify(up); }
+    return '  '+JSON.stringify(rec); });
+}
+function structJson(name, recs){ const d=S.dims;   // structure(size=[D,H,W]) の外枠
+  return '{\n "name": '+JSON.stringify(name)+',\n "size": ['+d.z+', '+d.y+', '+d.x+'],\n'
+    +' "blocks": [\n'+recs.join(',\n')+(recs.length?'\n':'')+' ]\n}';
+}
+function buildJson(mode){
+  mode = mode || S.jsonMode;
+  const d=S.dims, name=$('#name').value;
+  if(mode==='blocks') return structJson(name, blockRecs(slot=>({slot})));   // slot（palette 側で mat 解決）
+  const c=counts(), layers={};
+  for(let y=0;y<d.y;y++){
+    if(!c[y]) continue;
+    const rows=[];
+    for(let z=0;z<d.z;z++){ let r='';
+      for(let x=d.x-1;x>=0;x--) r += S.vox.has(K(x,y,z))?'#':'.'; // W ミラー（x を降順で並べる）
+      rows.push(r); }
+    layers[y]=rows;
+  }
+  return JSON.stringify({name,size:[d.z,d.y,d.x],format:'layers',layers},null,1);
+}
+function renderJson(){
+  $('#json').value = buildJson();
+}
+
+/* ---------- view switching ---------- */
+function setView(v){
+  S.view=v;
+  ['space','plan','json'].forEach(n=>{
+    $('#v-'+n).classList.toggle('hidden', n!==v);
+    $('#t-'+n).setAttribute('aria-selected', n===v);
+  });
+  if(v==='plan'){ renderGrid(); renderSpine(); }
+  if(v==='json') renderJson();
+  if(v==='space') dirty=true;
+}
+
+/* ---------- wiring ---------- */
+['space','plan','json'].forEach(n=>$('#t-'+n).onclick=()=>setView(n));
+$('#modal').onclick=e=>{ if(e.target.id==='modal') closeModal(); };   // 背景タップで閉じる
+$('#matmodal').onclick=e=>{ if(e.target.id==='matmodal') closeMatPicker(); };
+
+$('#name').oninput = save;
+['dx','dy','dz'].forEach(id=>$('#'+id).onchange=e=>{
+  const nd={...S.dims};
+  nd[id[1]] = clamp(parseInt(e.target.value,10)||1,1,64);
+  e.target.value = nd[id[1]];
+  setDims(nd);
+});
+
+$('#plane').oninput = e=>setLayer(+e.target.value);
+$('#b-up').onclick = ()=>setLayer(S.layer+1);
+$('#b-down').onclick = ()=>setLayer(S.layer-1);
+$('#b-fit').onclick = frameCamera;
+function setLabels(v){ S.labels=v;   // 3D/2D 共通のラベル表示
+  ['#b-label','#pl-label'].forEach(id=>{ const b=$(id); if(b) b.setAttribute('aria-pressed', v); });
+  syncVox(); if(S.view==='plan') renderGrid(); }
+$('#b-label').onclick = ()=>setLabels(!S.labels);
+$('#pl-label').onclick = ()=>setLabels(!S.labels);
+function setHl(v){ S.hlForm=v;   // 選択中 form を強調・他を減光（3D/2D 共通）
+  ['#b-hl','#pl-hl'].forEach(id=>{ const b=$(id); if(b) b.setAttribute('aria-pressed', v); });
+  syncVox(); if(S.view==='plan') renderGrid(); }
+$('#b-hl').onclick = ()=>setHl(!S.hlForm);
+$('#pl-hl').onclick = ()=>setHl(!S.hlForm);
+$('#b-undo').onclick = undo;
+$('#b-redo').onclick = redo;
+$('#b-clear').onclick = ()=>{ pushHist(); S.vox=new Map(); changed(); renderGrid(); renderSpine(); };
+$('#b-place').onclick = ()=>setMode('place');
+$('#b-break').onclick = ()=>setMode('break');
+$('#b-info').onclick = ()=>setMode('info');   // モードボタン（置く/壊す/情報）
+$('#b-help').onclick = ()=> $('#hmodal').classList.add('on');
+$('#hmodal').onclick = e=>{ if(e.target.id==='hmodal') $('#hmodal').classList.remove('on'); };
+function setMode(m){ S.mode=m;   // 立体・平面 共通のモード（置く/壊す/情報）
+  ['place','break','info'].forEach(n=>{ const a=$('#b-'+n), b=$('#pm-'+n);
+    if(a) a.setAttribute('aria-pressed', n===m); if(b) b.setAttribute('aria-pressed', n===m); });
+  const hm=$('#hud-mode'); if(hm) hm.textContent = m==='break'?'壊す':(m==='info'?'情報モード':'置く');
+  document.querySelectorAll('.cellclip-bar').forEach(b=>b.classList.toggle('hidden', m!=='info'));   // 選択モードのみコピー/切取/貼付
+  if(m!=='info'){ $('#inspect').classList.remove('on'); const pi=$('#pinspect'); if(pi) pi.classList.remove('on');
+    const had=S.inspect||S.sel||S.cellClip; S.inspect=null; S.sel=null; S.cellClip=null; updateCellClipUI();
+    if(had){ syncVox(); if(S.view==='plan') renderGrid(); } } }
+$('#pm-place').onclick=()=>setMode('place');
+$('#pm-break').onclick=()=>setMode('break');
+$('#pm-info').onclick=()=>setMode('info');
+function showInfo(v){   // 案1: タップしたブロックの form/mat/向き を表示
+  const form=formOf(v), parts=['form='+form];
+  parts.push('slot='+v.r);
+  for(const {name} of shownProps(form)) if(v.props[name]!=null) parts.push(name+'='+v.props[name]);
+  $('#inspect').innerHTML=parts.join('<br>'); $('#inspect').classList.add('on'); }   // 項目毎に改行（右下詰め）
+
+$('#pl-undo').onclick=undo; $('#pl-redo').onclick=redo;   // 盤内の 元に戻す/進む
+
+function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他）／ 方向系（行2・種類に適したもののみ）
+  const isOther = (S.shape==='others');
+  const form    = formOf({s:S.shape, ot:S.other});
+  [['form-space','dir-space'],['form-plan','dir-plan']].forEach(([fid,did])=>{
+    const fel=$('#'+fid), del=$('#'+did); if(!fel||!del) return;
+    fel.innerHTML=''; del.innerHTML='';
+    const mkform=(label,pressed,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.innerHTML=label;
+      b.setAttribute('aria-pressed', pressed); b.onclick=onclick; fel.appendChild(b); };
+    SHAPES.forEach(s=>mkform(SHAPE_FORM[s], S.shape===s, ()=>{ S.shape=s; save(); renderShapeBar(); }));  // 聖典 form（大文字）で表示
+    mkform(isOther?('others<br><small>'+S.other+'</small>'):'others', isOther,
+      ()=>{ S.shape='others'; openModal(); save(); renderShapeBar(); });   // クリックでモーダル→種類選択
+    const mk=(label,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=label; b.onclick=onclick; del.appendChild(b); };
+    for(const {name,values} of shownProps(form)){          // 汎用: form_dict の値を巡回する1ループ
+      if(!values.includes(S.props[name])) S.props[name]=values[0];
+      mk(name+':'+S.props[name], ()=>{ const i=values.indexOf(S.props[name]); S.props[name]=values[(i+1)%values.length]; save(); renderShapeBar(); });
+    }
+  });
+  renderRoles();   // 材質なし種類では役割バーを隠す
+  if(S.hlForm){ syncVox(); if(S.view==='plan') renderGrid(); }   // 強調中は form 切替で対象を更新
+}
+function openModal(){ const g=$('#modal-grid'); if(!g) return; g.innerHTML='';
+  FORM_LIST.filter(f=>!PRIMARY_SHAPES.includes(f)).forEach(f=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=f;
+    b.setAttribute('aria-pressed', S.shape==='others'&&S.other===f);
+    b.onclick=()=>{ S.other=f; S.shape='others'; closeModal(); save(); renderShapeBar(); }; g.appendChild(b); });
+  $('#modal').classList.add('on');
+}
+function closeModal(){ $('#modal').classList.remove('on'); }
+const defaultRoleCount = (form)=> PRIMARY_SHAPES.includes(form)?2:1;   // 既定 others=1 / 主要形=2
+function roleCountFor(form){ return S.roleCount[form] || defaultRoleCount(form); }
+function usedRoleMax(form){ let mx=0; S.vox.forEach(v=>{ const r=norm(v).r; if(roleForm(r)===form){ const num=parseInt(String(r).split('_').pop(),10)||0; if(num>mx) mx=num; } }); return mx; }  // その form で使用中の最大役割番号
+function cleanupRoles(form){ S.roleCount[form] = Math.max(defaultRoleCount(form), usedRoleMax(form)); }  // 未使用（末尾）を整理・既定数は下回らない
+function renderRoles(){   // 役割バー：現在 form の役割 FORM_1.. のみ表示。＋で10まで。form/番号から動的生成
+  const form = formOf({s:S.shape, ot:S.other});
+  if(roleForm(S.role)!==form) S.role = form+'_1';                 // form 切替時は既定役割へ
+  const n = Math.min(10, roleCountFor(form));
+  ['roles-space','roles-plan'].forEach(id=>{ const el=$('#'+id); if(!el) return; el.innerHTML=''; el.style.display='';
+    for(let i=1;i<=n;i++){ const role=form+'_'+i, on=S.role===role;
+      const b=document.createElement('button'); b.className='btn'; b.textContent=role;
+      b.style.borderColor=roleHex(role); b.style.background=on?roleHex(role):''; b.style.color=on?'#10171A':'';
+      b.setAttribute('aria-pressed',on);
+      b.onclick=()=>{ S.role=role; save(); renderRoles(); };
+      el.appendChild(b);
+    }
+    if(n<10){ const p=document.createElement('button'); p.className='btn'; p.textContent='＋'; p.title='スロットを追加';
+      p.onclick=()=>{ S.roleCount[form]=Math.min(10, roleCountFor(form)+1); save(); renderRoles(); };
+      el.appendChild(p);
+    }
+    { const c=document.createElement('button'); c.className='btn'; c.textContent='↻'; c.title='未使用のスロットを整理（既定数まで）';
+      c.onclick=()=>{ cleanupRoles(form); save(); renderRoles(); }; el.appendChild(c); }
+  });
+}
+
+$('#pt-WD').onclick=()=>setPlane('WD');
+$('#pt-WH').onclick=()=>setPlane('WH');
+$('#pt-DH').onclick=()=>setPlane('DH');
+$('#p-up').onclick=()=>setPlanLayer(curLayer()+1);
+$('#p-down').onclick=()=>setPlanLayer(curLayer()-1);
+$('#p-zi').onclick=()=>{ S.manualZoom=true; S.cell=clamp(S.cell+4,6,44); renderGrid(); };
+$('#p-zo').onclick=()=>{ S.manualZoom=true; S.cell=clamp(S.cell-4,6,44); renderGrid(); };
+/* ---- 2D 層操作（Excel 的：コピー/切取/貼付/挿入/追加/削除。現平面の層軸に沿って） ---- */
+function applyDims(nd){ setDims(nd); $('#dz').value=nd.z; $('#dy').value=nd.y; $('#dx').value=nd.x; }
+function layerClear(L){ const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v];
+  for(let h=0;h<dh;h++) for(let v=0;v<dv;v++) S.vox.delete(planeKeyAt(h,v,L)); }
+function grabLayer(){ const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v], L=curLayer(), a=[];
+  for(let h=0;h<dh;h++) for(let v=0;v<dv;v++){ const val=S.vox.get(planeKeyAt(h,v,L)); if(val) a.push({h,v,val}); } return a; }
+function fillLayer(L,cells){ const P=PLANES[S.plane], dh=S.dims[P.h], dv=S.dims[P.v];
+  for(const c of cells) if(c.h<dh&&c.v<dv) S.vox.set(planeKeyAt(c.h,c.v,L),c.val); }
+function _shift(from,delta){ const idx=AXI[PLANES[S.plane].l], next=new Map();
+  S.vox.forEach((val,k)=>{ const b=k.split(',').map(Number); if(b[idx]>=from) b[idx]+=delta; next.set(b.join(','),val); }); S.vox=next; }
+function _remove(L){ const idx=AXI[PLANES[S.plane].l], next=new Map();
+  S.vox.forEach((val,k)=>{ const b=k.split(',').map(Number); if(b[idx]===L) return; if(b[idx]>L) b[idx]-=1; next.set(b.join(','),val); }); S.vox=next; }
+function _bump(d){ const P=PLANES[S.plane]; S.dims={...S.dims,[P.l]:clamp(S.dims[P.l]+d,1,64)}; }
+function clipActive(){ return !!(S.clipMode && S.clip); }
+function updateClipUI(){ $('#p-lcopy').setAttribute('aria-pressed',S.clipMode==='copy'); $('#p-lcut').setAttribute('aria-pressed',S.clipMode==='cut');
+  renderSpine(); if(S.view==='plan') renderGrid(); }
+function clearClip(){ S.clip=null; S.clipMode=null; S.clipPlane=null; updateClipUI(); }
+$('#p-lcopy').onclick=()=>{ S.clip=grabLayer(); S.clipMode='copy'; S.clipPlane=S.plane; S.clipLayer=curLayer(); updateClipUI(); status('層をコピー（'+S.clip.length+'）'); };
+$('#p-lcut').onclick =()=>{ S.clip=grabLayer(); S.clipMode='cut';  S.clipPlane=S.plane; S.clipLayer=curLayer(); updateClipUI(); status('層を切り取り（貼付/挿入で確定）'); };
+$('#p-lpaste').onclick=()=>{ if(!clipActive()){ status('クリップボードが空です'); return; }
+  if(S.clipPlane!==S.plane){ status('別の面のクリップボードです'); return; } pushHist();
+  const cut=S.clipMode==='cut', src=S.clipLayer, L=curLayer();
+  layerClear(L); fillLayer(L,S.clip);
+  if(cut && src!==L){ _remove(src); _bump(-1); applyDims(S.dims); setPlanLayer(src<L?L-1:L); }   // 切取元の層を削除＋カレント補正
+  else { applyDims(S.dims); }
+  clearClip(); status('層を貼り付け'+(cut?'（切取元を削除）':'')); };
+$('#p-lins').onclick=()=>{ const P=PLANES[S.plane]; if(S.dims[P.l]>=64){ status('これ以上増やせません'); return; }
+  const useClip=clipActive()&&S.clipPlane===S.plane, cut=useClip&&S.clipMode==='cut', src=S.clipLayer, L=curLayer(); pushHist();
+  _shift(L,1); _bump(1); if(useClip) fillLayer(L,S.clip);
+  if(cut){ const s=src>=L?src+1:src; _remove(s); _bump(-1); }
+  applyDims(S.dims); if(useClip) clearClip();
+  status('層を挿入'+(cut?'（切取元を削除）':useClip?'（クリップボード）':'（空）')); };
+$('#p-ladd').onclick=()=>{ const P=PLANES[S.plane]; if(S.dims[P.l]>=64){ status('これ以上増やせません'); return; } pushHist();
+  const L=curLayer(); _shift(L,1); _bump(1); applyDims(S.dims); status('層を追加（現在位置に空層）'); };   // ③ 選択中の位置へ
+$('#p-ldel').onclick=()=>{ const P=PLANES[S.plane]; if(S.dims[P.l]<=1){ status('これ以上減らせません'); return; } pushHist();
+  const L=curLayer(); _remove(L); _bump(-1); applyDims(S.dims); setPlanLayer(Math.min(L,S.dims[P.l]-1)); status('層を削除'); };
+
+/* ---- 選択モードのセル範囲クリップボード（コピー/切取/貼付） ---- */
+function redrawSel(){ if(S.view==='plan') renderGrid(); else syncVox(); }   // 選択/クリップの再描画（2D/3D）
+function updateCellClipUI(){ const m=S.cellClip&&S.cellClip.mode;   // コピー/切取ボタンをキャンセルに変える・貼付ボタンの準備完了（両ビュー）
+  document.querySelectorAll('.c-copy').forEach(b=>{ b.setAttribute('aria-pressed', m==='copy'); b.textContent = m==='copy'?'キャンセル':'コピー'; });
+  document.querySelectorAll('.c-cut').forEach(b=>{ b.setAttribute('aria-pressed', m==='cut'); b.textContent = m==='cut'?'キャンセル':'切り取り'; });
+  document.querySelectorAll('.c-paste').forEach(b=>b.setAttribute('aria-pressed', !!S.cellClip));
+  document.querySelectorAll('.c-rot').forEach(b=>b.disabled = !S.cellClip); }
+function cancelCellClip(){ if(!S.cellClip) return; S.cellClip=null; updateCellClipUI(); redrawSel(); status('コピー/切り取りをキャンセル'); }
+function grabCells(mode){ if(!S.sel){ status('セルを選択してください'); return; }
+  const pl=S.sel.plane, layer=S.sel.layer, a=S.sel.a, b=S.sel.b;
+  const r={x0:Math.min(a.h,b.h),x1:Math.max(a.h,b.h),z0:Math.min(a.v,b.v),z1:Math.max(a.v,b.v)}, cells=[];
+  for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++){ const val=S.vox.get(planeKeyP(pl,h,v,layer)); if(val) cells.push({dh:h-r.x0,dv:v-r.z0,val}); }
+  S.cellClip={mode, cells, w:r.x1-r.x0+1, h:r.z1-r.z0+1, rect:r, srcLayer:layer, srcPlane:pl};
+  updateCellClipUI(); redrawSel(); status((mode==='cut'?'切り取り':'コピー')+'（'+cells.length+'）→ ドラッグで配置位置・貼り付けで確定・ダブルタップで取消'); }
+function selRange(){ if(!S.sel) return null; const a=S.sel.a,b=S.sel.b;
+  return {pl:S.sel.plane, layer:S.sel.layer, x0:Math.min(a.h,b.h),x1:Math.max(a.h,b.h),z0:Math.min(a.v,b.v),z1:Math.max(a.v,b.v)}; }
+function fillSel(){ const r=selRange(); if(!r){ status('セルを選択してください'); return; } pushHist(); const v=cur();
+  for(let h=r.x0;h<=r.x1;h++) for(let z=r.z0;z<=r.z1;z++) S.vox.set(planeKeyP(r.pl,h,z,r.layer),v);   // 選択範囲へ現在ブロックを配置
+  changed(); redrawSel(); renderSpine(); status('選択範囲に配置'); }
+function clearSel(){ const r=selRange(); if(!r){ status('セルを選択してください'); return; } pushHist();
+  for(let h=r.x0;h<=r.x1;h++) for(let z=r.z0;z<=r.z1;z++) S.vox.delete(planeKeyP(r.pl,h,z,r.layer));   // 選択範囲を空に
+  changed(); redrawSel(); renderSpine(); status('選択範囲を消去'); }
+document.querySelectorAll('.c-fill').forEach(b=>b.onclick=fillSel);
+document.querySelectorAll('.c-clear').forEach(b=>b.onclick=clearSel);
+document.querySelectorAll('.c-copy').forEach(b=>b.onclick=()=>{ if(S.cellClip&&S.cellClip.mode==='copy') cancelCellClip(); else grabCells('copy'); });   // コピー状態ならキャンセル
+document.querySelectorAll('.c-cut').forEach(b=>b.onclick=()=>{ if(S.cellClip&&S.cellClip.mode==='cut') cancelCellClip(); else grabCells('cut'); });      // 切取状態ならキャンセル
+/* ---- クリップボードの90°回転（面の法線＝層軸まわり・時計回り）。位置と向き(facing/axis)を同時に回す ---- */
+function rotVec90(vec, plane){ const P=PLANES[plane], ih=AXI[P.h], iv=AXI[P.v], il=AXI[P.l];   // 面内(h,v)→(v,-h)、層軸lは不変
+  const out=[0,0,0]; out[ih]=vec[iv]; out[iv]=-vec[ih]; out[il]=vec[il]; return out; }
+function rotFacingIdx(fi, plane){ const nd=rotVec90(FDIR[fi%6], plane);
+  for(let i=0;i<6;i++){ const e=FDIR[i]; if(e[0]===nd[0]&&e[1]===nd[1]&&e[2]===nd[2]) return i; } return fi; }
+function rotAxisTok(ax, plane){ const nA=rotVec90(AXV[ax]||AXV.VERTICAL, plane);   // 軸は無向：絶対値で照合
+  for(const k in AXV){ const e=AXV[k]; if(Math.abs(e[0])===Math.abs(nA[0])&&Math.abs(e[1])===Math.abs(nA[1])&&Math.abs(e[2])===Math.abs(nA[2])) return k; } return ax; }
+function rotVineFaces(props, plane){   // つたの付く面（north/south/east/west/up）を回転
+  const res={up:'false',north:'false',south:'false',east:'false',west:'false'};
+  for(const f in FACE_DIR){ if(props[f]!=='true') continue;
+    const nf=faceOfVec(rotVec90(FACE_DIR[f], plane)); if(nf) res[nf]='true'; }   // 縦回転で down になる面は消える（vine に down 無し）
+  return res; }
+function rotVal(val, plane){ const n=norm(val), props={...n.props};   // facing/axis を回転（half/hinge 等はそのまま＝水平回転で不変）
+  const fp = FORM_PROPS[formOf(n)] || {};   // その form が実際に持つ向きプロパティだけ回す（GRATE等の無方向は不変）
+  if(fp.facing) props.facing = FAC[ rotFacingIdx(FAC_I[props.facing]||0, plane) ];
+  if(fp.axis)   props.axis   = rotAxisTok(props.axis, plane);
+  if(fp.north)  Object.assign(props, rotVineFaces(props, plane));   // つた面
+  return {r:n.r, s:n.s, ot:n.ot, props}; }
+function rotateClip(){ const cc=S.cellClip; if(!cc){ status('コピー / 切り取り中に回転できます'); return; }
+  const w=cc.w;
+  cc.cells = cc.cells.map(c=>({ dh:c.dv, dv:(w-1)-c.dh, val:rotVal(c.val, cc.srcPlane) }));   // CW：(dh,dv)→(dv, w-1-dh)
+  const t=cc.w; cc.w=cc.h; cc.h=t;
+  redrawSel(); status('90°回転（'+cc.w+'×'+cc.h+'）'); }
+document.querySelectorAll('.c-rot').forEach(b=>b.onclick=rotateClip);
+const doPaste=()=>{ const cc=S.cellClip;
+  if(!cc){ status('クリップボードが空です'); return; }
+  if(!S.sel){ status('貼り付け先を選択してください'); return; }
+  if(cc.srcPlane!==S.sel.plane){ status('別の面のクリップボードです'); return; }
+  pushHist(); const pl=S.sel.plane, layer=S.sel.layer, a=S.sel.a, P=PLANES[pl], dh=S.dims[P.h], dv=S.dims[P.v];
+  if(cc.mode==='cut') for(let h=cc.rect.x0;h<=cc.rect.x1;h++) for(let v=cc.rect.z0;v<=cc.rect.z1;v++) S.vox.delete(planeKeyP(pl,h,v,cc.srcLayer));  // 切取元を消去
+  for(let i=0;i<cc.w;i++) for(let j=0;j<cc.h;j++){ const h=a.h+i,v=a.v+j; if(h<dh&&v<dv) S.vox.delete(planeKeyP(pl,h,v,layer)); }  // 貼付先を一旦クリア
+  for(const c of cc.cells){ const h=a.h+c.dh,v=a.v+c.dv; if(h<dh&&v<dv) S.vox.set(planeKeyP(pl,h,v,layer),c.val); }
+  S.cellClip=null; updateCellClipUI(); changed(); redrawSel(); renderSpine(); status('貼り付けました'); };
+document.querySelectorAll('.c-paste').forEach(b=>b.onclick=doPaste);
+
+$('#j-layers').onclick=()=>{ S.jsonMode='layers';
+  $('#j-layers').setAttribute('aria-selected',true); $('#j-voxels').setAttribute('aria-selected',false); renderJson(); };
+$('#j-voxels').onclick=()=>{ S.jsonMode='blocks';
+  $('#j-layers').setAttribute('aria-selected',false); $('#j-voxels').setAttribute('aria-selected',true); renderJson(); };
+$('#j-apply').onclick=()=>{ importJson($('#json').value); };   // テキスト直接編集を model へ反映（importJson が pushHist=undo可）
+$('#j-copy').onclick=async()=>{
+  try{ await navigator.clipboard.writeText(buildJson()); status('JSONをコピーしました'); }
+  catch(e){ $('#json').select(); status('テキストを選択しました。長押しでコピーしてください'); }
+};
+/* ---------- 保存先（File System Access API・IndexedDB でフォルダを記憶） ---------- */
+const FS_OK = !!(window.showDirectoryPicker);
+function idb(mode, fn){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open('bp',1);
+    r.onupgradeneeded=()=>{ if(!r.result.objectStoreNames.contains('kv')) r.result.createObjectStore('kv'); };
+    r.onsuccess=()=>{ const tx=r.result.transaction('kv',mode); const out=fn(tx.objectStore('kv'));
+      tx.oncomplete=()=>res(out&&out.result); tx.onerror=()=>rej(tx.error); };
+    r.onerror=()=>rej(r.error);
+  });
+}
+const idbSet=(k,v)=>idb('readwrite',s=>s.put(v,k));
+const idbGet=(k)=>idb('readonly',s=>s.get(k));
+async function ensurePerm(h){
+  const o={mode:'readwrite'};
+  if(await h.queryPermission(o)==='granted') return true;
+  return (await h.requestPermission(o))==='granted';
+}
+const DIR_KINDS=['place','palette','structure'];               // 保存先はこの3種を個別に持つ
+function updateDirLabels(){
+  const note=$('#fs-note'), rows=$('#fs-rows');   // 非対応端末はフォルダ選択UIを隠し、説明を1行に集約
+  if(note) note.style.display = FS_OK ? 'none' : '';
+  if(rows) rows.style.display = FS_OK ? '' : 'none';
+  if(!FS_OK) return;
+  for(const k of DIR_KINDS){ const el=$('#dirlabel-'+k); if(!el) continue; const h=S.dirs[k];
+    el.textContent = h ? (k+' → '+h.name+'/ に上書き保存') : (k+' → 未設定（ダウンロード）'); }
+}
+async function pickDir(kind){
+  if(!FS_OK){ status('この端末は保存先指定に非対応'); return; }
+  try{
+    const h=await window.showDirectoryPicker({mode:'readwrite',id:'bp-'+kind});
+    S.dirs[kind]=h; try{ await idbSet('dir_'+kind,h); }catch(e){}
+    updateDirLabels(); status(kind+' 保存先を設定: '+h.name);
+  }catch(e){ /* ユーザーがキャンセル */ }
+}
+$('#s-dir-place').onclick=()=>pickDir('place');
+$('#s-dir-palette').onclick=()=>pickDir('palette');
+$('#s-dir-structure').onclick=()=>pickDir('structure');
+$('#s-open').onclick=()=>{ updateDirLabels(); $('#smodal').classList.add('on'); };   // タイトル横 ⚙
+$('#smodal').onclick=e=>{ if(e.target.id==='smodal') $('#smodal').classList.remove('on'); };
+
+async function saveFile(text, fname, okMsg, kind){   // kind の保存先フォルダがあれば同名上書き、無ければダウンロード
+  const h=S.dirs[kind];
+  if(h){
+    try{
+      if(await ensurePerm(h)){
+        const fh=await h.getFileHandle(fname,{create:true});   // 同名は上書き
+        const w=await fh.createWritable(); await w.write(text); await w.close();
+        status((okMsg||'保存しました')+': '+h.name+'/'+fname); return;
+      }
+      status('保存先の権限がありません。ダウンロードします');
+    }catch(e){ status('保存先に書けませんでした。ダウンロードします'); }
+  }
+  const b=new Blob([text],{type:'application/json'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download=fname; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000); status((okMsg||'保存しました')+'（ダウンロード）');
+}
+$('#j-dl').onclick=async()=>{
+  const text=buildJson('blocks'), fname=($('#name').value||'blueprint')+'.json';   // 保存は常に blocks（形/mat/向きを保持）
+  await saveFile(text, fname, '保存しました', 'place');
+};
+function importJson(text){
+  try{
+    const d=JSON.parse(text);
+    const set=new Map();
+    if(Array.isArray(d.blocks)){       // structure 準拠。mat=役割・form→shape を取り込む
+      // W ミラーを戻すための幅（size[2]=W。無ければ最大 w+1）。
+      const impW = (d.size && d.size[2]) ? d.size[2]
+        : d.blocks.reduce((m,b)=>Math.max(m,(b.pos?b.pos.w:0)+1),1);
+      d.blocks.forEach(b=>{ const p=b.pos; if(!p) return;
+        const fm=(b.form||'').toUpperCase();
+        if(b.half==='upper') return;   // 複数ブロック上半分は下半分(app 1セル)に集約
+        const SF={FULLBLOCK:'fullblock',SLAB:'slab',STAIRS:'stairs',TRAPDOOR:'trapdoor'};
+        const s = SF[fm] || 'others', ot = SF[fm] ? 'DOOR' : fm;
+        const props = {facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall'};
+        for(const {name} of shownProps(fm)){   // 汎用: 出すプロパティを素直に読む（east/west は W反転で入替）
+          let val = (name==='east') ? b['west'] : (name==='west') ? b['east'] : b[name];
+          if(val==null) continue;
+          if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); props[name]=String(val); }
+        set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.slot||b.mat||(fm||'FULLBLOCK')+'_1', s, ot, props}); });   // slot 優先・旧 mat も後方互換
+    }
+    else if(Array.isArray(d.voxels))   // 旧形式（後方互換・ミラー前のアプリ内部座標）
+      d.voxels.forEach(p=>set.set(K(p[0],p[1],p[2]),{r:'wall_main',s:'fullblock',f:0,h:'bottom'}));
+    else if(d.layers)
+      Object.keys(d.layers).forEach(y=>d.layers[y].forEach((row,z)=>{
+        [...row].forEach((ch,x)=>{ if(ch!=='.') set.set(K(mirW(x,row.length),+y,z),{r:'wall_main',s:'fullblock',f:0,h:'bottom'}); }); }));
+    let nd = null;
+    if(d.size) nd = Array.isArray(d.voxels)     // 旧 voxels は [x,y,z]、新(blocks/layers)は [d,h,w]
+      ? {x:d.size[0], y:d.size[1], z:d.size[2]}
+      : {x:d.size[2], y:d.size[1], z:d.size[0]};
+    if(!nd){ let mx=1,my=1,mz=1;   // size 無し（MOD 直の structure 等）は最大座標から復元
+      set.forEach((role,k)=>{ const a=k.split(',').map(Number);
+        mx=Math.max(mx,a[0]+1); my=Math.max(my,a[1]+1); mz=Math.max(mz,a[2]+1); });
+      nd={x:mx,y:my,z:mz}; }
+    pushHist(); S.dims=nd; S.vox=set;
+    if(d.name) $('#name').value=d.name;
+    setDims(nd); status('読み込みました');
+  }catch(err){ status('このファイルは読み込めません'); }
+}
+// 保存/読み込みモーダル（タイトル右の 💾 / 📂）。place/palette 両タブ共通。
+$('#sv-open').onclick=()=>$('#savemodal').classList.add('on');
+$('#savemodal').onclick=e=>{ if(e.target.id==='savemodal') $('#savemodal').classList.remove('on'); };
+$('#ld-open').onclick=()=>$('#loadmodal').classList.add('on');
+$('#loadmodal').onclick=e=>{ if(e.target.id==='loadmodal') $('#loadmodal').classList.remove('on'); };
+
+addEventListener('resize',()=>{ if(S.view==='plan'&&!S.manualZoom) renderGrid(); });
+
+/* iOS Safari は user-scalable=no を無視するため、ページ全体のピンチ拡大を個別に止める */
+['gesturestart','gesturechange','gestureend'].forEach(ev=>
+  document.addEventListener(ev, e=>e.preventDefault(), {passive:false}));
+document.addEventListener('dblclick', e=>e.preventDefault(), {passive:false});
+
+/* ---------- 最上位モード place / palette ---------- */
+function setTop(mode){ S.top=mode;
+  $('#place-root').classList.toggle('hidden', mode!=='place');
+  $('#palette-root').classList.toggle('hidden', mode!=='palette');
+  $('#m-place').setAttribute('aria-pressed', mode==='place');
+  $('#m-palette').setAttribute('aria-pressed', mode==='palette');
+  if(mode==='palette'){ palSyncFromVox(); renderPalList(); }
+}
+$('#m-place').onclick=()=>setTop('place');
+$('#m-palette').onclick=()=>setTop('palette');
+
+/* ---------- palette モード：スロット→mat 対応表 ---------- */
+function formMats(form){ const set=new Set(); for(const e of DICT_ENTRIES){ if(e.form===form && e.mat) set.add(e.mat); } return [...set].sort(); }  // dict からその form の mat 一覧
+const matKey = (form, mat)=> mat ? (BLOCK_BY_FORMMAT[form+'|'+mat] || '') : '';   // form+mat -> block_id（画像/和名キー）
+const matJa  = (key)=> (key && NAMES_JA && NAMES_JA[key]) || '';                  // 和名（無ければ空）
+function matThumb(key){ const d=document.createElement('span'); d.className='matthumb';   // 参考画像（block id・無ければプレースホルダ）
+  if(key){ const img=new Image(); img.loading='lazy'; img.alt=''; img.src='assets/blocks/'+key+'.png';
+    img.onerror=()=>{ img.remove(); d.classList.add('noimg'); }; d.appendChild(img); }
+  else d.classList.add('noimg');
+  return d; }
+function openMatPicker(slot, form){   // mat 選択モーダル：物理名・和名・イメージ一覧。押下で選択
+  const list=$('#matmodal-list'); if(!list) return; list.innerHTML='';
+  $('#matmodal-title').textContent=slot+' の mat を選択';
+  const mkRow=(mat)=>{ const r=document.createElement('button'); r.className='matrow'+((S.pal.map[slot]||'')===mat?' on':'');
+    const key=matKey(form, mat);
+    r.appendChild(matThumb(key));
+    const p=document.createElement('span'); p.className='matphys'; p.textContent=mat||'(未割当)'; r.appendChild(p);  // 左: mat物理名
+    const col=document.createElement('span'); col.className='matbcol';                                    // 右: block物理名 + その下に和名
+    if(key){ const bl=document.createElement('span'); bl.className='matblock'; bl.textContent=key; col.appendChild(bl); }
+    const j=document.createElement('span'); j.className='matja'; j.textContent=matJa(key); col.appendChild(j);
+    r.appendChild(col);
+    r.onclick=()=>{ S.pal.map[slot]=mat; closeMatPicker(); renderPalList(); };
+    return r; };
+  list.appendChild(mkRow(''));                                  // (未割当)
+  for(const m of formMats(form)) list.appendChild(mkRow(m));
+  $('#matmodal').classList.add('on');
+}
+function closeMatPicker(){ $('#matmodal').classList.remove('on'); }
+function renderPalList(){
+  const el=$('#pal-list'); if(!el) return; el.innerHTML='';
+  const formRank=f=>{ const i=FORM_LIST.indexOf(f); return i<0?9999:i; };   // form_dict の並び順
+  const slots=Object.keys(S.pal.map).sort((a,b)=>{ const fa=roleForm(a),fb=roleForm(b);
+    if(fa!==fb) return (formRank(fa)-formRank(fb)) || (fa<fb?-1:1);
+    return (parseInt(a.split('_').pop())||0)-(parseInt(b.split('_').pop())||0); });   // form内は番号順
+  if(!slots.length){ el.innerHTML='<p class="note">（place を読み込むとスロットが並びます）</p>'; return; }
+  let curForm=null;
+  for(const slot of slots){ const form=roleForm(slot);
+    if(form!==curForm){ curForm=form; const h=document.createElement('div'); h.className='pal-form'; h.textContent=form; el.appendChild(h); }
+    const row=document.createElement('div'); row.className='pal-row';
+    const sw=document.createElement('span'); sw.className='pal-sw'; sw.style.background=roleHex(slot); row.appendChild(sw);
+    const lab=document.createElement('span'); lab.className='pal-slot'; lab.textContent=slot; row.appendChild(lab);
+    const cur=S.pal.map[slot];
+    const curKey=matKey(form, cur);
+    const pick=document.createElement('button'); pick.className='pal-pick';
+    pick.appendChild(matThumb(curKey));
+    const t=document.createElement('span'); t.className='pal-pick-t';
+    if(cur){ const ph=document.createElement('span'); ph.className='mp-phys'; ph.textContent=curKey||cur; t.appendChild(ph);  // block物理名
+      const ja=matJa(curKey); if(ja){ const js=document.createElement('span'); js.className='mp-ja'; js.textContent=ja; t.appendChild(js); } }  // その下に和名
+    else { const nn=document.createElement('span'); nn.className='mp-none'; nn.textContent='(未割当)'; t.appendChild(nn); }
+    pick.appendChild(t);
+    pick.onclick=()=>openMatPicker(slot, form);
+    row.appendChild(pick); el.appendChild(row);
+  }
+}
+function palSyncFromVox(){   // 現在の place(S.vox) の使用スロットを pal に反映。既存割当は保持・place に無いスロットは place優先で除去
+  const used=new Set(); for(const [,v] of S.vox) used.add(norm(v).r);
+  for(const s of used) if(!(s in S.pal.map)) S.pal.map[s]='';
+  for(const s of Object.keys(S.pal.map)) if(!used.has(s)) delete S.pal.map[s];
+}
+function palImport(text){   // place を本体(S.vox)へ読み込み、使用スロットを pal-list へ（place が単一ソース）
+  importJson(text); palSyncFromVox(); renderPalList();
+  status('place を読み込みました（スロット '+Object.keys(S.pal.map).length+' 種）');
+}
+function buildStructure(){   // place(S.vox の slot) + palette(slot→mat) を合成した structure。未割当スロットは missing に集約
+  const pal=S.pal.map||{}, missing=new Set();
+  const recs=blockRecs(slot=>{ const m=pal[slot]; if(!m) missing.add(slot); return {mat:m||slot}; });
+  const nm=($('#struct-name').value.trim())||'structure';
+  return {json:structJson(nm, recs), missing:[...missing]};
+}
+function importStructure(text){   // structure(mat 済み) → place(slot) + palette(slot→mat) に分解して取り込む（保存の逆）
+  try{ const d=JSON.parse(text);
+    if(!Array.isArray(d.blocks)){ status('structure ではありません（blocks が必要）'); return; }
+    const matSlot={}, formCount={}, pal={};        // form 毎に distinct mat を FORM_1.. へ採番
+    for(const b of d.blocks){
+      const form=(b.form||'FULLBLOCK').toUpperCase();
+      const mat=(b.mat!=null?b.mat:(b.slot!=null?b.slot:form+'_1'));
+      const key=form+'|'+mat;
+      if(!(key in matSlot)){ const n=(formCount[form]=(formCount[form]||0)+1); const slot=form+'_'+n;
+        matSlot[key]=slot;
+        const looksSlot=/_\d+$/.test(String(mat)) && FORM_LIST.includes(roleForm(mat));  // mat が slot 名(未割当)なら空に
+        pal[slot]= looksSlot ? '' : mat; }
+      b.slot=matSlot[key];                          // importJson が slot を優先採用するよう書換え
+    }
+    importJson(JSON.stringify(d));                   // 本体(S.vox)へ slot ベースで取り込み（dims/name も処理）
+    S.pal.map=pal; renderPalList();
+    if(d.name) $('#struct-name').value=d.name;
+    const overflow=Object.values(formCount).some(c=>c>10);
+    status('structure を読み込みました（スロット '+Object.keys(pal).length+' 種・palette 復元）'+(overflow?' ※一部 form でスロット10超':''));
+  }catch(e){ status('このファイルは読み込めません'); }
+}
+function palImportPalette(text){   // 既存 palette を任意で復元。place 未読込なら全採用、読込済みなら place のスロットのみ採用（place優先）
+  try{ const d=JSON.parse(text); const pal=(d&&d.palette&&typeof d.palette==='object')?d.palette:{};
+    const placeLoaded=Object.keys(S.pal.map).length>0; const extra=[];
+    for(const slot in pal){
+      if(placeLoaded){ if(slot in S.pal.map) S.pal.map[slot]=pal[slot]; else extra.push(slot); }
+      else S.pal.map[slot]=pal[slot];
+    }
+    if(d.name) $('#pal-name').value=d.name;
+    renderPalList();
+    if(extra.length) status('⚠ palette に place へ無いスロット '+extra.length+' 件（'+extra.slice(0,3).join(', ')+(extra.length>3?'…':'')+'）→ place 優先で無視');
+    else status('palette を読み込みました（割当 '+Object.keys(pal).length+' 件）');
+  }catch(e){ status('このファイルは読み込めません'); }
+}
+// 読み込んだファイル名を表示。place/palette は structure を無効化、structure は place+palette を上書き（表示解除）
+function setLoaded(kind, name){
+  S.files[kind]=name;
+  if(kind==='structure'){ S.files.place=null; S.files.palette=null; }
+  else S.files.structure=null;   // place/palette を読むと structure(合成物)は無効
+  renderLoaded();
+}
+function renderLoaded(){   // 各ボタン右にファイル名（無ければ空欄）
+  const set=(id,v)=>{ const el=$(id); if(el) el.textContent=v||''; };
+  set('#fn-place', S.files.place); set('#fn-palette', S.files.palette); set('#fn-structure', S.files.structure);
+}
+$('#pal-load').onclick=async()=>{   // place 読み込み（保存先フォルダ対応・両タブ共通）→ 本体(S.vox)へ
+  if(FS_OK && window.showOpenFilePicker){
+    try{ const opt={types:[{description:'JSON',accept:{'application/json':['.json']}}], id:'bp-place'};
+      if(S.dirs.place) opt.startIn=S.dirs.place;
+      const [fh]=await window.showOpenFilePicker(opt);
+      palImport(await (await fh.getFile()).text()); setLoaded('place', fh.name); return;
+    }catch(e){ if(e && e.name==='AbortError') return; }
+  }
+  $('#pal-file').click();
+};
+$('#pal-file').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ palImport(r.result); setLoaded('place', f.name); e.target.value=''; }; r.readAsText(f); };
+$('#pal-load-pal').onclick=()=>$('#pal-file2').click();
+$('#pal-file2').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ palImportPalette(r.result); setLoaded('palette', f.name); e.target.value=''; }; r.readAsText(f); };
+$('#pal-loadstruct').onclick=()=>$('#pal-file3').click();
+$('#pal-file3').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ importStructure(r.result); setLoaded('structure', f.name); e.target.value=''; }; r.readAsText(f); };
+function updateLdMode(){   // ラジオ：place・palette / structure のどちらか一方のみ読込ボタンを活性
+  const st=(document.querySelector('input[name=ldmode]:checked')||{}).value==='st';
+  $('#pal-load').disabled=st; $('#pal-load-pal').disabled=st; $('#pal-loadstruct').disabled=!st;
+}
+document.querySelectorAll('input[name=ldmode]').forEach(r=>r.onchange=updateLdMode);
+updateLdMode();
+
+// palette の 一覧 / JSON タブ（place の JSON ビューと同様）
+function renderPalJson(){
+  const map={}; for(const k of Object.keys(S.pal.map)) if(S.pal.map[k]) map[k]=S.pal.map[k];
+  $('#pal-json').value = JSON.stringify({name:$('#pal-name').value, palette:map}, null, 1);
+}
+function setPalView(v){
+  $('#pv-list-sec').classList.toggle('hidden', v!=='list');
+  $('#pv-json-sec').classList.toggle('hidden', v!=='json');
+  $('#pv-list').setAttribute('aria-selected', v==='list');
+  $('#pv-json').setAttribute('aria-selected', v==='json');
+  if(v==='json') renderPalJson(); else renderPalList();
+}
+$('#pv-list').onclick=()=>setPalView('list');
+$('#pv-json').onclick=()=>setPalView('json');
+$('#pal-apply').onclick=()=>{   // テキスト編集を S.pal.map へ反映
+  try{ const d=JSON.parse($('#pal-json').value); const pal=(d&&d.palette&&typeof d.palette==='object')?d.palette:(d||{});
+    S.pal.map={}; for(const k in pal) if(pal[k]!=null) S.pal.map[k]=String(pal[k]);
+    if(d && d.name) $('#pal-name').value=d.name;
+    status('palette JSON を反映しました（'+Object.keys(S.pal.map).length+' 件）');
+  }catch(e){ status('JSON を解釈できません'); }
+};
+$('#pal-copy').onclick=async()=>{ renderPalJson();
+  try{ await navigator.clipboard.writeText($('#pal-json').value); status('palette JSON をコピーしました'); }
+  catch(e){ $('#pal-json').select(); status('テキストを選択しました。長押しでコピー'); }
+};
+$('#pal-save').onclick=async()=>{
+  const map={}; for(const k of Object.keys(S.pal.map)) if(S.pal.map[k]) map[k]=S.pal.map[k];   // 未割当は除外
+  const text=JSON.stringify({name:$('#pal-name').value, palette:map}, null, 1);
+  const fname=($('#pal-name').value||'palette')+'.json';
+  await saveFile(text, fname, 'palette を保存（'+Object.keys(map).length+' 件）', 'palette');   // place と同じ保存先/上書き
+};
+$('#pal-struct').onclick=async()=>{   // place(S.vox) + palette(S.pal.map) を合成して structure を保存
+  if(!S.vox.size){ status('place が空です（先に place を作成/読み込み）'); return; }
+  const {json,missing}=buildStructure();
+  const fname=(($('#struct-name').value.trim())||'structure')+'.json';
+  await saveFile(json, fname, (missing.length
+    ? '⚠ structure 保存: 未割当 '+missing.length+' 件（'+missing.slice(0,3).join(', ')+(missing.length>3?'…':'')+'）は slot 名のまま'
+    : 'structure を保存（place+palette 合成）'), 'structure');
+};
+
+/* ---------- boot ---------- */
+function fillVer(){ $('#vmodal-body').innerHTML =                     // ? バッジ→モーダルで各版を縦表示
+  '<div class="vrow">app v'+APP_VERSION+'</div>'+
+  '<div class="vrow">dict v'+(DICT_VERSION??'?')+'</div>'+
+  '<div class="vrow">form_dict v'+(FORM_DICT_VERSION??'?')+'</div>'+
+  '<div class="vrow">names_ja v'+(NAMES_JA_VERSION??'?')+'</div>'+
+  '<div class="vrow">blocktex v'+(BLOCKTEX_VERSION??'?')+'</div>'; }
+fillVer();
+$('#ver').onclick = ()=> $('#vmodal').classList.add('on');
+$('#vmodal').onclick = e=>{ if(e.target.id==='vmodal') $('#vmodal').classList.remove('on'); };  // 背景タップで閉じる
+$('#pal-help').onclick = ()=> $('#pmodal').classList.add('on');
+$('#pmodal').onclick = e=>{ if(e.target.id==='pmodal') $('#pmodal').classList.remove('on'); };
+load();
+$('#dx').value=S.dims.x; $('#dy').value=S.dims.y; $('#dz').value=S.dims.z;
+$('#plane').max=S.dims.y-1; $('#ymax').textContent='/ '+(S.dims.y-1);
+initThree(); buildFloor(); buildOrigin(); buildPlane(); frameCamera();
+loadDict().then(()=>{
+  fillVer();
+  syncVox();
+  $('#tot').textContent=S.vox.size; setLayer(0); setView('space'); setMode('info'); renderRoles(); renderShapeBar();
+}).catch(err=>{ console.error(err); status('dict.json を読み込めません（初回はオンライン必須）'); });
+
+updateDirLabels();
+if(FS_OK) for(const k of DIR_KINDS){ idbGet('dir_'+k).then(h=>{ if(h){ S.dirs[k]=h; updateDirLabels(); } }).catch(()=>{}); }
+
+if('serviceWorker' in navigator){
+  addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
