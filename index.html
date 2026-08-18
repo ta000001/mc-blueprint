@@ -207,6 +207,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="b-place" aria-pressed="false">置く</button>
     <button class="btn" id="b-break" aria-pressed="false">壊す</button>
   </div>
+  <div id="space"><div id="inspect"></div><div class="vtoggles"><button class="vtoggle" id="b-label" aria-pressed="false">ラベル</button></div><div class="vbottom"><button class="vbtn" id="b-undo" aria-label="元に戻す">↶</button><button class="vbtn" id="b-redo" aria-label="進む" disabled>↷</button></div></div>
+  <div class="slider"><span class="y" id="y3">H00</span><input id="plane" type="range" min="0" max="15" value="0" aria-label="作業面の高さ"></div>
   <div class="bar cellclip-bar hidden">
     <button class="btn c-fill">置く</button>
     <button class="btn c-clear">壊す</button>
@@ -214,8 +216,6 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn c-cut">切り取り</button>
     <button class="btn c-paste">貼り付け</button>
   </div>
-  <div id="space"><div id="inspect"></div><div class="vtoggles"><button class="vtoggle" id="b-label" aria-pressed="false">ラベル</button></div><div class="vbottom"><button class="vbtn" id="b-undo" aria-label="元に戻す">↶</button><button class="vbtn" id="b-redo" aria-label="進む" disabled>↷</button></div></div>
-  <div class="slider"><span class="y" id="y3">H00</span><input id="plane" type="range" min="0" max="15" value="0" aria-label="作業面の高さ"></div>
   <div class="bar">
     <button class="btn" id="b-down">▼ 下の層</button>
     <button class="btn" id="b-up">▲ 上の層</button>
@@ -240,13 +240,6 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="pm-place" aria-pressed="false">置く</button>
     <button class="btn" id="pm-break" aria-pressed="false">壊す</button>
   </div>
-  <div class="bar cellclip-bar hidden">
-    <button class="btn c-fill">置く</button>
-    <button class="btn c-clear">壊す</button>
-    <button class="btn c-copy">コピー</button>
-    <button class="btn c-cut">切り取り</button>
-    <button class="btn c-paste">貼り付け</button>
-  </div>
   <div class="stage">
     <div id="spine"></div>
     <div class="gridbox">
@@ -255,6 +248,13 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
       <div class="vtoggles"><button class="vtoggle" id="pl-label" aria-pressed="false">ラベル</button></div>
       <div class="vbottom"><button class="vbtn" id="pl-undo" aria-label="元に戻す">↶</button><button class="vbtn" id="pl-redo" aria-label="進む" disabled>↷</button></div>
     </div>
+  </div>
+  <div class="bar cellclip-bar hidden">
+    <button class="btn c-fill">置く</button>
+    <button class="btn c-clear">壊す</button>
+    <button class="btn c-copy">コピー</button>
+    <button class="btn c-cut">切り取り</button>
+    <button class="btn c-paste">貼り付け</button>
   </div>
   <div class="bar">
     <button class="btn" id="p-down">▼ 下の層</button>
@@ -390,7 +390,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.11';
+const APP_VERSION = '4.12';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
