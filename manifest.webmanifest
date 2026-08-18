@@ -1,7 +1,7 @@
 {
-  "name": "設計図 — Voxel Blueprint",
-  "version": "3.3",
-  "short_name": "設計図",
+  "name": "mc-blueprint",
+  "version": "3.4",
+  "short_name": "mc-blueprint",
   "description": "マイクラ用の立体設計図を作り、JSONとして書き出すエディタ",
   "start_url": "./index.html",
   "scope": "./",

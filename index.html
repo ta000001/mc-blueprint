@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>設計図 — Voxel Blueprint</title>
+<title>mc-blueprint</title>
 <meta name="theme-color" content="#10171A">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="設計図">
+<meta name="apple-mobile-web-app-title" content="mc-blueprint">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -63,8 +63,10 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .palname{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
 .palname span{font-size:10px;color:var(--dim);min-width:64px}
 .palname input{margin-bottom:0}
-.apphead{display:flex;align-items:center;gap:8px;margin-bottom:12px}
-.ver.ico{border:none;font-size:16px;width:22px;height:22px;line-height:22px;color:var(--chalk)}
+.apphead{display:flex;align-items:center;gap:6px;margin-bottom:12px}
+.icobtn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;color:var(--dim);cursor:pointer;flex:none;border-radius:7px;border:1px solid transparent}
+.icobtn:hover,.icobtn:active{color:var(--chalk);border-color:var(--rule);background:rgba(255,255,255,.04)}
+.icobtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .btn:disabled{opacity:.4;cursor:not-allowed}
 #loadmodal .panel,#savemodal .panel{width:min(460px,92%)}
 .ldgrp{display:flex;align-items:center;gap:12px;margin-bottom:12px}
@@ -96,7 +98,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .btn[aria-pressed="true"]{border-color:var(--brass);color:var(--brass)}
 .btn[disabled]{opacity:.35}
 #space{position:relative;width:100%;height:56vh;min-height:300px;background:var(--panel);
-  border:1px solid var(--rule);border-radius:4px;overflow:hidden;touch-action:none}
+  border:1px solid var(--rule);border-radius:4px;overflow:hidden;touch-action:none;margin-top:12px}
 #space canvas{display:block;width:100%;height:100%}
 .hud{position:absolute;left:10px;top:10px;pointer-events:none;font-size:10px;color:var(--dim);line-height:1.6}
 .hud b{color:var(--brass);font-weight:600}
@@ -117,7 +119,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .slider{display:flex;align-items:center;gap:8px;margin-top:10px}
 .slider input{flex:1;accent-color:#D4A93C;height:26px}
 .y{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;font-size:22px;line-height:1;color:var(--brass)}
-.stage{display:flex;gap:10px;align-items:stretch}
+.stage{display:flex;gap:10px;align-items:stretch;margin-top:12px}
 #spine{width:44px;flex:none;display:flex;flex-direction:column-reverse;background:var(--panel);
   border:1px solid var(--rule);border-radius:4px;overflow:hidden;touch-action:none}
 .seg{flex:1;min-height:7px;position:relative;border-top:1px solid #0d1315;display:flex;align-items:center;padding-left:5px}
@@ -187,7 +189,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 </style>
 </head>
 <body>
-<div class="apphead"><span class="appname">mc-blueprint</span><span class="ver" id="ver" role="button" tabindex="0" aria-label="バージョン情報">?</span><span class="ver ico" id="sv-open" style="margin-left:auto" role="button" tabindex="0" aria-label="保存">💾</span><span class="ver ico" id="ld-open" role="button" tabindex="0" aria-label="読み込み">📂</span><span class="ver ico" id="s-open" role="button" tabindex="0" aria-label="設定">⚙</span></div>
+<div class="apphead"><span class="appname">mc-blueprint</span><span class="ver" id="ver" role="button" tabindex="0" aria-label="バージョン情報">?</span><span class="icobtn" id="sv-open" style="margin-left:auto" role="button" tabindex="0" aria-label="保存"><svg viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 20h14"/></svg></span><span class="icobtn" id="ld-open" role="button" tabindex="0" aria-label="読み込み"><svg viewBox="0 0 24 24"><path d="M12 20V9"/><path d="M8 13l4-4 4 4"/><path d="M5 4h14"/></svg></span><span class="icobtn" id="s-open" role="button" tabindex="0" aria-label="設定"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/><circle cx="9" cy="7" r="2.1"/><circle cx="15" cy="12" r="2.1"/><circle cx="8" cy="17" r="2.1"/></svg></span></div>
 <div class="topmode"><button id="m-place" aria-pressed="true">place</button><button id="m-palette" aria-pressed="false">palette</button></div>
 <div id="place-root">
 <div class="namerow">
@@ -396,7 +398,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.24';
+const APP_VERSION = '4.25';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
