@@ -402,7 +402,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.32';
+const APP_VERSION = '4.33';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1768,20 +1768,22 @@ function renderLoaded(){   // 各ボタン右にファイル名（無ければ�
   const set=(id,v)=>{ const el=$(id); if(el) el.textContent=v||''; };
   set('#fn-place', S.files.place); set('#fn-palette', S.files.palette); set('#fn-structure', S.files.structure);
 }
-$('#pal-load').onclick=async()=>{   // place 読み込み（保存先フォルダ対応・両タブ共通）→ 本体(S.vox)へ
+// 保存先フォルダ（S.dirs[kind]）から開く。対応端末は showOpenFilePicker(startIn=フォルダ)、非対応は <input type=file> にフォールバック
+async function pickAndLoad(kind, pickerId, importFn, fallbackSel){
   if(FS_OK && window.showOpenFilePicker){
-    try{ const opt={types:[{description:'JSON',accept:{'application/json':['.json']}}], id:'bp-place'};
-      if(S.dirs.place) opt.startIn=S.dirs.place;
+    try{ const opt={types:[{description:'JSON',accept:{'application/json':['.json']}}], id:pickerId};
+      if(S.dirs[kind]) opt.startIn=S.dirs[kind];   // 設定した保存先フォルダで開く
       const [fh]=await window.showOpenFilePicker(opt);
-      palImport(await (await fh.getFile()).text()); setLoaded('place', fh.name); return;
+      importFn(await (await fh.getFile()).text()); setLoaded(kind, fh.name); return;
     }catch(e){ if(e && e.name==='AbortError') return; }
   }
-  $('#pal-file').click();
-};
+  $(fallbackSel).click();
+}
+$('#pal-load').onclick       = ()=>pickAndLoad('place',     'bp-place',     palImport,        '#pal-file');   // place → 本体(S.vox)
+$('#pal-load-pal').onclick   = ()=>pickAndLoad('palette',   'bp-palette',   palImportPalette, '#pal-file2');  // palette
+$('#pal-loadstruct').onclick = ()=>pickAndLoad('structure', 'bp-structure', importStructure,  '#pal-file3');  // structure
 $('#pal-file').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ palImport(r.result); setLoaded('place', f.name); e.target.value=''; }; r.readAsText(f); };
-$('#pal-load-pal').onclick=()=>$('#pal-file2').click();
 $('#pal-file2').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ palImportPalette(r.result); setLoaded('palette', f.name); e.target.value=''; }; r.readAsText(f); };
-$('#pal-loadstruct').onclick=()=>$('#pal-file3').click();
 $('#pal-file3').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ importStructure(r.result); setLoaded('structure', f.name); e.target.value=''; }; r.readAsText(f); };
 function updateLdMode(){   // ラジオ：place・palette / structure のどちらか一方のみ読込ボタンを活性
   const st=(document.querySelector('input[name=ldmode]:checked')||{}).value==='st';
