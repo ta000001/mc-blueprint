@@ -1,6 +1,6 @@
 {
-  "version": "1(20260815)",
-  "_comment": "MAT -> 和名(ja_jp)。MOD /abtest exporttex 生成。編集不可（mc-blueprint は一方向 sync）。",
+  "version": "1(20260819)",
+  "_comment": "block_id -> 和名(ja_jp)。MOD /abtest exporttex 生成。編集不可（mc-blueprint は一方向 sync）。",
   "names": {
     "oak_planks": "オークの板材",
     "oak_stairs": "オークの階段",
@@ -103,6 +103,7 @@
     "oak_fence_gate": "オークのフェンスゲート",
     "dark_oak_fence_gate": "ダークオークのフェンスゲート",
     "spruce_fence_gate": "トウヒのフェンスゲート",
+    "poppy": "ポピー",
     "glass": "ガラス",
     "dirt": "土",
     "orange_concrete": "橙色のコンクリート",
@@ -338,6 +339,22 @@
     "chiseled_copper": "模様入りの銅",
     "exposed_chiseled_copper": "風化した模様入りの銅",
     "weathered_chiseled_copper": "錆びた模様入りの銅",
-    "oxidized_chiseled_copper": "酸化した模様入りの銅"
+    "oxidized_chiseled_copper": "酸化した模様入りの銅",
+    "oak_leaves": "オークの葉",
+    "spruce_leaves": "トウヒの葉",
+    "birch_leaves": "シラカバの葉",
+    "jungle_leaves": "ジャングルの葉",
+    "acacia_leaves": "アカシアの葉",
+    "dark_oak_leaves": "ダークオークの葉",
+    "mangrove_leaves": "マングローブの葉",
+    "cherry_leaves": "サクラの葉",
+    "pale_oak_leaves": "ペールオークの葉",
+    "azalea_leaves": "ツツジの葉",
+    "flowering_azalea_leaves": "開花したツツジの葉",
+    "fern": "シダ",
+    "short_grass": "背の低い草",
+    "dead_bush": "枯れ木",
+    "vine": "ツタ",
+    "bamboo": "竹"
   }
 }
