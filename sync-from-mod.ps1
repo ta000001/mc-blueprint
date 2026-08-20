@@ -41,6 +41,15 @@ if (Test-Path $namesFrom) {
     Write-Host "skip names_ja.json (run /abtest exporttex in-game to generate)"
 }
 
+# Optional: blocks_all.json (all vanilla blocks: block/blockClass/ja/properties). Generated in-game by /abtest exporttex.
+$allFrom = Join-Path $src "blocks_all.json"
+if (Test-Path $allFrom) {
+    Copy-Item $allFrom (Join-Path $PSScriptRoot "blocks_all.json") -Force
+    Write-Host "synced blocks_all.json  <-  $allFrom"
+} else {
+    Write-Host "skip blocks_all.json (run /abtest exporttex in-game to generate)"
+}
+
 # Optional: block face textures (data/master/block/blocktex/*.png) -> assets/blocks/,
 # plus the version-only file blocktex/version.json -> ./blocktex.json.
 $texSrc = Join-Path $src "blocktex"
