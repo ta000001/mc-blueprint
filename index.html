@@ -110,8 +110,11 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   border-radius:50%;border:1px solid var(--rule);background:rgba(0,0,0,.4);color:var(--dim);font-size:12px;cursor:pointer}
 .vbottom{position:absolute;right:10px;bottom:10px;display:flex;gap:6px;z-index:6}
 .vbtn{width:34px;height:34px;font-size:17px;line-height:1;border-radius:8px;border:1px solid var(--rule);
-  background:rgba(0,0,0,.45);color:var(--chalk);cursor:pointer}
+  background:rgba(0,0,0,.45);color:var(--chalk);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
 .vbtn:disabled{opacity:.4}
+.vbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.vpick{position:absolute;left:10px;bottom:10px;z-index:6}
+.vpick .vbtn[aria-pressed="true"]{color:var(--brass);border-color:var(--brass-dim)}
 #inspect,#pinspect{position:absolute;left:10px;top:10px;max-width:calc(100% - 20px);font-size:11px;color:var(--brass);
   display:none;font-family:ui-monospace,monospace;pointer-events:none;z-index:6;text-align:left;line-height:1.5;
   text-shadow:0 1px 3px rgba(0,0,0,0.95)}
@@ -213,9 +216,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="b-info" aria-pressed="true">選択</button>
     <button class="btn" id="b-place" aria-pressed="false">置く</button>
     <button class="btn" id="b-break" aria-pressed="false">壊す</button>
-    <button class="btn" id="b-pick" title="選択中ブロックの form/プロパティ/slot をボタンへ反映" disabled>反映</button>
   </div>
-  <div id="space"><div id="inspect"></div><div class="vtoggles"><button class="vtoggle" id="b-hl" aria-pressed="false">強調</button><button class="vtoggle" id="b-label" aria-pressed="false">ラベル</button></div><div class="vbottom"><button class="vbtn" id="b-undo" aria-label="元に戻す">↶</button><button class="vbtn" id="b-redo" aria-label="進む" disabled>↷</button></div></div>
+  <div id="space"><div id="inspect"></div><div class="vtoggles"><button class="vtoggle" id="b-hl" aria-pressed="false">強調</button><button class="vtoggle" id="b-label" aria-pressed="false">ラベル</button></div><div class="vpick"><button class="vbtn" id="b-pick" aria-label="スポイト（選択ブロックを反映）" title="選択中ブロックの form/プロパティ/slot をボタンへ反映" disabled><svg viewBox="0 0 24 24"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/></svg></button></div><div class="vbottom"><button class="vbtn" id="b-undo" aria-label="元に戻す">↶</button><button class="vbtn" id="b-redo" aria-label="進む" disabled>↷</button></div></div>
   <div class="slider"><span class="y" id="y3">H00</span><input id="plane" type="range" min="0" max="15" value="0" aria-label="作業面の高さ"></div>
   <div class="bar">
     <button class="btn" id="b-down">▼ 下の層</button>
@@ -248,7 +250,6 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="pm-info" aria-pressed="true">選択</button>
     <button class="btn" id="pm-place" aria-pressed="false">置く</button>
     <button class="btn" id="pm-break" aria-pressed="false">壊す</button>
-    <button class="btn" id="pm-pick" title="選択中ブロックの form/プロパティ/slot をボタンへ反映" disabled>反映</button>
   </div>
   <div class="stage">
     <div id="spine"></div>
@@ -256,6 +257,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
       <div id="gridwrap"><div id="grid"></div></div>
       <div id="pinspect"></div>
       <div class="vtoggles"><button class="vtoggle" id="pl-hl" aria-pressed="false">強調</button><button class="vtoggle" id="pl-label" aria-pressed="false">ラベル</button></div>
+      <div class="vpick"><button class="vbtn" id="pm-pick" aria-label="スポイト（選択ブロックを反映）" title="選択中ブロックの form/プロパティ/slot をボタンへ反映" disabled><svg viewBox="0 0 24 24"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/></svg></button></div>
       <div class="vbottom"><button class="vbtn" id="pl-undo" aria-label="元に戻す">↶</button><button class="vbtn" id="pl-redo" aria-label="進む" disabled>↷</button></div>
     </div>
   </div>
@@ -405,7 +407,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.37';
+const APP_VERSION = '4.38';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1368,8 +1370,9 @@ $('#pm-break').onclick=()=>setMode('break');
 $('#pm-info').onclick=()=>setMode('info');
 
 // 反映（スポイト）：選択中ブロックの form/プロパティ/slot をボタン群の状態へ載せる
-function updatePickBtns(){ const ok = S.mode==='info' && S.inspect && S.vox.has(S.inspect);
-  ['#b-pick','#pm-pick'].forEach(id=>{ const b=$(id); if(b) b.disabled=!ok; }); }
+function updatePickBtns(){ const info = S.mode==='info', ok = info && S.inspect && S.vox.has(S.inspect);
+  ['#b-pick','#pm-pick'].forEach(id=>{ const b=$(id); if(!b) return; b.disabled=!ok;
+    const w=b.closest('.vpick'); if(w) w.style.display = info ? '' : 'none'; }); }   // スポイトは選択モードのみ表示
 function pickFrom(v){ const n=norm(v), form=formOf(n); if(!form) return;
   const shape=SHAPES.find(s=>SHAPE_FORM[s]===form);
   if(shape){ S.shape=shape; } else { S.shape='others'; S.other=form; }   // 形バー or others
