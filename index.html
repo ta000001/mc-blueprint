@@ -402,7 +402,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.35';
+const APP_VERSION = '4.36';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -554,14 +554,21 @@ function status(m){ $('#status').textContent = m; clearTimeout(status._t);
   status._t = setTimeout(()=>$('#status').textContent='',2600); }
 
 /* ---------- model ---------- */
-function pushHist(){ S.hist.push(new Map(S.vox)); if(S.hist.length>60) S.hist.shift(); S.redo=[]; } // 新規操作でredo破棄
+function snapHist(){ return {vox:new Map(S.vox), dims:{...S.dims}}; }   // vox+dims を1組で保存（層数もundo対象）
+function restoreHist(s){ S.vox = new Map(s.vox);
+  if(s.dims && (s.dims.x!==S.dims.x||s.dims.y!==S.dims.y||s.dims.z!==S.dims.z)){
+    for(const ax of ['x','z']) if(S.lay[ax] >= s.dims[ax]) S.lay[ax] = Math.max(0, s.dims[ax]-1);   // 非y層カーソルを範囲内へ
+    applyDims({...s.dims});   // dims が変わった時だけジオメトリ/スパイン/入力欄を再構築
+  } else changed();
+}
+function pushHist(){ S.hist.push(snapHist()); if(S.hist.length>60) S.hist.shift(); S.redo=[]; } // 新規操作でredo破棄
 function updateHistBtns(){ const dis=S.redo.length===0; const r=$('#b-redo'), pr=$('#pl-redo'); if(r) r.disabled=dis; if(pr) pr.disabled=dis; }
 function inB(x,y,z){ const d=S.dims; return x>=0&&y>=0&&z>=0&&x<d.x&&y<d.y&&z<d.z; }
 function place(x,y,z){ if(!inB(x,y,z)) return; if(y>S.layer) return;  // 作業面より上には置かない
   const k=K(x,y,z), v=cur(); if(sig(S.vox.get(k))===sig(v)) return; pushHist(); S.vox.set(k,v); changed(); }
 function remove(x,y,z){ const k=K(x,y,z); if(!S.vox.has(k)) return; pushHist(); S.vox.delete(k); changed(); }
-function undo(){ const p=S.hist.pop(); if(!p) return; S.redo.push(new Map(S.vox)); S.vox=p; changed(); }
-function redo(){ const n=S.redo.pop(); if(!n) return; S.hist.push(new Map(S.vox)); S.vox=n; changed(); } // 元に戻すの取り消し
+function undo(){ const p=S.hist.pop(); if(!p) return; S.redo.push(snapHist()); restoreHist(p); }
+function redo(){ const n=S.redo.pop(); if(!n) return; S.hist.push(snapHist()); restoreHist(n); } // 元に戻すの取り消し
 
 function changed(){ syncVox(); if(S.view==='plan'){ renderGrid(); renderSpine(); }
   if(S.view==='json') renderJson(); $('#tot').textContent=S.vox.size; save(); updateHistBtns(); }
@@ -1458,7 +1465,7 @@ $('#p-lins').onclick=()=>{ const P=PLANES[S.plane]; if(S.dims[P.l]>=64){ status(
   applyDims(S.dims); if(useClip) clearClip();
   status('層を挿入'+(cut?'（切取元を削除）':useClip?'（クリップボード）':'（空）')); };
 $('#p-ladd').onclick=()=>{ const P=PLANES[S.plane]; if(S.dims[P.l]>=64){ status('これ以上増やせません'); return; } pushHist();
-  const L=curLayer(); _shift(L,1); _bump(1); applyDims(S.dims); status('層を追加（現在位置に空層）'); };   // ③ 選択中の位置へ
+  _bump(1); applyDims(S.dims); setPlanLayer(S.dims[P.l]-1); status('層を追加（最上段に空層）'); };   // 常に最上段へ append（選択位置に依らない）
 $('#p-ldel').onclick=()=>{ const P=PLANES[S.plane]; if(S.dims[P.l]<=1){ status('これ以上減らせません'); return; } pushHist();
   const L=curLayer(); _remove(L); _bump(-1); applyDims(S.dims); setPlanLayer(Math.min(L,S.dims[P.l]-1)); status('層を削除'); };
 
