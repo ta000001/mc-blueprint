@@ -213,6 +213,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="b-info" aria-pressed="true">選択</button>
     <button class="btn" id="b-place" aria-pressed="false">置く</button>
     <button class="btn" id="b-break" aria-pressed="false">壊す</button>
+    <button class="btn" id="b-pick" title="選択中ブロックの form/プロパティ/slot をボタンへ反映" disabled>反映</button>
   </div>
   <div id="space"><div id="inspect"></div><div class="vtoggles"><button class="vtoggle" id="b-hl" aria-pressed="false">強調</button><button class="vtoggle" id="b-label" aria-pressed="false">ラベル</button></div><div class="vbottom"><button class="vbtn" id="b-undo" aria-label="元に戻す">↶</button><button class="vbtn" id="b-redo" aria-label="進む" disabled>↷</button></div></div>
   <div class="slider"><span class="y" id="y3">H00</span><input id="plane" type="range" min="0" max="15" value="0" aria-label="作業面の高さ"></div>
@@ -247,6 +248,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="pm-info" aria-pressed="true">選択</button>
     <button class="btn" id="pm-place" aria-pressed="false">置く</button>
     <button class="btn" id="pm-break" aria-pressed="false">壊す</button>
+    <button class="btn" id="pm-pick" title="選択中ブロックの form/プロパティ/slot をボタンへ反映" disabled>反映</button>
   </div>
   <div class="stage">
     <div id="spine"></div>
@@ -350,6 +352,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <div class="hrow">・緑の作業面の層を編集。上の層は半透明で編集不可。</div>
     <div class="hrow">・2D 左の帯 ＝ 各層のブロック量。ドラッグで層移動。</div>
     <div class="hrow">・2D の層ボタン ＝ 層をコピー / 切取 / 貼付 / 挿入 / 追加 / 削除。</div>
+    <div class="hnote">・<b>追加</b>＝選択に関係なく<b>常に最上段</b>へ空層を足す。<b>挿入</b>＝選択層の位置（下）へ入れる（コピー/切取中はその内容）。</div>
   </div>
   <div class="hgrp">
     <div class="hrow"><b>色・ラベル</b></div>
@@ -402,7 +405,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.36';
+const APP_VERSION = '4.37';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1033,7 +1036,7 @@ function bindGestures(el){
     S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:S.layer, plane:'WD'};
     const k=K(a.x,S.layer,a.z), val=S.vox.get(k);
     if(val) showInfo(norm(val)); else $('#inspect').classList.remove('on');
-    S.inspect = val ? k : null; syncVox(); }
+    S.inspect = val ? k : null; updatePickBtns(); syncVox(); }
   const up=e=>{
     const was=pts.get(e.pointerId); pts.delete(e.pointerId);
     if(pts.size<2){ pinch=0; mid=null; }
@@ -1070,7 +1073,7 @@ function bindGestures(el){
     if(hit.object!==planeObj){
       const im=hit.object, o=im.userData.items[hit.instanceId]; if(!o) return; const p=o.p;
       if(mode==='break') remove(p[0],p[1],p[2]);
-      else if(mode==='info'){ showInfo(o.v); S.inspect=K(p[0],p[1],p[2]); syncVox(); }   // 選択中ブロックを強調
+      else if(mode==='info'){ showInfo(o.v); S.inspect=K(p[0],p[1],p[2]); updatePickBtns(); syncVox(); }   // 選択中ブロックを強調
       else { const m4=new THREE.Matrix4(); im.getMatrixAt(hit.instanceId,m4);
         const nm=new THREE.Matrix3().getNormalMatrix(m4);
         const n=hit.face.normal.clone().applyMatrix3(nm).normalize();
@@ -1190,7 +1193,7 @@ function renderGrid(){
       for(const {name} of shownProps(f)) if(val.props[name]!=null) parts.push(name+'='+val.props[name]);
       pi.innerHTML=parts.join('<br>'); pi.classList.add('on'); S.inspect=k; }
     else { pi.classList.remove('on'); S.inspect=null; }
-    renderGrid(); }
+    updatePickBtns(); renderGrid(); }
   function setDest(c){ S.sel={a:{h:c.x,v:c.z}, b:{h:c.x,v:c.z}, layer:curLayer(), plane:S.plane}; renderGrid(); }   // クリップ中の貼付先アンカー
   const clearPrev=()=>{ for(const c of $('#grid').children) c.dataset.preview=''; };
   function rect(a,b,mode){   // 矩形を確定
@@ -1208,7 +1211,7 @@ function renderGrid(){
         for(const {name} of shownProps(f)) if(val.props[name]!=null) parts.push(name+'='+val.props[name]);
         pi.innerHTML=parts.join('<br>'); pi.classList.add('on'); S.inspect=k; }
       else { pi.classList.remove('on'); S.inspect=null; }
-      renderGrid(); }   // 選択セルを強調
+      updatePickBtns(); renderGrid(); }   // 選択セルを強調
     else { const v=cur(); if(sig(S.vox.get(k))!==sig(v)){ pushHist(); S.vox.set(k,v); changed(); renderGrid(); renderSpine(); } } }
   document.addEventListener('pointerdown',e=>{
     if(S.view!=='plan' || !wrap.contains(e.target)) return;
@@ -1358,10 +1361,27 @@ function setMode(m){ S.mode=m;   // 立体・平面 共通のモード（置く/
   document.querySelectorAll('.cellclip-bar').forEach(b=>b.classList.toggle('hidden', m!=='info'));   // 選択モードのみコピー/切取/貼付
   if(m!=='info'){ $('#inspect').classList.remove('on'); const pi=$('#pinspect'); if(pi) pi.classList.remove('on');
     const had=S.inspect||S.sel||S.cellClip; S.inspect=null; S.sel=null; S.cellClip=null; updateCellClipUI();
-    if(had){ syncVox(); if(S.view==='plan') renderGrid(); } } }
+    if(had){ syncVox(); if(S.view==='plan') renderGrid(); } }
+  updatePickBtns(); }
 $('#pm-place').onclick=()=>setMode('place');
 $('#pm-break').onclick=()=>setMode('break');
 $('#pm-info').onclick=()=>setMode('info');
+
+// 反映（スポイト）：選択中ブロックの form/プロパティ/slot をボタン群の状態へ載せる
+function updatePickBtns(){ const ok = S.mode==='info' && S.inspect && S.vox.has(S.inspect);
+  ['#b-pick','#pm-pick'].forEach(id=>{ const b=$(id); if(b) b.disabled=!ok; }); }
+function pickFrom(v){ const n=norm(v), form=formOf(n); if(!form) return;
+  const shape=SHAPES.find(s=>SHAPE_FORM[s]===form);
+  if(shape){ S.shape=shape; } else { S.shape='others'; S.other=form; }   // 形バー or others
+  S.props={...S.props, ...n.props};                                      // プロパティ
+  S.role=n.r;                                                            // slot（役割）
+  const num=parseInt(String(n.r).split('_').pop(),10)||1;
+  if(num>roleCountFor(form)) S.roleCount[form]=Math.min(10,num);         // slot が既定数を超えるなら拡張して表示
+  save(); renderShapeBar(); }                                           // renderShapeBar が renderRoles も呼ぶ
+function pickSelected(){ if(!(S.mode==='info' && S.inspect)) return;
+  const v=S.vox.get(S.inspect); if(!v){ status('ブロックが選択されていません'); return; }
+  pickFrom(v); status('選択ブロックの設定を反映しました'); }
+$('#b-pick').onclick=pickSelected; $('#pm-pick').onclick=pickSelected;
 function showInfo(v){   // 案1: タップしたブロックの form/mat/向き を表示
   const form=formOf(v), parts=['form='+form];
   parts.push('slot='+v.r);
