@@ -115,6 +115,14 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .vbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .vpick{position:absolute;left:10px;bottom:10px;z-index:6}
 .vpick .vbtn[aria-pressed="true"]{color:var(--brass);border-color:var(--brass-dim)}
+.vbtn{transition:transform .06s ease, background .12s ease}
+.vbtn:active:not(:disabled){transform:scale(.86);background:rgba(255,255,255,.1)}
+.vpick .vbtn.picked{animation:pickpop .45s ease}
+@keyframes pickpop{
+  0%{transform:scale(.82);color:var(--brass);border-color:var(--brass);box-shadow:0 0 0 0 rgba(212,169,60,.6)}
+  40%{transform:scale(1.14);color:var(--brass);border-color:var(--brass);box-shadow:0 0 11px 3px rgba(212,169,60,.55)}
+  100%{transform:scale(1);box-shadow:0 0 0 0 rgba(212,169,60,0)}
+}
 #inspect,#pinspect{position:absolute;left:10px;top:10px;max-width:calc(100% - 20px);font-size:11px;color:var(--brass);
   display:none;font-family:ui-monospace,monospace;pointer-events:none;z-index:6;text-align:left;line-height:1.5;
   text-shadow:0 1px 3px rgba(0,0,0,0.95)}
@@ -407,7 +415,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.38';
+const APP_VERSION = '4.39';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1381,9 +1389,11 @@ function pickFrom(v){ const n=norm(v), form=formOf(n); if(!form) return;
   const num=parseInt(String(n.r).split('_').pop(),10)||1;
   if(num>roleCountFor(form)) S.roleCount[form]=Math.min(10,num);         // slot が既定数を超えるなら拡張して表示
   save(); renderShapeBar(); }                                           // renderShapeBar が renderRoles も呼ぶ
+function flashPick(){ ['#b-pick','#pm-pick'].forEach(id=>{ const b=$(id); if(!b) return;
+  b.classList.remove('picked'); void b.offsetWidth; b.classList.add('picked'); }); }   // 反映成功のポップ発光（再クリックで再生）
 function pickSelected(){ if(!(S.mode==='info' && S.inspect)) return;
   const v=S.vox.get(S.inspect); if(!v){ status('ブロックが選択されていません'); return; }
-  pickFrom(v); status('選択ブロックの設定を反映しました'); }
+  pickFrom(v); flashPick(); status('選択ブロックの設定を反映しました'); }
 $('#b-pick').onclick=pickSelected; $('#pm-pick').onclick=pickSelected;
 function showInfo(v){   // 案1: タップしたブロックの form/mat/向き を表示
   const form=formOf(v), parts=['form='+form];
