@@ -90,6 +90,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .tabs button[aria-pressed="true"]{background:var(--panel2);color:var(--brass)}   /* モードタブ（選択/置く/壊す）*/
 .bar{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .bar.sep{border-top:1px solid var(--verdigris);padding-top:7px;margin-top:7px}
+.bar.sep:empty{border-top:0;padding-top:0;margin-top:0}   /* 中身が無いバー（例：プロパティ無し form の dir）は線を出さない */
 .palbar{display:flex;align-items:center;gap:6px;margin-top:8px}
 .palbar-t{font-size:10px;color:var(--dim);min-width:36px;letter-spacing:.06em}
 .palbar .btn{min-width:0}
@@ -251,7 +252,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn c-paste">貼り付け</button>
   </div>
   <div class="bar sep" id="form-space"></div>
-  <div class="bar" id="dir-space"></div>
+  <div class="bar sep" id="dir-space"></div>
   <div class="bar sep" id="roles-space"></div>
   <div class="bar sep"><button class="btn" id="b-clear">すべて消去</button></div>
   <p class="note">合計 <span id="tot">0</span></p>
@@ -304,7 +305,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="p-ldel">層を削除</button>
   </div>
   <div class="bar sep" id="form-plan"></div>
-  <div class="bar" id="dir-plan"></div>
+  <div class="bar sep" id="dir-plan"></div>
   <div class="bar sep" id="roles-plan"></div>
 </section>
 
@@ -430,7 +431,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.46';
+const APP_VERSION = '4.47';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
