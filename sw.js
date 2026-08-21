@@ -1,4 +1,4 @@
-const CACHE = 'blueprint-v4.40';
+const CACHE = 'blueprint-v4.41';
 const ASSETS = [
   './',
   './index.html',
@@ -6,7 +6,7 @@ const ASSETS = [
   './icon-192.png',
   './icon-512.png',
   './dict.json',
-  './form_dict.json',
+  './blocks_all.json',
   'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'
 ];
 
@@ -41,8 +41,8 @@ self.addEventListener('fetch', (e) => {
     );
     return;
   }
-  // dict / form_dict / names_ja / blocktex は network-first（MOD から sync した最新を常に反映。オフラインのみキャッシュ）
-  if (/\/(dict|form_dict|names_ja|blocktex)\.json$/.test(new URL(req.url).pathname)) {
+  // dict / blocks_all / blocktex は network-first（MOD から sync した最新を常に反映。オフラインのみキャッシュ）
+  if (/\/(dict|blocks_all|form_dict|names_ja|blocktex)\.json$/.test(new URL(req.url).pathname)) {
     e.respondWith(
       fetch(new Request(req.url, {cache: 'no-store'})).then((res) => {
         const copy = res.clone();

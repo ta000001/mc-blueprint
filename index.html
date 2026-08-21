@@ -199,6 +199,13 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .mattext{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0}
 .matblock{font-family:ui-monospace,monospace;font-size:10px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mp-block{font-family:ui-monospace,monospace;font-size:10px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#rawmodal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:55}
+#rawmodal.on{display:flex}
+#rawmodal .panel{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:14px;width:min(480px,94%);max-height:84%;display:flex;flex-direction:column;min-height:0}
+#rawmodal h3{margin:0 0 8px;font-size:13px;color:var(--brass)}
+#raw-search{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:8px;font-size:13px;margin-bottom:8px;font-family:ui-monospace,monospace}
+#raw-filter{margin:0 0 8px}
+#rawmodal-list{flex:1;overflow:auto;min-height:0}
 </style>
 </head>
 <body>
@@ -336,6 +343,15 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 <div id="status"></div>
 <div id="modal"><div class="panel"><h3>種類を選択</h3><div class="grid" id="modal-grid"></div></div></div>
 <div id="matmodal"><div class="panel"><h3 id="matmodal-title">mat を選択</h3><div id="matmodal-list"></div></div></div>
+<div id="rawmodal"><div class="panel"><h3>ブロックを指定</h3>
+  <input id="raw-search" placeholder="物理名 / 和名 で検索" autocomplete="off" spellcheck="false">
+  <div class="tabs" id="raw-filter">
+    <button data-f="all" aria-selected="true">すべて</button>
+    <button data-f="form" aria-selected="false">form登録あり</button>
+    <button data-f="none" aria-selected="false">form登録なし</button>
+  </div>
+  <div id="rawmodal-list"></div>
+</div></div>
 <div id="vmodal"><div class="panel"><h3>バージョン情報</h3><div id="vmodal-body"></div></div></div>
 <div id="pmodal"><div class="panel"><h3>palette / structure の使い方</h3>
   <div class="hgrp">
@@ -416,7 +432,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.40';
+const APP_VERSION = '4.41';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -447,64 +463,67 @@ const MIRROR = new Set(['facing','hinge','east','west']);            // 左右�
 const OTHER_KEY2FORM = { door:'DOOR', torch:'TORCH', wall_torch:'WALL_TORCH', lantern:'LANTERN', campfire:'CAMPFIRE', chain:'CHAIN', fence:'FENCE', fence_gate:'FENCE_GATE' };  // 旧 other-key → form 移行
 let FORM_PROPS = {};   // form -> { propName: [values...] }（form_dict 由来）
 let FORM_LIST  = [];   // unregistered 以外の全 form（form_dict 由来）
-function buildFormProps(classes){
+function buildFormProps(){   // dict(block→form) × blocks_all(block→properties) から form→プロパティ を導出（form_dict 廃止）
   const fp={}, order=[];
-  for(const r of (classes||[])){ const f=r.form; if(!f || f==='unregistered') continue;
+  for(const e of DICT_ENTRIES){ const f=e.form; if(!f) continue;
     if(!(f in fp)){ fp[f]={}; order.push(f); }
-    for(const pr of (r.properties||[])){ const cur=fp[f][pr.name]||[];
+    const ba=BLOCKS_ALL[e.block]; if(!ba||!ba.properties) continue;
+    for(const pr of ba.properties){ const cur=fp[f][pr.name]||[];
       for(const v of (pr.values||[])) if(!cur.includes(v)) cur.push(v); fp[f][pr.name]=cur; } }
   FORM_PROPS=fp; FORM_LIST=order;
-  const KNOWN=SHOW;   // 実装済みハンドラ(allowlist)
-  const EXCLUDE=new Set(['waterlogged','powered','extended','triggered','signal_fire','lit','shape','in_wall','north','east','south','west','up']);
-  const seen=new Set(); for(const f in fp) for(const n in fp[f]) seen.add(n);
-  for(const n of seen) if(!KNOWN.has(n)&&!EXCLUDE.has(n)) console.warn('[form_dict] 未分類プロパティ:', n, '- ボタン化するか除外か要判断');
 }
 // 汎用ハンドラ: form_dict + allowlist(SHOW) + 例外 から、出すプロパティを [{name,values}] で返す
 function isMultiHalf(form){ const p=FORM_PROPS[form]; return !!(p && (p.half||[]).includes('upper')); }  // half=upper/lower→複数ブロック
-function shownProps(form){
-  const p = FORM_PROPS[form] || {};
+const propsMapOf = (properties)=>{ const m={}; for(const pr of (properties||[])) m[pr.name]=pr.values||[]; return m; };
+function filterShown(form, p){   // p={name:[values]} → 表示するプロパティ [{name,values}]（allowlist＋順）
   const order = ['facing','axis','half','type','hinge','hanging','face','open',
                  'up','north','south','east','west','leaves','age','stage'];   // ボタン表示順（末尾＝vine面/bamboo状態）
   const out = [];
   for(const name of order){
     if(!(name in p) || !SHOW.has(name)) continue;
     if(name==='half' && (p.half||[]).includes('upper')) continue;              // 複数ブロック→自動(非ボタン)
-    if(STATE_OPTIN[name] && !STATE_OPTIN[name].includes(form)) continue;        // 状態 opt-in(open→trapdoorのみ)
+    if(STATE_OPTIN[name] && form && !STATE_OPTIN[name].includes(form)) continue; // 状態 opt-in(open→trapdoorのみ)。raw(form='')は制限なし
     out.push({name, values:p[name]});
   }
   return out;
 }
+function shownProps(form){ return filterShown(form, FORM_PROPS[form] || {}); }
+function shownPropsRaw(rawId){ const ba=BLOCKS_ALL[rawId]; return filterShown('', propsMapOf(ba && ba.properties)); }   // raw＝ブロック自身の properties
+function curShownProps(){ return S.shape==='raw' ? shownPropsRaw(S.raw) : shownProps(formOf({s:S.shape, ot:S.other})); }
 
 /* dict.json（block/form/mat 対応）を起動時に ./dict.json から fetch して読む（下記 loadDict）。
    単一ソースは MOD の data/master/block/dict.json。
    ★このアプリ側で dict を編集しない。更新は必ず MOD 側 dict.json を直し、それを一方向 sync（コピー）して反映する（厳守）。 */
-let DICT_ENTRIES = [];   // loadDict() が ./dict.json から投入（ここに直書きしない）
+let DICT_ENTRIES = [];   // loadDict() が ./dict.json から投入（form/mat 聖典・ここに直書きしない）
 let DICT_VERSION = null;
-let FORM_DICT_VERSION = null;   // form_dict.json の version（表示用・アプリ本体は未使用）
-let NAMES_JA = {};              // block_id -> 和名（names_ja.json・任意・MOD /abtest exporttex 生成）
-let NAMES_JA_VERSION = null;    // names_ja.json の version（[番号](yyyymmdd)）
-let BLOCKTEX_VERSION = null;    // blocktex.json の version（[番号](yyyymmdd)）
+let NAMES_JA = {};              // block(short) -> 和名（blocks_all.json 由来）
+let BLOCKTEX_VERSION = null;    // blocktex.json の version（番号(yyyymmdd)）
+let BLOCKS_ALL = {};            // block(short) -> {block, blockClass, ja, properties}（全 vanilla・blocks_all.json 由来）
+let BLOCKS_ALL_ARR = [];        // 同上（配列・raw ピッカーの一覧用）
+let BLOCKS_ALL_VERSION = null;
+let DICT_BY_BLOCK = {};         // block(short) -> {form, mat}（dict 逆引き。form 登録有無の判定にも使う）
 let BLOCK_BY_FORMMAT = {};      // 'FORM|MAT' -> block_id（画像/和名は block id キー。form 毎に別ブロック）
-function buildBlockIndex(){ BLOCK_BY_FORMMAT={}; for(const e of DICT_ENTRIES){ if(e.mat && e.block) BLOCK_BY_FORMMAT[e.form+'|'+e.mat]=String(e.block).replace(/:/g,'__'); } }
+function buildBlockIndex(){ BLOCK_BY_FORMMAT={}; DICT_BY_BLOCK={};
+  for(const e of DICT_ENTRIES){ if(!e.block) continue; DICT_BY_BLOCK[e.block]={form:e.form,mat:e.mat};
+    if(e.mat) BLOCK_BY_FORMMAT[e.form+'|'+e.mat]=String(e.block).replace(/:/g,'__'); } }
 async function loadDict(){
   const res = await fetch('./dict.json?v='+APP_VERSION, {cache:'no-cache'});
   if(!res.ok) throw new Error('dict.json HTTP '+res.status);
   const j = await res.json();
   DICT_ENTRIES = Array.isArray(j) ? j : (j.entries||[]);
-  buildBlockIndex();
   DICT_VERSION = (j && j.version!=null) ? j.version : null;
-  // form_dict.json はアプリ未使用だが version 表示のため取得（失敗は無視）
-  try { const r2 = await fetch('./form_dict.json?v='+APP_VERSION, {cache:'no-cache'});
-        if(r2.ok){ const j2 = await r2.json(); FORM_DICT_VERSION = (j2 && j2.version!=null) ? j2.version : null; buildFormProps(j2.classes); } }
-  catch(_){}
-  // names_ja.json（MAT→和名・任意）。無ければ和名なしで動作。
-  try { const r3 = await fetch('./names_ja.json?v='+APP_VERSION, {cache:'no-cache'});
-        if(r3.ok){ const j3 = await r3.json(); NAMES_JA = (j3 && j3.names) ? j3.names : (j3||{}); NAMES_JA_VERSION = (j3 && j3.version!=null) ? j3.version : null; } }
+  buildBlockIndex();
+  // blocks_all.json（全 vanilla: block/blockClass/ja/properties）。form/mat は dict と join して算出。
+  try { const rB = await fetch('./blocks_all.json?v='+APP_VERSION, {cache:'no-cache'});
+        if(rB.ok){ const jB = await rB.json(); BLOCKS_ALL_VERSION = (jB && jB.version!=null) ? jB.version : null;
+          BLOCKS_ALL={}; NAMES_JA={}; BLOCKS_ALL_ARR = jB.blocks || [];
+          for(const b of BLOCKS_ALL_ARR){ BLOCKS_ALL[b.block]=b; NAMES_JA[b.block]=b.ja||''; } } }
   catch(_){}
   // blocktex.json（画像群の version のみ・任意）
   try { const r4 = await fetch('./blocktex.json?v='+APP_VERSION, {cache:'no-cache'});
         if(r4.ok){ const j4 = await r4.json(); BLOCKTEX_VERSION = (j4 && j4.version!=null) ? j4.version : null; } }
   catch(_){}
+  buildFormProps();   // dict + blocks_all から FORM_PROPS/FORM_LIST を導出
 }
 const SHAPE_FORM = {fullblock:'FULLBLOCK', slab:'SLAB', stairs:'STAIRS', trapdoor:'TRAPDOOR'};
 const formOf  = (v)=> v.s==='others' ? (v.ot||'') : (SHAPE_FORM[v.s]||'');   // v.ot は form 文字列
@@ -521,15 +540,17 @@ const mirFac = (tok)=> MIR_FAC[tok] || tok;
 
 const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'info', tool:'draw', role:'FULLBLOCK_1',
-  shape:'fullblock', other:'DOOR', roleCount:{},
+  shape:'fullblock', other:'DOOR', raw:'stone', roleCount:{},
   props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
   view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirs:{place:null,palette:null,structure:null}, files:{place:null,palette:null,structure:null}, labels:false, hlForm:false,
   top:'place', pal:{map:{}}, plane:'WD', lay:{x:0,z:0}, inspect:null, clip:null, clipMode:null, clipLayer:0, clipPlane:null, sel:null, cellClip:null
 };
-const cur = ()=>({r:S.role, s:S.shape, ot:S.other, props:{...S.props}});
+const cur = ()=> S.shape==='raw'
+  ? {s:'raw', raw:S.raw, props:{...S.props}}                        // raw＝具体ブロック直指定（block=id）
+  : {r:S.role, s:S.shape, ot:S.other, props:{...S.props}};
 const sig = (v)=>{ if(!v) return ''; const n=norm(v), p=n.props;
-  return [n.r,n.s,n.ot,n.f,n.h,n.ax,n.hg,n.o,n.hang,n.fc,
-          p.up,p.north,p.south,p.east,p.west,p.age,p.leaves,p.stage].join('|'); };   // vine面/bamboo状態も同一性に含める
+  return [n.r,n.s,n.ot,n.raw||'',n.f,n.h,n.ax,n.hg,n.o,n.hang,n.fc,
+          p.up,p.north,p.south,p.east,p.west,p.age,p.leaves,p.stage].join('|'); };   // raw id・vine面・bamboo状態も同一性に含める
 const norm = (v)=>{
   if(typeof v==='string') v={r:v};
   let props = v.props;
@@ -540,10 +561,13 @@ const norm = (v)=>{
   props = {facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall', ...props};
   let ot = v.ot || 'DOOR'; if(OTHER_KEY2FORM[ot]) ot=OTHER_KEY2FORM[ot];   // 旧 other-key -> form 移行
   const o = {r:v.r||'FULLBLOCK_1', s:v.s||'fullblock', ot, props};
+  if(v.s==='raw') o.raw = v.raw || 'stone';   // 具体ブロック id（short）
   o.f=FAC_I[props.facing]||0; o.h=(o.s==='slab'?props.type:props.half)||'bottom';   // 描画互換の派生フィールド
   o.ax=props.axis; o.hg=props.hinge; o.o=props.open; o.hang=props.hanging; o.fc=props.face;
   return o;
 };
+const RAW_COL = 0x9a8f7a;                                    // raw ブロックの固定色（役割色と別・識別はラベル）
+const voxColor = (v)=> v.s==='raw' ? RAW_COL : roleColor(v.r);   // 描画色（raw は固定色）
 
 /* ---------- persistence ---------- */
 function save(){
@@ -649,6 +673,10 @@ function buildGeos(){
     PANE:         mergeGeo(boxAt(0.12,1,1,0,0), boxAt(1,1,0.12,0,0)),  // ガラス板＝薄い十字
     GRATE:        boxAt(0.86,0.86,0.86,0,0),                 // 格子(copper_grate)＝無方向。フルブロックより一回り小さい立方体で区別（対称＝回転不変）
     POPPY:        mergeGeo(boxAt(0.08,0.6,0.6,-0.2,0), boxAt(0.6,0.6,0.08,-0.2,0)),  // 花＝小さい十字
+    PRESSURE_PLATE: boxAt(0.86,0.06,0.86,-0.47,0),           // 感圧板＝床の薄い板
+    CARPET:       boxAt(1,0.06,1,-0.47,0),                   // カーペット＝床全面の薄い層
+    BED:          boxAt(1,0.34,1,-0.33,0),                   // ベッド＝低い箱（2ブロックだがapp1セルは低い床）
+    BANNER:       mergeGeo(boxAt(0.1,1,0.1,0,0), boxAt(0.5,0.7,0.06,0.12,0)),  // 旗＝細い支柱＋薄い布
     AIR:          boxAt(0.22,0.22,0.22,0,0),                 // 空気＝小さいドット（マーカー）
     // ▲▲ ここまで（DOOR=door_left/right・VINE/BAMBOO_PLANT=下の状態依存ジオメトリが特例） ▲▲
   };
@@ -686,7 +714,7 @@ function geoFor(gk, v){   // gk が静的登録に無ければ状態依存で生
 }
 const vineKey   = (v)=>{ const P=v.props||{}; const b=k=>pTrue(P,k)?1:0; return 'VINE_'+b('up')+b('north')+b('south')+b('east')+b('west'); };
 const bambooKey = (v)=>{ const P=v.props||{}; return 'BAMBOO_'+(P.age||'0')+'_'+(P.leaves||'none'); };
-const geoKey = (v)=> v.s==='fullblock' ? 'full'
+const geoKey = (v)=> (v.s==='fullblock' || v.s==='raw') ? 'full'
   : v.s==='others' ? (v.ot==='DOOR' ? 'door_'+(v.hg||'left')
       : v.ot==='VINE' ? vineKey(v) : v.ot==='BAMBOO_PLANT' ? bambooKey(v)   // 状態依存
       : (GEOS[v.ot] ? v.ot : 'other'))  // 聖典 form 名で直接引く（未登録は 'other'）
@@ -806,7 +834,7 @@ function makeInstShape(items, geometry, material){
         scl=new THREE.Vector3(1,1,1), up=new THREE.Vector3(0,1,0), col=new THREE.Color();
   items.forEach((o,i)=>{ pos.set(o.p[0]+.5,o.p[1]+.5,o.p[2]+.5); q.setFromAxisAngle(up,o.v.f*Math.PI/2);
     m.compose(pos,q,scl); im.setMatrixAt(i,m);
-    col.setHex(roleColor(o.v.r)); im.setColorAt(i,col); });
+    col.setHex(voxColor(o.v)); im.setColorAt(i,col); });
   im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true;
   im.userData.items=items; return im;
 }
@@ -828,7 +856,7 @@ function makeHingeRods(entries, material){   // trapdoor の蝶番(開閉軸)を
     pos.set(o.p[0]+0.5+off[0], o.p[1]+0.5+off[1], o.p[2]+0.5+off[2]);
     q.setFromAxisAngle(up, o.v.f*Math.PI/2);                        // 幅方向の棒を facing に回す
     m.compose(pos,q,scl); im.setMatrixAt(i,m);
-    col.setHex(roleColor(o.v.r)); im.setColorAt(i,col); });
+    col.setHex(voxColor(o.v)); im.setColorAt(i,col); });
   im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true; return im;
 }
 // full の facing：正面(=facing方向)の面に× を描く（全方向・FRONT=手前 -z）
@@ -872,8 +900,9 @@ function makeAxisFaces(entries, material){
 }
 /* ---- form ラベル（トグル）: 聖典(form_dict)の form 名をそのままブロック上に重畳。FULLBLOCK は多数派なので省略 ---- */
 let labelMeshes=[];
-const labelOf   = (v)=>{ const f=formOf(v); return (f && f!=='FULLBLOCK') ? f : ''; };              // 2D：FULLBLOCK以外（slab/stairs/trapdoor も四角で見分け不可のため表示）
-const labelOf3D = (v)=>{ const f=formOf(v); return (f && !PRIMARY_SHAPES.includes(f)) ? f : ''; };   // 3D：others のみ（primary は形で区別できる）
+const rawLabel  = (v)=> v.s==='raw' ? (NAMES_JA[v.raw] || v.raw || 'raw') : '';   // raw は和名(無ければid)
+const labelOf   = (v)=>{ if(v.s==='raw') return rawLabel(v); const f=formOf(v); return (f && f!=='FULLBLOCK') ? f : ''; };              // 2D：FULLBLOCK以外（slab/stairs/trapdoor も四角で見分け不可のため表示）
+const labelOf3D = (v)=>{ if(v.s==='raw') return rawLabel(v); const f=formOf(v); return (f && !PRIMARY_SHAPES.includes(f)) ? f : ''; };   // 3D：others のみ（primary は形で区別・raw は識別のため表示）
 const _labelMat={};
 function labelMat(txt){
   if(_labelMat[txt]) return _labelMat[txt];
@@ -926,7 +955,7 @@ function syncVox(){
     (solid?below:above)[gk] ??= []; (solid?below:above)[gk].push({p,v});
     (solid?belowCells:aboveCells).push(p);
     if(v.s==='trapdoor') (solid?belowTrap:aboveTrap).push({p,v});
-    if(v.s==='fullblock') (solid?belowFull:aboveFull).push({p,v}); });
+    if(v.s==='fullblock'||v.s==='raw') (solid?belowFull:aboveFull).push({p,v}); });   // raw も cube＝向き×/軸オーバーレイ対象
   if(S.labels){ makeLabels(labelSet).forEach(s=>{ scene.add(s); labelMeshes.push(s); });
     makeOriginAxisLabels().forEach(s=>{ scene.add(s); labelMeshes.push(s); }); }
   for(const gk in below){ const im=makeInstShape(below[gk],geoFor(gk,below[gk][0].v),mat); scene.add(im); editMeshes.push(im); }
@@ -1163,7 +1192,7 @@ function renderGrid(){
     c.className='cell'; c.dataset.x=hh; c.dataset.z=vv;       // x=横index h, z=縦index v
     const key=planeKeyAt(hh,vv,layer), v=S.vox.get(key);
     c.dataset.on = v?1:0;
-    if(v) c.style.background = roleHex(v.r);   // 役割色でセル表示
+    if(v) c.style.background = v.s==='raw' ? '#9a8f7a' : roleHex(v.r);   // 役割色でセル表示（raw は固定色）
     if(S.mode==='info' && S.inspect===key) c.dataset.inspect=1;   // 選択の起点セル（情報表示元）
     if(inR(selR,hh,vv)) c.dataset.sel=1;                          // 選択範囲
     if(inR(srcR,hh,vv)) c.dataset.clipsrc=cc.mode;                // 切取/コピー元
@@ -1200,9 +1229,7 @@ function renderGrid(){
   function selectRange(a,b){   // 範囲選択。情報は開始セル(a=ドラッグ開始)のみ表示
     S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:curLayer(), plane:S.plane};
     const k=planeKey(a.x,a.z), val=S.vox.get(k), pi=$('#pinspect');
-    if(val){ const f=formOf(val), parts=['form='+f,'slot='+val.r];
-      for(const {name} of shownProps(f)) if(val.props[name]!=null) parts.push(name+'='+val.props[name]);
-      pi.innerHTML=parts.join('<br>'); pi.classList.add('on'); S.inspect=k; }
+    if(val){ pi.innerHTML=infoPartsOf(val).join('<br>'); pi.classList.add('on'); S.inspect=k; }
     else { pi.classList.remove('on'); S.inspect=null; }
     updatePickBtns(); renderGrid(); }
   function setDest(c){ S.sel={a:{h:c.x,v:c.z}, b:{h:c.x,v:c.z}, layer:curLayer(), plane:S.plane}; renderGrid(); }   // クリップ中の貼付先アンカー
@@ -1218,9 +1245,7 @@ function renderGrid(){
     const k=planeKey(c.x,c.z);
     if(mode==='break'){ if(S.vox.has(k)){ pushHist(); S.vox.delete(k); changed(); renderGrid(); renderSpine(); } }
     else if(mode==='info'){ const val=S.vox.get(k), pi=$('#pinspect');
-      if(val){ const f=formOf(val), parts=['form='+f,'slot='+val.r];
-        for(const {name} of shownProps(f)) if(val.props[name]!=null) parts.push(name+'='+val.props[name]);
-        pi.innerHTML=parts.join('<br>'); pi.classList.add('on'); S.inspect=k; }
+      if(val){ pi.innerHTML=infoPartsOf(val).join('<br>'); pi.classList.add('on'); S.inspect=k; }
       else { pi.classList.remove('on'); S.inspect=null; }
       updatePickBtns(); renderGrid(); }   // 選択セルを強調
     else { const v=cur(); if(sig(S.vox.get(k))!==sig(v)){ pushHist(); S.vox.set(k,v); changed(); renderGrid(); renderSpine(); } } }
@@ -1283,6 +1308,14 @@ function blockRecs(fieldFn){   // S.vox を structure レコード(1行文字列
   const arr=[...S.vox.entries()].map(([k,v])=>({p:k.split(',').map(Number),v:norm(v)}))
     .sort((a,b)=>a.p[2]-b.p[2]||a.p[1]-b.p[1]||b.p[0]-a.p[0]); // d(z) → h(y) → 出力W昇順(=x降順)
   return arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:mirW(p[0],W)}};
+    if(v.s==='raw'){                                                   // raw＝block=id 直指定（form/mat なし）
+      rec.block = (v.raw.indexOf(':')<0 ? 'minecraft:'+v.raw : v.raw);
+      for(const {name} of shownPropsRaw(v.raw)){ let val=v.props[name];
+        if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val);
+        else if(name==='east') val=v.props['west']; else if(name==='west') val=v.props['east'];
+        rec[name]=val; }
+      return '  '+JSON.stringify(rec);
+    }
     const form=formOf({s:v.s,ot:v.ot}); rec.form=form;                 // form 先（dict と統一・2026-08-15）
     Object.assign(rec, fieldFn(v.r));                                  // slot（place）または mat（structure）
     for(const {name} of shownProps(form)){ let val=v.props[name];      // 汎用: 出すプロパティを素直に書く
@@ -1382,7 +1415,9 @@ $('#pm-info').onclick=()=>setMode('info');
 function updatePickBtns(){ const info = S.mode==='info', ok = info && S.inspect && S.vox.has(S.inspect);
   ['#b-pick','#pm-pick'].forEach(id=>{ const b=$(id); if(!b) return; b.disabled=!ok;
     const w=b.closest('.vpick'); if(w) w.style.display = info ? '' : 'none'; }); }   // スポイトは選択モードのみ表示
-function pickFrom(v){ const n=norm(v), form=formOf(n); if(!form) return;
+function pickFrom(v){ const n=norm(v);
+  if(n.s==='raw'){ S.shape='raw'; S.raw=n.raw; S.props={...S.props, ...n.props}; save(); renderShapeBar(); return; }   // raw を反映
+  const form=formOf(n); if(!form) return;
   const shape=SHAPES.find(s=>SHAPE_FORM[s]===form);
   if(shape){ S.shape=shape; } else { S.shape='others'; S.other=form; }   // 形バー or others
   S.props={...S.props, ...n.props};                                      // プロパティ
@@ -1396,11 +1431,14 @@ function pickSelected(){ if(!(S.mode==='info' && S.inspect)) return;
   const v=S.vox.get(S.inspect); if(!v){ status('ブロックが選択されていません'); return; }
   pickFrom(v); flashPick(); status('選択ブロックの設定を反映しました'); }
 $('#b-pick').onclick=pickSelected; $('#pm-pick').onclick=pickSelected;
-function showInfo(v){   // 案1: タップしたブロックの form/mat/向き を表示
-  const form=formOf(v), parts=['form='+form];
-  parts.push('slot='+v.r);
-  for(const {name} of shownProps(form)) if(v.props[name]!=null) parts.push(name+'='+v.props[name]);
-  $('#inspect').innerHTML=parts.join('<br>'); $('#inspect').classList.add('on'); }   // 項目毎に改行（右下詰め）
+function infoPartsOf(v){   // 選択情報の行配列（raw は block/和名、他は form/slot）
+  const n=norm(v);
+  if(n.s==='raw'){ const parts=['block='+n.raw]; const ja=NAMES_JA[n.raw]; if(ja) parts.push(ja);
+    for(const {name} of shownPropsRaw(n.raw)) if(n.props[name]!=null) parts.push(name+'='+n.props[name]); return parts; }
+  const form=formOf(n), parts=['form='+form, 'slot='+n.r];
+  for(const {name} of shownProps(form)) if(n.props[name]!=null) parts.push(name+'='+n.props[name]); return parts; }
+function showInfo(v){   // タップしたブロックの情報を右下に表示
+  $('#inspect').innerHTML=infoPartsOf(v).join('<br>'); $('#inspect').classList.add('on'); }
 
 $('#pl-undo').onclick=undo; $('#pl-redo').onclick=redo;   // 盤内の 元に戻す/進む
 
@@ -1415,8 +1453,10 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
     SHAPES.forEach(s=>mkform(SHAPE_FORM[s], S.shape===s, ()=>{ S.shape=s; save(); renderShapeBar(); }));  // 聖典 form（大文字）で表示
     mkform(isOther?('others<br><small>'+S.other+'</small>'):'others', isOther,
       ()=>{ S.shape='others'; openModal(); save(); renderShapeBar(); });   // クリックでモーダル→種類選択
+    mkform(S.shape==='raw'?('🔍 <small>'+(NAMES_JA[S.raw]||S.raw)+'</small>'):'🔍 ブロック', S.shape==='raw',
+      ()=>{ openRawPicker(); });   // 具体ブロック指定（検索モーダル）
     const mk=(label,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=label; b.onclick=onclick; del.appendChild(b); };
-    for(const {name,values} of shownProps(form)){          // 汎用: form_dict の値を巡回する1ループ
+    for(const {name,values} of curShownProps()){          // 汎用: form_dict/raw の値を巡回する1ループ
       if(!values.includes(S.props[name])) S.props[name]=values[0];
       mk(name+':'+S.props[name], ()=>{ const i=values.indexOf(S.props[name]), next=values[(i+1)%values.length];
         if(form==='VINE' && VINE_FACES.includes(name) && next==='false'   // つたは最低1面必要＝最後の1面はオフ不可
@@ -1439,6 +1479,7 @@ function roleCountFor(form){ return S.roleCount[form] || defaultRoleCount(form);
 function usedRoleMax(form){ let mx=0; S.vox.forEach(v=>{ const r=norm(v).r; if(roleForm(r)===form){ const num=parseInt(String(r).split('_').pop(),10)||0; if(num>mx) mx=num; } }); return mx; }  // その form で使用中の最大役割番号
 function cleanupRoles(form){ S.roleCount[form] = Math.max(defaultRoleCount(form), usedRoleMax(form)); }  // 未使用（末尾）を整理・既定数は下回らない
 function renderRoles(){   // 役割バー：現在 form の役割 FORM_1.. のみ表示。＋で10まで。form/番号から動的生成
+  if(S.shape==='raw'){ ['roles-space','roles-plan'].forEach(id=>{ const el=$('#'+id); if(el){ el.innerHTML=''; el.style.display='none'; } }); return; }  // raw はスロット無し
   const form = formOf({s:S.shape, ot:S.other});
   if(roleForm(S.role)!==form) S.role = form+'_1';                 // form 切替時は既定役割へ
   const n = Math.min(10, roleCountFor(form));
@@ -1542,11 +1583,11 @@ function rotVineFaces(props, plane){   // つたの付く面（north/south/east/
     const nf=faceOfVec(rotVec90(FACE_DIR[f], plane)); if(nf) res[nf]='true'; }   // 縦回転で down になる面は消える（vine に down 無し）
   return res; }
 function rotVal(val, plane){ const n=norm(val), props={...n.props};   // facing/axis を回転（half/hinge 等はそのまま＝水平回転で不変）
-  const fp = FORM_PROPS[formOf(n)] || {};   // その form が実際に持つ向きプロパティだけ回す（GRATE等の無方向は不変）
+  const fp = n.s==='raw' ? propsMapOf((BLOCKS_ALL[n.raw]||{}).properties) : (FORM_PROPS[formOf(n)] || {});   // その form/ブロックが実際に持つ向きだけ回す
   if(fp.facing) props.facing = FAC[ rotFacingIdx(FAC_I[props.facing]||0, plane) ];
   if(fp.axis)   props.axis   = rotAxisTok(props.axis, plane);
   if(fp.north){ const nf=rotVineFaces(props, plane); if(vineAny(nf)) Object.assign(props, nf); }   // つた面（0面になる回転は据え置き）
-  return {r:n.r, s:n.s, ot:n.ot, props}; }
+  return n.s==='raw' ? {s:'raw', raw:n.raw, props} : {r:n.r, s:n.s, ot:n.ot, props}; }
 function rotateClip(){ const cc=S.cellClip; if(!cc){ status('コピー / 切り取り中に回転できます'); return; }
   const w=cc.w;
   cc.cells = cc.cells.map(c=>({ dh:c.dv, dv:(w-1)-c.dh, val:rotVal(c.val, cc.srcPlane) }));   // CW：(dh,dv)→(dv, w-1-dh)
@@ -1643,8 +1684,17 @@ function importJson(text){
       const impW = (d.size && d.size[2]) ? d.size[2]
         : d.blocks.reduce((m,b)=>Math.max(m,(b.pos?b.pos.w:0)+1),1);
       d.blocks.forEach(b=>{ const p=b.pos; if(!p) return;
-        const fm=(b.form||'').toUpperCase();
         if(b.half==='upper') return;   // 複数ブロック上半分は下半分(app 1セル)に集約
+        if(b.block){                   // raw＝block=id 直指定（form/mat なし）
+          const raw=String(b.block).replace(/^minecraft:/,'');
+          const props={facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall'};
+          for(const {name} of shownPropsRaw(raw)){
+            let val=(name==='east')?b['west']:(name==='west')?b['east']:b[name];
+            if(val==null) continue;
+            if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); props[name]=String(val); }
+          set.set(K(mirW(p.w,impW),p.h,p.d), {s:'raw', raw, props}); return;
+        }
+        const fm=(b.form||'').toUpperCase();
         const SF={FULLBLOCK:'fullblock',SLAB:'slab',STAIRS:'stairs',TRAPDOOR:'trapdoor'};
         const s = SF[fm] || 'others', ot = SF[fm] ? 'DOOR' : fm;
         const props = {facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall'};
@@ -1723,6 +1773,42 @@ function openMatPicker(slot, form){   // mat 選択モーダル：物理名・�
   $('#matmodal').classList.add('on');
 }
 function closeMatPicker(){ $('#matmodal').classList.remove('on'); }
+
+/* ---------- raw ブロック指定ピッカー（全 vanilla を物理名/和名で検索・form有無フィルタ） ---------- */
+let rawFilter='all';
+function openRawPicker(){ $('#raw-search').value=''; rawFilter='all';
+  $('#raw-filter').querySelectorAll('button').forEach(b=>b.setAttribute('aria-selected', String(b.dataset.f==='all')));
+  renderRawList(); $('#rawmodal').classList.add('on'); setTimeout(()=>{ try{$('#raw-search').focus();}catch(_){} },60); }
+function renderRawList(){ const list=$('#rawmodal-list'); if(!list) return; list.innerHTML='';
+  const q=($('#raw-search').value||'').trim().toLowerCase(); const CAP=400; let n=0, more=false;
+  for(const b of BLOCKS_ALL_ARR){
+    const hasForm = !!(DICT_BY_BLOCK[b.block] && DICT_BY_BLOCK[b.block].form);
+    if(rawFilter==='form' && !hasForm) continue;
+    if(rawFilter==='none' && hasForm) continue;
+    if(q && !(b.block.includes(q) || (b.ja||'').toLowerCase().includes(q))) continue;
+    if(n>=CAP){ more=true; break; }
+    n++; list.appendChild(rawRow(b, hasForm));
+  }
+  const note=document.createElement('div'); note.className='matja'; note.style.padding='8px';
+  note.textContent = n===0 ? '該当なし' : more ? ('上位'+CAP+'件を表示（検索で絞り込み）') : (n+' 件');
+  list.appendChild(note);
+}
+function rawRow(b, hasForm){
+  const r=document.createElement('button'); r.className='matrow'+((S.shape==='raw'&&S.raw===b.block)?' on':'');
+  r.appendChild(matThumb(b.block));
+  const p=document.createElement('span'); p.className='matphys'; p.textContent=(hasForm?'◆ ':'')+b.block; r.appendChild(p);  // ◆=form登録あり
+  const j=document.createElement('span'); j.className='matja'; j.textContent=b.ja||''; r.appendChild(j);
+  r.onclick=()=>pickRaw(b.block);
+  return r;
+}
+function pickRaw(blockId){ S.shape='raw'; S.raw=blockId;
+  for(const {name,values} of shownPropsRaw(blockId)) if(!values.includes(S.props[name])) S.props[name]=values[0];  // 既定プロパティ
+  $('#rawmodal').classList.remove('on'); save(); renderShapeBar(); status('ブロック指定: '+(NAMES_JA[blockId]||blockId));
+}
+$('#rawmodal').onclick=e=>{ if(e.target.id==='rawmodal') $('#rawmodal').classList.remove('on'); };
+$('#raw-search').oninput=renderRawList;
+$('#raw-filter').querySelectorAll('button').forEach(b=>b.onclick=()=>{ rawFilter=b.dataset.f;
+  $('#raw-filter').querySelectorAll('button').forEach(x=>x.setAttribute('aria-selected', String(x===b))); renderRawList(); });
 function renderPalList(){
   const el=$('#pal-list'); if(!el) return; el.innerHTML='';
   const formRank=f=>{ const i=FORM_LIST.indexOf(f); return i<0?9999:i; };   // form_dict の並び順
@@ -1877,8 +1963,7 @@ $('#pal-struct').onclick=async()=>{   // place(S.vox) + palette(S.pal.map) を�
 function fillVer(){ $('#vmodal-body').innerHTML =                     // ? バッジ→モーダルで各版を縦表示
   '<div class="vrow">app v'+APP_VERSION+'</div>'+
   '<div class="vrow">dict v'+(DICT_VERSION??'?')+'</div>'+
-  '<div class="vrow">form_dict v'+(FORM_DICT_VERSION??'?')+'</div>'+
-  '<div class="vrow">names_ja v'+(NAMES_JA_VERSION??'?')+'</div>'+
+  '<div class="vrow">blocks_all v'+(BLOCKS_ALL_VERSION??'?')+'</div>'+
   '<div class="vrow">blocktex v'+(BLOCKTEX_VERSION??'?')+'</div>'; }
 fillVer();
 $('#ver').onclick = ()=> $('#vmodal').classList.add('on');
