@@ -206,6 +206,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #raw-search{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:8px;font-size:13px;margin-bottom:8px;font-family:ui-monospace,monospace}
 #raw-form{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:7px 8px;font-size:12px;margin:0 0 8px;font-family:ui-monospace,monospace}
 #rawmodal-list{flex:1;overflow:auto;min-height:0}
+.rawhdr{position:sticky;top:0;background:var(--panel2);color:var(--brass);font-size:11px;font-weight:700;letter-spacing:.05em;padding:7px 6px 4px;border-bottom:1px solid var(--brass-dim);z-index:1}
 </style>
 </head>
 <body>
@@ -428,7 +429,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.43';
+const APP_VERSION = '4.44';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1793,17 +1794,21 @@ function renderRawList(){ const list=$('#rawmodal-list'); if(!list) return; list
   }
   items.sort((x,y)=>{ const fi=x.form?FORM_LIST.indexOf(x.form):9999, fj=y.form?FORM_LIST.indexOf(y.form):9999;   // form 別ソート（form順→物理名）
     return fi!==fj ? fi-fj : x.b.block.localeCompare(y.b.block); });
-  for(const it of items.slice(0,CAP)) list.appendChild(rawRow(it.b, it.form));
+  let lastForm=' ';
+  for(const it of items.slice(0,CAP)){
+    if(it.form!==lastForm){ lastForm=it.form;   // form が変わったら見出し（タイトル）で仕切る
+      const h=document.createElement('div'); h.className='rawhdr'; h.textContent=it.form||'（form なし）'; list.appendChild(h); }
+    list.appendChild(rawRow(it.b));
+  }
   const note=document.createElement('div'); note.className='matja'; note.style.padding='8px';
   note.textContent = items.length===0 ? '該当なし' : items.length>CAP ? ('上位'+CAP+' / '+items.length+' 件（検索で絞り込み）') : (items.length+' 件');
   list.appendChild(note);
 }
-function rawRow(b, form){
+function rawRow(b){
   const r=document.createElement('button'); r.className='matrow'+((S.shape==='raw'&&S.raw===b.block)?' on':'');
   r.appendChild(matThumb(b.block));
   const p=document.createElement('span'); p.className='matphys'; p.textContent=b.block; r.appendChild(p);
-  const j=document.createElement('span'); j.className='matja'; j.textContent=(form?form+' · ':'')+(b.ja||'');   // form名 · 和名
-  r.appendChild(j);
+  const j=document.createElement('span'); j.className='matja'; j.textContent=b.ja||''; r.appendChild(j);   // 和名（form は見出しで表示）
   r.onclick=()=>pickRaw(b.block);
   return r;
 }
