@@ -203,8 +203,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #rawmodal.on{display:flex}
 #rawmodal .panel{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:14px;width:min(480px,94%);max-height:84%;display:flex;flex-direction:column;min-height:0}
 #rawmodal h3{margin:0 0 8px;font-size:13px;color:var(--brass)}
-#raw-search{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:8px;font-size:13px;margin-bottom:8px;font-family:ui-monospace,monospace}
-#raw-form{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:7px 8px;font-size:12px;margin:0 0 8px;font-family:ui-monospace,monospace}
+#raw-search{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:9px 8px;font-size:13px;margin:0 0 6px;font-family:ui-monospace,monospace;box-sizing:border-box;width:100%;flex:none}
+#raw-form{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:10px 8px;font-size:13px;line-height:1.3;margin:0;font-family:ui-monospace,monospace;box-sizing:border-box;width:100%;flex:none;height:auto}
 #rawmodal-list{flex:1;overflow:auto;min-height:0}
 .rawhdr{position:sticky;top:0;background:var(--panel2);color:var(--brass);font-size:11px;font-weight:700;letter-spacing:.05em;padding:7px 6px 4px;border-bottom:1px solid var(--brass-dim);z-index:1}
 </style>
@@ -429,7 +429,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.44';
+const APP_VERSION = '4.45';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1775,7 +1775,7 @@ function closeMatPicker(){ $('#matmodal').classList.remove('on'); }
 function fillRawForm(){   // form セレクトの選択肢：すべて / form登録あり / form登録なし / 各 form
   const sel=$('#raw-form'); if(!sel) return; const keep=sel.value; sel.innerHTML='';
   const add=(v,t)=>{ const o=document.createElement('option'); o.value=v; o.textContent=t; sel.appendChild(o); };
-  add('all','すべて'); add('form','form登録あり'); add('none','form登録なし');
+  add('all','すべて'); add('none','form登録なし'); add('form','form登録あり');   // なし→あり→form別
   for(const f of FORM_LIST) add(f, '　'+f);   // 各 form（インデント）
   sel.value = [...sel.options].some(o=>o.value===keep) ? keep : 'all';
 }
