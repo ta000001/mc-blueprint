@@ -436,7 +436,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.51';
+const APP_VERSION = '4.52';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1970,7 +1970,9 @@ updateLdMode();
 // palette の 一覧 / JSON タブ（place の JSON ビューと同様）
 function renderPalJson(){
   const map={}; for(const k of Object.keys(S.pal.map)) if(S.pal.map[k]) map[k]=S.pal.map[k];
-  $('#pal-json').value = JSON.stringify({name:$('#pal-name').value, palette:map}, null, 1);
+  const aliases={}; for(const k in S.aliases) if(S.aliases[k]) aliases[k]=S.aliases[k];   // 設定済みの別名すべて
+  const obj={name:$('#pal-name').value, palette:map}; if(Object.keys(aliases).length) obj.aliases=aliases;
+  $('#pal-json').value = JSON.stringify(obj, null, 1);
 }
 function setPalView(v){
   $('#pv-list-sec').classList.toggle('hidden', v!=='list');
@@ -1984,7 +1986,9 @@ $('#pv-json').onclick=()=>setPalView('json');
 $('#pal-apply').onclick=()=>{   // テキスト編集を S.pal.map へ反映
   try{ const d=JSON.parse($('#pal-json').value); const pal=(d&&d.palette&&typeof d.palette==='object')?d.palette:(d||{});
     S.pal.map={}; for(const k in pal) if(pal[k]!=null) S.pal.map[k]=String(pal[k]);
+    if(d && d.aliases && typeof d.aliases==='object') for(const slot in d.aliases){ if(d.aliases[slot]) S.aliases[slot]=String(d.aliases[slot]); }   // 別名も反映
     if(d && d.name) $('#pal-name').value=d.name;
+    renderRoles();
     status('palette JSON を反映しました（'+Object.keys(S.pal.map).length+' 件）');
   }catch(e){ status('JSON を解釈できません'); }
 };
@@ -1994,7 +1998,7 @@ $('#pal-copy').onclick=async()=>{ renderPalJson();
 };
 $('#pal-save').onclick=async()=>{
   const map={}; for(const k of Object.keys(S.pal.map)) if(S.pal.map[k]) map[k]=S.pal.map[k];   // 未割当は除外
-  const aliases={}; for(const k of Object.keys(S.pal.map)) if(S.aliases[k]) aliases[k]=S.aliases[k];   // 対象スロットの別名のみ
+  const aliases={}; for(const k in S.aliases) if(S.aliases[k]) aliases[k]=S.aliases[k];   // 設定済みの別名すべて
   const obj={name:$('#pal-name').value, palette:map}; if(Object.keys(aliases).length) obj.aliases=aliases;
   const text=JSON.stringify(obj, null, 1);
   const fname=($('#pal-name').value||'palette')+'.json';
