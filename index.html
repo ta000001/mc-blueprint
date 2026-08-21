@@ -63,6 +63,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .palname{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
 .palname span{font-size:10px;color:var(--dim);min-width:64px}
 .palname input{margin-bottom:0}
+.alias{font-size:9px;font-weight:400;line-height:1.05;opacity:.85}   /* スロット別名（役割ボタン下/パレット左） */
 .apphead{display:flex;align-items:center;gap:6px;margin-bottom:12px}
 .icobtn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;color:var(--dim);cursor:pointer;flex:none;border-radius:7px;border:1px solid transparent}
 .icobtn:hover,.icobtn:active{color:var(--chalk);border-color:var(--rule);background:rgba(255,255,255,.04)}
@@ -435,7 +436,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.50';
+const APP_VERSION = '4.51';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -546,7 +547,7 @@ const S = {
   shape:'fullblock', other:'DOOR', raw:'stone', roleCount:{},
   props:{facing:'FRONT', half:'bottom', type:'bottom', axis:'VERTICAL', hinge:'left', open:'false', hanging:'false', face:'wall'},
   view:'space', jsonMode:'blocks', cell:20, hist:[], redo:[], manualZoom:false, dirs:{place:null,palette:null,structure:null}, files:{place:null,palette:null,structure:null}, labels:false, hlForm:false,
-  top:'place', pal:{map:{}}, plane:'WD', lay:{x:0,z:0}, inspect:null, clip:null, clipMode:null, clipLayer:0, clipPlane:null, sel:null, cellClip:null
+  top:'place', pal:{map:{}}, aliases:{}, plane:'WD', lay:{x:0,z:0}, inspect:null, clip:null, clipMode:null, clipLayer:0, clipPlane:null, sel:null, cellClip:null
 };
 const cur = ()=> S.shape==='raw'
   ? {s:'raw', raw:S.raw, props:{...S.props}}                        // raw＝具体ブロック直指定（block=id）
@@ -575,7 +576,7 @@ const voxColor = (v)=> v.s==='raw' ? RAW_COL : roleColor(v.r);   // 描画色（
 /* ---------- persistence ---------- */
 function save(){
   try{ localStorage.setItem('blueprint:current', JSON.stringify({
-    dims:S.dims, name:$('#name').value, voxels:[...S.vox.entries()], role:S.role, roleCount:S.roleCount
+    dims:S.dims, name:$('#name').value, voxels:[...S.vox.entries()], role:S.role, roleCount:S.roleCount, aliases:S.aliases
   })); }catch(e){}
 }
 function load(){
@@ -588,6 +589,7 @@ function load(){
     if(Array.isArray(d.voxels)) S.vox = new Map(d.voxels.map(([k,v])=>[k, norm(v)]));
     if(d.role) S.role = d.role;
     if(d.roleCount) S.roleCount = d.roleCount;
+    if(d.aliases && typeof d.aliases==='object') S.aliases = d.aliases;
     try{ const fs=new Set(Object.keys(S.roleCount)); S.vox.forEach(v=>fs.add(roleForm(norm(v).r))); fs.forEach(f=>{ if(f) cleanupRoles(f); }); }catch(_){}   // 読み込み時も未使用役割を整理（vox使用中の form も対象）
   }catch(e){}
 }
@@ -1481,6 +1483,17 @@ const defaultRoleCount = (form)=> PRIMARY_SHAPES.includes(form)?2:1;   // 既定
 function roleCountFor(form){ return S.roleCount[form] || defaultRoleCount(form); }
 function usedRoleMax(form){ let mx=0; S.vox.forEach(v=>{ const r=norm(v).r; if(roleForm(r)===form){ const num=parseInt(String(r).split('_').pop(),10)||0; if(num>mx) mx=num; } }); return mx; }  // その form で使用中の最大役割番号
 function cleanupRoles(form){ S.roleCount[form] = Math.max(defaultRoleCount(form), usedRoleMax(form)); }  // 未使用（末尾）を整理・既定数は下回らない
+function editAlias(slot){   // スロット別名の登録/編集（ダブルクリック）
+  const a=prompt('スロット別名（'+slot+'）', S.aliases[slot]||'');
+  if(a===null) return;   // キャンセル
+  const t=a.trim(); if(t) S.aliases[slot]=t; else delete S.aliases[slot];
+  save(); renderRoles(); renderPalList();
+}
+function addAlias(el, slot){   // 要素の下に別名を小さく表示（あれば）
+  const al=S.aliases[slot]; if(!al) return;
+  el.appendChild(document.createElement('br'));
+  const sm=document.createElement('small'); sm.className='alias'; sm.textContent=al; el.appendChild(sm);
+}
 function renderRoles(){   // 役割バー：現在 form の役割 FORM_1.. のみ表示。＋で10まで。form/番号から動的生成
   if(S.shape==='raw'){ ['roles-space','roles-plan'].forEach(id=>{ const el=$('#'+id); if(el){ el.innerHTML=''; el.style.display='none'; } }); return; }  // raw はスロット無し
   const form = formOf({s:S.shape, ot:S.other});
@@ -1488,10 +1501,11 @@ function renderRoles(){   // 役割バー：現在 form の役割 FORM_1.. の�
   const n = Math.min(10, roleCountFor(form));
   ['roles-space','roles-plan'].forEach(id=>{ const el=$('#'+id); if(!el) return; el.innerHTML=''; el.style.display='';
     for(let i=1;i<=n;i++){ const role=form+'_'+i, on=S.role===role;
-      const b=document.createElement('button'); b.className='btn'; b.textContent=role;
+      const b=document.createElement('button'); b.className='btn'; b.textContent=role; addAlias(b, role);   // 別名を下に小さく
       b.style.borderColor=roleHex(role); b.style.background=on?roleHex(role):''; b.style.color=on?'#10171A':'';
       b.setAttribute('aria-pressed',on);
       b.onclick=()=>{ S.role=role; save(); renderRoles(); };
+      b.ondblclick=()=>editAlias(role);   // ダブルクリックで別名登録
       el.appendChild(b);
     }
     if(n<10){ const p=document.createElement('button'); p.className='btn'; p.textContent='＋'; p.title='スロットを追加';
@@ -1853,7 +1867,8 @@ function renderPalList(){
     if(form!==curForm){ curForm=form; const h=document.createElement('div'); h.className='pal-form'; h.textContent=form; el.appendChild(h); }
     const row=document.createElement('div'); row.className='pal-row';
     const sw=document.createElement('span'); sw.className='pal-sw'; sw.style.background=roleHex(slot); row.appendChild(sw);
-    const lab=document.createElement('span'); lab.className='pal-slot'; lab.textContent=slot; row.appendChild(lab);
+    const lab=document.createElement('span'); lab.className='pal-slot'; lab.textContent=slot; addAlias(lab, slot);
+    lab.ondblclick=()=>editAlias(slot); lab.title='ダブルクリックで別名'; row.appendChild(lab);
     const cur=S.pal.map[slot];
     const curKey=matKey(form, cur);
     const pick=document.createElement('button'); pick.className='pal-pick';
@@ -1910,8 +1925,9 @@ function palImportPalette(text){   // 既存 palette を任意で復元。place 
       if(placeLoaded){ if(slot in S.pal.map) S.pal.map[slot]=pal[slot]; else extra.push(slot); }
       else S.pal.map[slot]=pal[slot];
     }
+    if(d.aliases && typeof d.aliases==='object') for(const slot in d.aliases){ if(d.aliases[slot]) S.aliases[slot]=String(d.aliases[slot]); }   // 別名を復元
     if(d.name) $('#pal-name').value=d.name;
-    renderPalList();
+    renderPalList(); renderRoles();
     if(extra.length) status('⚠ palette に place へ無いスロット '+extra.length+' 件（'+extra.slice(0,3).join(', ')+(extra.length>3?'…':'')+'）→ place 優先で無視');
     else status('palette を読み込みました（割当 '+Object.keys(pal).length+' 件）');
   }catch(e){ status('このファイルは読み込めません'); }
@@ -1978,7 +1994,9 @@ $('#pal-copy').onclick=async()=>{ renderPalJson();
 };
 $('#pal-save').onclick=async()=>{
   const map={}; for(const k of Object.keys(S.pal.map)) if(S.pal.map[k]) map[k]=S.pal.map[k];   // 未割当は除外
-  const text=JSON.stringify({name:$('#pal-name').value, palette:map}, null, 1);
+  const aliases={}; for(const k of Object.keys(S.pal.map)) if(S.aliases[k]) aliases[k]=S.aliases[k];   // 対象スロットの別名のみ
+  const obj={name:$('#pal-name').value, palette:map}; if(Object.keys(aliases).length) obj.aliases=aliases;
+  const text=JSON.stringify(obj, null, 1);
   const fname=($('#pal-name').value||'palette')+'.json';
   await saveFile(text, fname, 'palette を保存（'+Object.keys(map).length+' 件）', 'palette');   // place と同じ保存先/上書き
 };
