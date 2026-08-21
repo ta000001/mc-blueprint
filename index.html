@@ -204,7 +204,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #rawmodal .panel{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:14px;width:min(480px,94%);max-height:84%;display:flex;flex-direction:column;min-height:0}
 #rawmodal h3{margin:0 0 8px;font-size:13px;color:var(--brass)}
 #raw-search{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:8px;font-size:13px;margin-bottom:8px;font-family:ui-monospace,monospace}
-#raw-filter{margin:0 0 8px}
+#raw-form{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:7px 8px;font-size:12px;margin:0 0 8px;font-family:ui-monospace,monospace}
 #rawmodal-list{flex:1;overflow:auto;min-height:0}
 </style>
 </head>
@@ -345,11 +345,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 <div id="matmodal"><div class="panel"><h3 id="matmodal-title">mat を選択</h3><div id="matmodal-list"></div></div></div>
 <div id="rawmodal"><div class="panel"><h3>ブロックを指定</h3>
   <input id="raw-search" placeholder="物理名 / 和名 で検索" autocomplete="off" spellcheck="false">
-  <div class="tabs" id="raw-filter">
-    <button data-f="all" aria-selected="true">すべて</button>
-    <button data-f="form" aria-selected="false">form登録あり</button>
-    <button data-f="none" aria-selected="false">form登録なし</button>
-  </div>
+  <select id="raw-form" aria-label="form で絞り込み"></select>
   <div id="rawmodal-list"></div>
 </div></div>
 <div id="vmodal"><div class="panel"><h3>バージョン情報</h3><div id="vmodal-body"></div></div></div>
@@ -432,7 +428,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.41';
+const APP_VERSION = '4.42';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1774,30 +1770,40 @@ function openMatPicker(slot, form){   // mat 選択モーダル：物理名・�
 }
 function closeMatPicker(){ $('#matmodal').classList.remove('on'); }
 
-/* ---------- raw ブロック指定ピッカー（全 vanilla を物理名/和名で検索・form有無フィルタ） ---------- */
-let rawFilter='all';
-function openRawPicker(){ $('#raw-search').value=''; rawFilter='all';
-  $('#raw-filter').querySelectorAll('button').forEach(b=>b.setAttribute('aria-selected', String(b.dataset.f==='all')));
+/* ---------- raw ブロック指定ピッカー（全 vanilla を物理名/和名で検索・form 別に絞り込み/ソート） ---------- */
+function fillRawForm(){   // form セレクトの選択肢：すべて / form登録あり / form登録なし / 各 form
+  const sel=$('#raw-form'); if(!sel) return; const keep=sel.value; sel.innerHTML='';
+  const add=(v,t)=>{ const o=document.createElement('option'); o.value=v; o.textContent=t; sel.appendChild(o); };
+  add('all','すべて'); add('form','form登録あり'); add('none','form登録なし');
+  for(const f of FORM_LIST) add(f, '　'+f);   // 各 form（インデント）
+  sel.value = [...sel.options].some(o=>o.value===keep) ? keep : 'all';
+}
+function openRawPicker(){ $('#raw-search').value=''; fillRawForm(); $('#raw-form').value='all';
   renderRawList(); $('#rawmodal').classList.add('on'); setTimeout(()=>{ try{$('#raw-search').focus();}catch(_){} },60); }
 function renderRawList(){ const list=$('#rawmodal-list'); if(!list) return; list.innerHTML='';
-  const q=($('#raw-search').value||'').trim().toLowerCase(); const CAP=400; let n=0, more=false;
+  const q=($('#raw-search').value||'').trim().toLowerCase(); const sel=$('#raw-form').value||'all'; const CAP=400;
+  const items=[];
   for(const b of BLOCKS_ALL_ARR){
-    const hasForm = !!(DICT_BY_BLOCK[b.block] && DICT_BY_BLOCK[b.block].form);
-    if(rawFilter==='form' && !hasForm) continue;
-    if(rawFilter==='none' && hasForm) continue;
+    const d=DICT_BY_BLOCK[b.block], form=(d&&d.form)||'';
+    if(sel==='form' && !form) continue;
+    if(sel==='none' && form) continue;
+    if(sel!=='all' && sel!=='form' && sel!=='none' && form!==sel) continue;   // 特定 form
     if(q && !(b.block.includes(q) || (b.ja||'').toLowerCase().includes(q))) continue;
-    if(n>=CAP){ more=true; break; }
-    n++; list.appendChild(rawRow(b, hasForm));
+    items.push({b, form});
   }
+  items.sort((x,y)=>{ const fi=x.form?FORM_LIST.indexOf(x.form):9999, fj=y.form?FORM_LIST.indexOf(y.form):9999;   // form 別ソート（form順→物理名）
+    return fi!==fj ? fi-fj : x.b.block.localeCompare(y.b.block); });
+  for(const it of items.slice(0,CAP)) list.appendChild(rawRow(it.b, it.form));
   const note=document.createElement('div'); note.className='matja'; note.style.padding='8px';
-  note.textContent = n===0 ? '該当なし' : more ? ('上位'+CAP+'件を表示（検索で絞り込み）') : (n+' 件');
+  note.textContent = items.length===0 ? '該当なし' : items.length>CAP ? ('上位'+CAP+' / '+items.length+' 件（検索で絞り込み）') : (items.length+' 件');
   list.appendChild(note);
 }
-function rawRow(b, hasForm){
+function rawRow(b, form){
   const r=document.createElement('button'); r.className='matrow'+((S.shape==='raw'&&S.raw===b.block)?' on':'');
   r.appendChild(matThumb(b.block));
-  const p=document.createElement('span'); p.className='matphys'; p.textContent=(hasForm?'◆ ':'')+b.block; r.appendChild(p);  // ◆=form登録あり
-  const j=document.createElement('span'); j.className='matja'; j.textContent=b.ja||''; r.appendChild(j);
+  const p=document.createElement('span'); p.className='matphys'; p.textContent=b.block; r.appendChild(p);
+  const j=document.createElement('span'); j.className='matja'; j.textContent=(form?form+' · ':'')+(b.ja||'');   // form名 · 和名
+  r.appendChild(j);
   r.onclick=()=>pickRaw(b.block);
   return r;
 }
@@ -1807,8 +1813,7 @@ function pickRaw(blockId){ S.shape='raw'; S.raw=blockId;
 }
 $('#rawmodal').onclick=e=>{ if(e.target.id==='rawmodal') $('#rawmodal').classList.remove('on'); };
 $('#raw-search').oninput=renderRawList;
-$('#raw-filter').querySelectorAll('button').forEach(b=>b.onclick=()=>{ rawFilter=b.dataset.f;
-  $('#raw-filter').querySelectorAll('button').forEach(x=>x.setAttribute('aria-selected', String(x===b))); renderRawList(); });
+$('#raw-form').onchange=renderRawList;
 function renderPalList(){
   const el=$('#pal-list'); if(!el) return; el.innerHTML='';
   const formRank=f=>{ const i=FORM_LIST.indexOf(f); return i<0?9999:i; };   // form_dict の並び順
