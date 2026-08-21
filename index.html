@@ -417,6 +417,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="ldrow"><button class="btn" id="j-dl">place</button><input id="name" value="blueprint-01" aria-label="place の名前"></div>
   <div class="ldrow"><button class="btn" id="pal-save">palette</button><input id="pal-name" value="palette-01" aria-label="palette の名前"></div>
   <div class="ldrow"><button class="btn" id="pal-struct">structure</button><input id="struct-name" value="structure-01" aria-label="structure の名前"></div>
+  <div class="bar sep"><button class="btn" id="save-all" style="flex:1">一括保存（place + palette + structure）</button></div>
 </div></div>
 <div id="loadmodal"><div class="panel"><h3>読み込み</h3>
   <div class="ldgrp">
@@ -436,7 +437,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.52';
+const APP_VERSION = '4.53';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1688,10 +1689,11 @@ async function saveFile(text, fname, okMsg, kind){   // kind の保存先フォ�
   a.href=URL.createObjectURL(b); a.download=fname; a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000); status((okMsg||'保存しました')+'（ダウンロード）');
 }
-$('#j-dl').onclick=async()=>{
+async function savePlace(){
   const text=buildJson('blocks'), fname=($('#name').value||'blueprint')+'.json';   // 保存は常に blocks（形/mat/向きを保持）
   await saveFile(text, fname, '保存しました', 'place');
-};
+}
+$('#j-dl').onclick=savePlace;
 function importJson(text){
   try{
     const d=JSON.parse(text);
@@ -1996,22 +1998,31 @@ $('#pal-copy').onclick=async()=>{ renderPalJson();
   try{ await navigator.clipboard.writeText($('#pal-json').value); status('palette JSON をコピーしました'); }
   catch(e){ $('#pal-json').select(); status('テキストを選択しました。長押しでコピー'); }
 };
-$('#pal-save').onclick=async()=>{
+async function savePalette(){
   const map={}; for(const k of Object.keys(S.pal.map)) if(S.pal.map[k]) map[k]=S.pal.map[k];   // 未割当は除外
   const aliases={}; for(const k in S.aliases) if(S.aliases[k]) aliases[k]=S.aliases[k];   // 設定済みの別名すべて
   const obj={name:$('#pal-name').value, palette:map}; if(Object.keys(aliases).length) obj.aliases=aliases;
   const text=JSON.stringify(obj, null, 1);
   const fname=($('#pal-name').value||'palette')+'.json';
   await saveFile(text, fname, 'palette を保存（'+Object.keys(map).length+' 件）', 'palette');   // place と同じ保存先/上書き
-};
-$('#pal-struct').onclick=async()=>{   // place(S.vox) + palette(S.pal.map) を合成して structure を保存
-  if(!S.vox.size){ status('place が空です（先に place を作成/読み込み）'); return; }
+}
+$('#pal-save').onclick=savePalette;
+async function saveStructure(){   // place(S.vox) + palette(S.pal.map) を合成して structure を保存
+  if(!S.vox.size){ status('place が空です（先に place を作成/読み込み）'); return false; }
   const {json,missing}=buildStructure();
   const fname=(($('#struct-name').value.trim())||'structure')+'.json';
   await saveFile(json, fname, (missing.length
     ? '⚠ structure 保存: 未割当 '+missing.length+' 件（'+missing.slice(0,3).join(', ')+(missing.length>3?'…':'')+'）は slot 名のまま'
     : 'structure を保存（place+palette 合成）'), 'structure');
-};
+  return true;
+}
+$('#pal-struct').onclick=saveStructure;
+async function saveAll(){   // place → palette → structure を一括保存
+  await savePlace(); await savePalette();
+  const st = S.vox.size ? (await saveStructure(), true) : false;
+  status('一括保存しました'+(st?'（place・palette・structure）':'（place・palette／structure は place 空のため省略）'));
+}
+$('#save-all').onclick=saveAll;
 
 /* ---------- boot ---------- */
 function fillVer(){ $('#vmodal-body').innerHTML =                     // ? バッジ→モーダルで各版を縦表示
