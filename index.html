@@ -437,7 +437,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.53';
+const APP_VERSION = '4.54';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1998,13 +1998,15 @@ $('#pal-copy').onclick=async()=>{ renderPalJson();
   try{ await navigator.clipboard.writeText($('#pal-json').value); status('palette JSON をコピーしました'); }
   catch(e){ $('#pal-json').select(); status('テキストを選択しました。長押しでコピー'); }
 };
-async function savePalette(){
+function palJsonText(){   // palette JSON 文字列（map＋設定済みの別名 aliases）
   const map={}; for(const k of Object.keys(S.pal.map)) if(S.pal.map[k]) map[k]=S.pal.map[k];   // 未割当は除外
   const aliases={}; for(const k in S.aliases) if(S.aliases[k]) aliases[k]=S.aliases[k];   // 設定済みの別名すべて
   const obj={name:$('#pal-name').value, palette:map}; if(Object.keys(aliases).length) obj.aliases=aliases;
-  const text=JSON.stringify(obj, null, 1);
-  const fname=($('#pal-name').value||'palette')+'.json';
-  await saveFile(text, fname, 'palette を保存（'+Object.keys(map).length+' 件）', 'palette');   // place と同じ保存先/上書き
+  return JSON.stringify(obj, null, 1);
+}
+async function savePalette(){
+  await saveFile(palJsonText(), ($('#pal-name').value||'palette')+'.json',
+    'palette を保存（'+Object.keys(S.pal.map).filter(k=>S.pal.map[k]).length+' 件）', 'palette');
 }
 $('#pal-save').onclick=savePalette;
 async function saveStructure(){   // place(S.vox) + palette(S.pal.map) を合成して structure を保存
@@ -2017,10 +2019,34 @@ async function saveStructure(){   // place(S.vox) + palette(S.pal.map) を合成
   return true;
 }
 $('#pal-struct').onclick=saveStructure;
-async function saveAll(){   // place → palette → structure を一括保存
-  await savePlace(); await savePalette();
-  const st = S.vox.size ? (await saveStructure(), true) : false;
-  status('一括保存しました'+(st?'（place・palette・structure）':'（place・palette／structure は place 空のため省略）'));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function downloadText(text, fname){ const b=new Blob([text],{type:'application/json'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download=fname; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); }
+async function saveAll(){   // place + palette (+ structure) を一括保存。iOS 等ダウンロード端末は Web Share でまとめて
+  const items=[
+    {text:buildJson('blocks'), fname:($('#name').value||'blueprint')+'.json', kind:'place'},
+    {text:palJsonText(),       fname:($('#pal-name').value||'palette')+'.json', kind:'palette'},
+  ];
+  if(S.vox.size){ const {json}=buildStructure(); items.push({text:json, fname:(($('#struct-name').value.trim())||'structure')+'.json', kind:'structure'}); }
+  // 保存先フォルダがある kind は個別に上書き。残り（ダウンロード対象）は後でまとめて。
+  const dl=[];
+  for(const it of items){
+    const h=S.dirs[it.kind];
+    if(h){ try{ if(await ensurePerm(h)){ const fh=await h.getFileHandle(it.fname,{create:true}); const w=await fh.createWritable(); await w.write(it.text); await w.close(); continue; } }catch(_){ } }
+    dl.push(it);
+  }
+  if(!dl.length){ status('一括保存しました（'+items.length+'ファイル）'); return; }
+  // ダウンロード端末：Web Share で複数ファイルをまとめて（iOS→共有シート→「ファイルに保存」）
+  try{
+    const files=dl.map(it=>new File([it.text], it.fname, {type:'application/json'}));
+    if(navigator.canShare && navigator.canShare({files})){
+      await navigator.share({files, title:'mc-blueprint'});
+      status('共有シートから保存してください（'+dl.length+'ファイル）'); return;
+    }
+  }catch(e){ if(e && e.name==='AbortError'){ status('保存をキャンセルしました'); return; } }
+  // フォールバック：順にダウンロード（間隔を空ける）
+  for(let i=0;i<dl.length;i++){ downloadText(dl[i].text, dl[i].fname); if(i<dl.length-1) await sleep(800); }
+  status('一括保存しました（'+dl.length+'ファイル・ダウンロード）');
 }
 $('#save-all').onclick=saveAll;
 
