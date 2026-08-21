@@ -25,23 +25,16 @@ if ($ModRoot) {
 }
 if (-not $src -or -not (Test-Path $src)) { Write-Error "MOD data dir not found (pass -ModRoot <mdk path>)"; exit 1 }
 
-foreach ($f in @("dict.json", "form_dict.json")) {
+# dict.json (canonical, hand-edited form/mat single source).
+foreach ($f in @("dict.json")) {
     $from = Join-Path $src $f
     if (-not (Test-Path $from)) { Write-Error "not found: $from"; exit 1 }
     Copy-Item $from (Join-Path $PSScriptRoot $f) -Force
     Write-Host "synced $f  <-  $from"
 }
 
-# Optional: names_ja.json (MAT -> Japanese name). Generated in-game by /abtest exporttex.
-$namesFrom = Join-Path $src "names_ja.json"
-if (Test-Path $namesFrom) {
-    Copy-Item $namesFrom (Join-Path $PSScriptRoot "names_ja.json") -Force
-    Write-Host "synced names_ja.json  <-  $namesFrom"
-} else {
-    Write-Host "skip names_ja.json (run /abtest exporttex in-game to generate)"
-}
-
-# Optional: blocks_all.json (all vanilla blocks: block/blockClass/ja/properties). Generated in-game by /abtest exporttex.
+# blocks_all.json (all vanilla blocks: block/blockClass/ja/properties). Generated in-game by /abtest exporttex.
+# (Replaces the old form_dict.json + names_ja.json, which are no longer used.)
 $allFrom = Join-Path $src "blocks_all.json"
 if (Test-Path $allFrom) {
     Copy-Item $allFrom (Join-Path $PSScriptRoot "blocks_all.json") -Force
