@@ -184,8 +184,9 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #modal h3,#matmodal h3{margin:0 0 10px;font-size:13px;color:var(--brass)}
 #modal .grid{display:flex;flex-wrap:wrap;gap:6px}
 #modal .grid .btn{flex:0 0 auto;min-width:110px}
-#matmodal .panel{width:min(420px,88%)}
-#matmodal-list{display:flex;flex-direction:column}
+#matmodal .panel{width:min(420px,88%);display:flex;flex-direction:column;overflow:hidden;min-height:0}
+#mat-search{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:9px 8px;font-size:13px;margin:0 0 8px;font-family:ui-monospace,monospace;box-sizing:border-box;width:100%;flex:none}
+#matmodal-list{display:flex;flex-direction:column;flex:1;overflow:auto;min-height:0}
 .matrow{display:flex;align-items:center;gap:10px;padding:8px 6px;border:none;border-bottom:1px solid var(--rule);background:transparent;cursor:pointer;text-align:left;width:100%}
 .matrow.on{background:var(--panel)}
 .matphys{font-family:ui-monospace,monospace;font-size:12px;color:var(--chalk);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
@@ -348,7 +349,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <div id="status"></div>
 <div id="modal"><div class="panel"><h3>種類を選択</h3><div class="grid" id="modal-grid"></div></div></div>
-<div id="matmodal"><div class="panel"><h3 id="matmodal-title">mat を選択</h3><div id="matmodal-list"></div></div></div>
+<div id="matmodal"><div class="panel"><h3 id="matmodal-title">mat を選択</h3><input id="mat-search" placeholder="mat / block / 和名 で検索" autocomplete="off" spellcheck="false"><div id="matmodal-list"></div></div></div>
 <div id="rawmodal"><div class="panel"><h3>ブロックを指定</h3>
   <input id="raw-search" placeholder="物理名 / 和名 で検索" autocomplete="off" spellcheck="false">
   <select id="raw-form" aria-label="form で絞り込み"></select>
@@ -434,7 +435,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.49';
+const APP_VERSION = '4.50';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1757,23 +1758,39 @@ function matThumb(key){ const d=document.createElement('span'); d.className='mat
     img.onerror=()=>{ img.remove(); d.classList.add('noimg'); }; d.appendChild(img); }
   else d.classList.add('noimg');
   return d; }
-function openMatPicker(slot, form){   // mat 選択モーダル：物理名・和名・イメージ一覧。押下で選択
-  const list=$('#matmodal-list'); if(!list) return; list.innerHTML='';
-  $('#matmodal-title').textContent=slot+' の mat を選択';
-  const mkRow=(mat)=>{ const r=document.createElement('button'); r.className='matrow'+((S.pal.map[slot]||'')===mat?' on':'');
-    const key=matKey(form, mat);
-    r.appendChild(matThumb(key));
-    const p=document.createElement('span'); p.className='matphys'; p.textContent=mat||'(未割当)'; r.appendChild(p);  // 左: mat物理名
-    const col=document.createElement('span'); col.className='matbcol';                                    // 右: block物理名 + その下に和名
-    if(key){ const bl=document.createElement('span'); bl.className='matblock'; bl.textContent=key; col.appendChild(bl); }
-    const j=document.createElement('span'); j.className='matja'; j.textContent=matJa(key); col.appendChild(j);
-    r.appendChild(col);
-    r.onclick=()=>{ S.pal.map[slot]=mat; closeMatPicker(); renderPalList(); };
-    return r; };
-  list.appendChild(mkRow(''));                                  // (未割当)
-  for(const m of formMats(form)) list.appendChild(mkRow(m));
-  $('#matmodal').classList.add('on');
+let matPickSlot=null, matPickForm=null;
+function matRow(mat){   // 1行：物理名・block・和名・イメージ
+  const slot=matPickSlot, form=matPickForm;
+  const r=document.createElement('button'); r.className='matrow'+((S.pal.map[slot]||'')===mat?' on':'');
+  const key=matKey(form, mat);
+  r.appendChild(matThumb(key));
+  const p=document.createElement('span'); p.className='matphys'; p.textContent=mat||'(未割当)'; r.appendChild(p);  // 左: mat物理名
+  const col=document.createElement('span'); col.className='matbcol';                                    // 右: block物理名 + その下に和名
+  if(key){ const bl=document.createElement('span'); bl.className='matblock'; bl.textContent=key; col.appendChild(bl); }
+  const j=document.createElement('span'); j.className='matja'; j.textContent=matJa(key); col.appendChild(j);
+  r.appendChild(col);
+  r.onclick=()=>{ S.pal.map[slot]=mat; closeMatPicker(); renderPalList(); };
+  return r;
 }
+function renderMatList(){   // 検索でフィルタ（mat物理名 / block id / 和名）。(未割当) は常に先頭
+  const list=$('#matmodal-list'); if(!list) return; list.innerHTML='';
+  const q=($('#mat-search').value||'').trim().toLowerCase(); const CAP=400; let n=0, more=false;
+  list.appendChild(matRow(''));
+  for(const m of formMats(matPickForm)){
+    const key=matKey(matPickForm, m);
+    if(q && !(m.toLowerCase().includes(q) || key.includes(q) || (matJa(key)||'').toLowerCase().includes(q))) continue;
+    if(n>=CAP){ more=true; break; }
+    n++; list.appendChild(matRow(m));
+  }
+  if(more){ const e=document.createElement('div'); e.className='matja'; e.style.padding='8px'; e.textContent='上位'+CAP+'件（検索で絞り込み）'; list.appendChild(e); }
+}
+function openMatPicker(slot, form){   // mat 選択モーダル：検索＋物理名・和名・イメージ一覧。押下で選択
+  matPickSlot=slot; matPickForm=form;
+  $('#matmodal-title').textContent=slot+' の mat を選択';
+  $('#mat-search').value=''; renderMatList();
+  $('#matmodal').classList.add('on'); setTimeout(()=>{ try{$('#mat-search').focus();}catch(_){} },60);
+}
+$('#mat-search').oninput=renderMatList;
 function closeMatPicker(){ $('#matmodal').classList.remove('on'); }
 
 /* ---------- raw ブロック指定ピッカー（全 vanilla を物理名/和名で検索・form 別に絞り込み/ソート） ---------- */

@@ -1,4 +1,4 @@
-const CACHE = 'blueprint-v4.49';
+const CACHE = 'blueprint-v4.50';
 const ASSETS = [
   './',
   './index.html',
