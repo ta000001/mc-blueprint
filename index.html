@@ -89,8 +89,11 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .tabs button[aria-selected="true"]{background:var(--panel2);color:var(--brass)}
 .tabs button[aria-pressed="true"]{background:var(--panel2);color:var(--brass)}   /* モードタブ（選択/置く/壊す）*/
 .bar{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
-.bar.sep{border-top:1px solid var(--verdigris);padding-top:7px;margin-top:7px}
+.bar.sep{border-top:1px solid var(--verdigris);padding-top:7px;margin-top:7px;position:relative}
 .bar.sep:empty{border-top:0;padding-top:0;margin-top:0}   /* 中身が無いバー（例：プロパティ無し form の dir）は線を出さない */
+.bar.sep[data-label]::before{content:attr(data-label);position:absolute;left:12px;top:0;transform:translateY(-50%);   /* 区切り線の上に小さくエリア名（線はこの部分だけ途切れる・縦幅は増えない） */
+  background:var(--ink);color:var(--dim);font-size:9px;letter-spacing:.06em;padding:0 6px;pointer-events:none;white-space:nowrap}
+.bar.sep:empty::before{display:none}
 .palbar{display:flex;align-items:center;gap:6px;margin-top:8px}
 .palbar-t{font-size:10px;color:var(--dim);min-width:36px;letter-spacing:.06em}
 .palbar .btn{min-width:0}
@@ -243,7 +246,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="b-up">▲ 上の層</button>
     <button class="btn" id="b-fit">視点をリセット</button>
   </div>
-  <div class="bar cellclip-bar sep hidden">
+  <div class="bar cellclip-bar sep hidden" data-label="選択操作">
     <button class="btn c-fill">置く</button>
     <button class="btn c-clear">壊す</button>
     <button class="btn c-copy">コピー</button>
@@ -251,9 +254,9 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn c-rot" disabled>↻ 回転</button>
     <button class="btn c-paste">貼り付け</button>
   </div>
-  <div class="bar sep" id="form-space"></div>
-  <div class="bar sep" id="dir-space"></div>
-  <div class="bar sep" id="roles-space"></div>
+  <div class="bar sep" id="form-space" data-label="形"></div>
+  <div class="bar sep" id="dir-space" data-label="プロパティ"></div>
+  <div class="bar sep" id="roles-space" data-label="役割"></div>
   <div class="bar sep"><button class="btn" id="b-clear">すべて消去</button></div>
   <p class="note">合計 <span id="tot">0</span></p>
 </section>
@@ -286,7 +289,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="p-zo">− 縮小</button>
     <button class="btn" id="p-zi">＋ 拡大</button>
   </div>
-  <div class="bar cellclip-bar sep hidden">
+  <div class="bar cellclip-bar sep hidden" data-label="選択操作">
     <button class="btn c-fill">置く</button>
     <button class="btn c-clear">壊す</button>
     <button class="btn c-copy">コピー</button>
@@ -294,7 +297,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn c-rot" disabled>↻ 回転</button>
     <button class="btn c-paste">貼り付け</button>
   </div>
-  <div class="bar sep">
+  <div class="bar sep" data-label="層操作">
     <button class="btn" id="p-lcopy">層をコピー</button>
     <button class="btn" id="p-lpaste">層を貼り付け</button>
     <button class="btn" id="p-ladd">層を追加</button>
@@ -304,9 +307,9 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn" id="p-lins">層を挿入</button>
     <button class="btn" id="p-ldel">層を削除</button>
   </div>
-  <div class="bar sep" id="form-plan"></div>
-  <div class="bar sep" id="dir-plan"></div>
-  <div class="bar sep" id="roles-plan"></div>
+  <div class="bar sep" id="form-plan" data-label="形"></div>
+  <div class="bar sep" id="dir-plan" data-label="プロパティ"></div>
+  <div class="bar sep" id="roles-plan" data-label="役割"></div>
 </section>
 
 <section id="v-json" class="hidden">
@@ -431,7 +434,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.47';
+const APP_VERSION = '4.48';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
