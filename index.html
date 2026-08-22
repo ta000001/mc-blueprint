@@ -415,7 +415,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.55';
+const APP_VERSION = '4.56';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1333,6 +1333,9 @@ function buildJson(mode){
 }
 function renderJson(){
   $('#json').value = buildJson();
+  const layers = S.jsonMode==='layers';               // 層グリッド(layers)は表示専用＝編集/反映不可
+  $('#json').readOnly = layers;
+  const ap=$('#j-apply'); if(ap){ ap.disabled = layers; ap.style.opacity = layers?'.4':''; ap.title = layers?'層グリッドは表示専用（編集不可）':''; }
 }
 
 /* ---------- view switching ---------- */
@@ -1380,9 +1383,20 @@ $('#b-clear').onclick = ()=>{ pushHist(); S.vox=new Map(); changed(); renderGrid
 $('#b-place').onclick = ()=>setMode('place');
 $('#b-break').onclick = ()=>setMode('break');
 $('#b-info').onclick = ()=>setMode('info');   // モードボタン（置く/壊す/情報）
+const HELP_BLOCK = `<div class="hgrp">
+    <div class="hrow"><b>置くブロック</b>（form / property / slot）</div>
+    <div class="hrow">・<b>form</b>：FULLBLOCK / SLAB / STAIRS / TRAPDOOR / others / <b>FIXED</b>（具体ブロックを検索して直接指定）。</div>
+    <div class="hrow">・<b>property</b>：facing / axis 等の向き。<b>slot</b>：役割（色）。スロット名は<b>ダブルクリックで別名</b>。</div>
+    <div class="hrow">・スポイト（左下）＝ 選択中ブロックの設定を「置くブロック」へ反映。</div>
+  </div>`;
+const HELP_SAVE = `<div class="hgrp">
+    <div class="hrow"><b>保存 / 読込</b>（タイトル右の 保存 / 読込 アイコン）</div>
+    <div class="hrow">・<b>place</b>＝形＋slot。<b>palette</b>＝slot→mat（別名も保存）。<b>structure</b>＝両者を合成した完成データ。</div>
+    <div class="hrow">・一括保存 ＝ place + palette + structure をまとめて。対応端末は保存先フォルダへ同名上書き。</div>
+  </div>`;
 const HELP_HTML = {
   space:`<div class="hgrp">
-    <div class="hrow"><b>モード</b>（描画エリア上のタブ）</div>
+    <div class="hrow"><b>モード</b>（描画エリア上のタブ 選択 / 置く / 壊す）</div>
     <div class="hrow">・<b>選択</b> … ドラッグで範囲選択 → コピー / 切取 / 貼付 / ↻回転、選択内へ一括で 置く / 壊す。タップで1マスの情報。</div>
     <div class="hrow">・<b>置く / 壊す</b> … タップで1マス、ドラッグで矩形。</div>
   </div>
@@ -1396,12 +1410,7 @@ const HELP_HTML = {
     <div class="hrow">・緑の作業面を編集。上の層は半透明で編集不可。</div>
     <div class="hrow">・▼下の層 / ▲上の層 / 視点をリセット。</div>
   </div>
-  <div class="hgrp">
-    <div class="hrow"><b>置くブロック</b>（form / property / slot）</div>
-    <div class="hrow">・<b>form</b>：FULLBLOCK / SLAB / STAIRS / TRAPDOOR / others / <b>FIXED</b>（具体ブロックを検索して直接指定）。</div>
-    <div class="hrow">・<b>property</b>：facing / axis 等の向き。<b>slot</b>：役割（色）。スロット名は<b>ダブルクリックで別名</b>。</div>
-    <div class="hrow">・スポイト（左下）＝ 選択中ブロックの設定を「置くブロック」へ反映。</div>
-  </div>
+  ${HELP_BLOCK}
   <div class="hgrp">
     <div class="hrow"><b>強調 / ラベル</b>（右上トグル）</div>
     <div class="hrow">・強調 ＝ 選択中 form を強調・他を減光。ラベル ＝ form 名(others)＋原点の軸名。</div>
@@ -1409,13 +1418,14 @@ const HELP_HTML = {
   <div class="hgrp">
     <div class="hrow"><b>軸</b>　原点(0,0,0) ＝ 手前・下・左</div>
     <div class="hrow"><span style="color:#ff8a8a">赤 W →</span>　<span style="color:#7ad79a">緑 H ↑</span>　<span style="color:#8aa8ff">青 D 奥</span></div>
-  </div>`,
+  </div>
+  ${HELP_SAVE}`,
   plan:`<div class="hgrp">
-    <div class="hrow"><b>面</b>（上のタブ）</div>
-    <div class="hrow">・上面 W×D / 正面 W×H / 側面 D×H を切替。原点(0,0)は左下＝3Dと同じ向き。</div>
+    <div class="hrow"><b>面</b>（上のタブ 上面 W×D / 正面 W×H / 側面 D×H）</div>
+    <div class="hrow">・原点(0,0)は左下＝3Dと同じ向き。</div>
   </div>
   <div class="hgrp">
-    <div class="hrow"><b>モード</b></div>
+    <div class="hrow"><b>モード</b>（選択 / 置く / 壊す）</div>
     <div class="hrow">・<b>選択</b> … ドラッグで範囲 → コピー / 切取 / 貼付 / ↻回転、一括で 置く / 壊す。タップで情報。</div>
     <div class="hrow">・<b>置く / 壊す</b> … タップで1マス、ドラッグで矩形。</div>
   </div>
@@ -1429,26 +1439,26 @@ const HELP_HTML = {
     <div class="hrow">・層ボタン ＝ コピー / 貼付 / 追加 / 切取 / 挿入 / 削除。</div>
     <div class="hnote">・<b>追加</b>＝常に最上段へ空層。<b>挿入</b>＝選択層の位置へ（コピー/切取中はその内容）。</div>
   </div>
+  ${HELP_BLOCK}
   <div class="hgrp">
-    <div class="hrow"><b>置くブロック / 色・ラベル</b></div>
-    <div class="hrow">・form / property / slot / FIXED は 3D と共通。色 ＝ 役割(slot)。</div>
-    <div class="hrow">・ラベル ON で form 名(others/slab/stairs/trapdoor)＋原点の軸名(W/H/D)。</div>
-  </div>`,
+    <div class="hrow"><b>色・ラベル</b>（右上トグル）</div>
+    <div class="hrow">・色 ＝ 役割(slot)。ラベル ON で form 名(others/slab/stairs/trapdoor)＋原点の軸名(W/H/D)。</div>
+  </div>
+  ${HELP_SAVE}`,
   json:`<div class="hgrp">
-    <div class="hrow"><b>JSON タブ</b>（place の構造を確認／編集）</div>
-    <div class="hrow">・<b>レコード</b>＝blocks（推奨）。<b>層グリッド</b>＝layers。</div>
-    <div class="hrow">・<b>反映</b>＝テキストを取り込み。<b>コピー</b>＝クリップボードへ。</div>
+    <div class="hrow"><b>レコード</b>（推奨）</div>
+    <div class="hrow">・各ブロックを pos / slot / form / 向き で保持。テキストを編集して <b>✓ 反映</b> で取り込み（undo 可）。</div>
   </div>
   <div class="hgrp">
-    <div class="hrow"><b>blocks と layers の違い</b></div>
-    <div class="hrow">・blocks ＝ pos / slot / form / 向き を保持。</div>
-    <div class="hrow">・layers ＝ 位置のみ。form / mat / 向きは失われ、読込で全て fullblock になる。</div>
+    <div class="hrow"><b>層グリッド</b></div>
+    <div class="hrow">・各層を # / . の位置だけで表す（form / mat / 向きは持たない）。<b>表示専用＝編集不可</b>・コピーのみ。</div>
+    <div class="hrow">・読込で全て fullblock になるため、形を保つなら <b>レコード</b> を使う。</div>
   </div>
   <div class="hgrp">
-    <div class="hrow"><b>place / palette / structure</b>（💾 保存 / 📂 読込）</div>
-    <div class="hrow">・place ＝ 形＋slot。palette ＝ slot→mat（別名も保存）。structure ＝ 両者を合成した完成データ。</div>
-    <div class="hrow">・FIXED（具体ブロック）は block=id で直接出力（palette 不要）。</div>
-  </div>`,
+    <div class="hrow"><b>✓ 反映 / コピー</b></div>
+    <div class="hrow">・<b>✓ 反映</b>＝レコードのテキストを取り込み。<b>コピー</b>＝クリップボードへ。</div>
+  </div>
+  ${HELP_SAVE}`,
 };
 function renderHelp(v){ const b=$('#hmodal-body'); if(b) b.innerHTML = HELP_HTML[v] || HELP_HTML.space;
   $('#help-tabs').querySelectorAll('button').forEach(x=>x.setAttribute('aria-selected', String(x.dataset.v===v))); }
@@ -1678,7 +1688,7 @@ $('#j-layers').onclick=()=>{ S.jsonMode='layers';
   $('#j-layers').setAttribute('aria-selected',true); $('#j-voxels').setAttribute('aria-selected',false); renderJson(); };
 $('#j-voxels').onclick=()=>{ S.jsonMode='blocks';
   $('#j-layers').setAttribute('aria-selected',false); $('#j-voxels').setAttribute('aria-selected',true); renderJson(); };
-$('#j-apply').onclick=()=>{ importJson($('#json').value); };   // テキスト直接編集を model へ反映（importJson が pushHist=undo可）
+$('#j-apply').onclick=()=>{ if(S.jsonMode==='layers') return; importJson($('#json').value); };   // レコード(blocks)のみ反映可。層グリッド(layers)は表示専用
 $('#j-copy').onclick=async()=>{
   try{ await navigator.clipboard.writeText(buildJson()); status('JSONをコピーしました'); }
   catch(e){ $('#json').select(); status('テキストを選択しました。長押しでコピーしてください'); }
