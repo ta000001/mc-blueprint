@@ -40,6 +40,9 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #hmodal .hrow,#pmodal .hrow,#smodal .hrow{font-size:12px;color:var(--dim);line-height:1.9}
 #hmodal .hnote{padding-left:1.1em;font-size:11px;color:var(--dim);opacity:.8;line-height:1.7}
 #hmodal .hgrp,#pmodal .hgrp,#smodal .hgrp{margin-bottom:10px}
+#hmodal .panel{width:min(460px,92%);max-height:84%;display:flex;flex-direction:column}
+#help-tabs{margin:0 0 10px;flex:none}
+#hmodal-body{overflow:auto;min-height:0}
 #smodal .note{margin-top:6px}
 .palhelp{display:flex;align-items:center;gap:6px;margin:10px 0 4px;font-size:11px;color:var(--dim)}
 #hmodal b{color:var(--brass)}
@@ -367,37 +370,12 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   </div>
 </div></div>
 <div id="hmodal"><div class="panel"><h3>使い方</h3>
-  <div class="hgrp">
-    <div class="hrow"><b>モード</b>（描画エリア上のボタン）</div>
-    <div class="hrow">・<b>選択</b> … ドラッグで範囲選択 → コピー / 切り取り / 貼り付け、選択内に一括で置く / 壊す。タップで1マスの情報。</div>
-    <div class="hrow">・<b>置く / 壊す</b> … タップで1マス、ドラッグで矩形。</div>
+  <div class="tabs" id="help-tabs">
+    <button data-v="space" aria-selected="true">3D</button>
+    <button data-v="plan" aria-selected="false">2D</button>
+    <button data-v="json" aria-selected="false">JSON</button>
   </div>
-  <div class="hgrp">
-    <div class="hrow"><b>指操作</b></div>
-    <div class="hrow">・2本指 ＝ ズーム / 移動（3D は回転も）</div>
-    <div class="hrow">・3D で面の外を1本指ドラッグ ＝ 視点回転</div>
-    <div class="hrow">・ダブルタップ ＝ 削除。選択 / コピー中はキャンセル</div>
-  </div>
-  <div class="hgrp">
-    <div class="hrow"><b>層</b></div>
-    <div class="hrow">・緑の作業面の層を編集。上の層は半透明で編集不可。</div>
-    <div class="hrow">・2D 左の帯 ＝ 各層のブロック量。ドラッグで層移動。</div>
-    <div class="hrow">・2D の層ボタン ＝ 層をコピー / 切取 / 貼付 / 挿入 / 追加 / 削除。</div>
-    <div class="hnote">・<b>追加</b>＝選択に関係なく<b>常に最上段</b>へ空層を足す。<b>挿入</b>＝選択層の位置（下）へ入れる（コピー/切取中はその内容）。</div>
-  </div>
-  <div class="hgrp">
-    <div class="hrow"><b>色・ラベル</b></div>
-    <div class="hrow">・色 ＝ 役割（slot）。ラベルで form 名と原点の軸ラベルを表示。</div>
-  </div>
-  <div class="hgrp">
-    <div class="hrow"><b>軸</b>　原点(0,0,0) ＝ 手前・下・左</div>
-    <div class="hrow"><span style="color:#ff8a8a">赤 W →</span>　<span style="color:#7ad79a">緑 H ↑</span>　<span style="color:#8aa8ff">青 D 奥</span></div>
-  </div>
-  <div class="hgrp">
-    <div class="hrow"><b>JSON タブ</b></div>
-    <div class="hrow">・blocks ＝ 座標・slot・向きを保持（推奨）。</div>
-    <div class="hrow">・layers ＝ 位置のみ。form / mat / 向きは失われ、読込で全て fullblock になる。</div>
-  </div>
+  <div id="hmodal-body"></div>
 </div></div>
 <div id="smodal"><div class="panel"><h3>設定</h3>
   <div class="hgrp">
@@ -437,7 +415,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.54';
+const APP_VERSION = '4.55';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1402,7 +1380,80 @@ $('#b-clear').onclick = ()=>{ pushHist(); S.vox=new Map(); changed(); renderGrid
 $('#b-place').onclick = ()=>setMode('place');
 $('#b-break').onclick = ()=>setMode('break');
 $('#b-info').onclick = ()=>setMode('info');   // モードボタン（置く/壊す/情報）
-$('#b-help').onclick = ()=> $('#hmodal').classList.add('on');
+const HELP_HTML = {
+  space:`<div class="hgrp">
+    <div class="hrow"><b>モード</b>（描画エリア上のタブ）</div>
+    <div class="hrow">・<b>選択</b> … ドラッグで範囲選択 → コピー / 切取 / 貼付 / ↻回転、選択内へ一括で 置く / 壊す。タップで1マスの情報。</div>
+    <div class="hrow">・<b>置く / 壊す</b> … タップで1マス、ドラッグで矩形。</div>
+  </div>
+  <div class="hgrp">
+    <div class="hrow"><b>指操作</b></div>
+    <div class="hrow">・1本指（面の上）＝ 操作 ／（面の外）＝ 視点回転</div>
+    <div class="hrow">・2本指 ＝ ズーム / 移動　・ダブルタップ ＝ 削除（選択/コピー中は取消）</div>
+  </div>
+  <div class="hgrp">
+    <div class="hrow"><b>層（作業面）</b></div>
+    <div class="hrow">・緑の作業面を編集。上の層は半透明で編集不可。</div>
+    <div class="hrow">・▼下の層 / ▲上の層 / 視点をリセット。</div>
+  </div>
+  <div class="hgrp">
+    <div class="hrow"><b>置くブロック</b>（form / property / slot）</div>
+    <div class="hrow">・<b>form</b>：FULLBLOCK / SLAB / STAIRS / TRAPDOOR / others / <b>FIXED</b>（具体ブロックを検索して直接指定）。</div>
+    <div class="hrow">・<b>property</b>：facing / axis 等の向き。<b>slot</b>：役割（色）。スロット名は<b>ダブルクリックで別名</b>。</div>
+    <div class="hrow">・スポイト（左下）＝ 選択中ブロックの設定を「置くブロック」へ反映。</div>
+  </div>
+  <div class="hgrp">
+    <div class="hrow"><b>強調 / ラベル</b>（右上トグル）</div>
+    <div class="hrow">・強調 ＝ 選択中 form を強調・他を減光。ラベル ＝ form 名(others)＋原点の軸名。</div>
+  </div>
+  <div class="hgrp">
+    <div class="hrow"><b>軸</b>　原点(0,0,0) ＝ 手前・下・左</div>
+    <div class="hrow"><span style="color:#ff8a8a">赤 W →</span>　<span style="color:#7ad79a">緑 H ↑</span>　<span style="color:#8aa8ff">青 D 奥</span></div>
+  </div>`,
+  plan:`<div class="hgrp">
+    <div class="hrow"><b>面</b>（上のタブ）</div>
+    <div class="hrow">・上面 W×D / 正面 W×H / 側面 D×H を切替。原点(0,0)は左下＝3Dと同じ向き。</div>
+  </div>
+  <div class="hgrp">
+    <div class="hrow"><b>モード</b></div>
+    <div class="hrow">・<b>選択</b> … ドラッグで範囲 → コピー / 切取 / 貼付 / ↻回転、一括で 置く / 壊す。タップで情報。</div>
+    <div class="hrow">・<b>置く / 壊す</b> … タップで1マス、ドラッグで矩形。</div>
+  </div>
+  <div class="hgrp">
+    <div class="hrow"><b>指操作</b></div>
+    <div class="hrow">・タップ=単発 / ドラッグ=矩形 / ダブルタップ(+ドラッグ)=削除 / 2本指=ズーム・移動。</div>
+  </div>
+  <div class="hgrp">
+    <div class="hrow"><b>層</b></div>
+    <div class="hrow">・左の帯 ＝ 各層のブロック量。ドラッグで層移動。▼下 / ▲上 で層送り。</div>
+    <div class="hrow">・層ボタン ＝ コピー / 貼付 / 追加 / 切取 / 挿入 / 削除。</div>
+    <div class="hnote">・<b>追加</b>＝常に最上段へ空層。<b>挿入</b>＝選択層の位置へ（コピー/切取中はその内容）。</div>
+  </div>
+  <div class="hgrp">
+    <div class="hrow"><b>置くブロック / 色・ラベル</b></div>
+    <div class="hrow">・form / property / slot / FIXED は 3D と共通。色 ＝ 役割(slot)。</div>
+    <div class="hrow">・ラベル ON で form 名(others/slab/stairs/trapdoor)＋原点の軸名(W/H/D)。</div>
+  </div>`,
+  json:`<div class="hgrp">
+    <div class="hrow"><b>JSON タブ</b>（place の構造を確認／編集）</div>
+    <div class="hrow">・<b>レコード</b>＝blocks（推奨）。<b>層グリッド</b>＝layers。</div>
+    <div class="hrow">・<b>反映</b>＝テキストを取り込み。<b>コピー</b>＝クリップボードへ。</div>
+  </div>
+  <div class="hgrp">
+    <div class="hrow"><b>blocks と layers の違い</b></div>
+    <div class="hrow">・blocks ＝ pos / slot / form / 向き を保持。</div>
+    <div class="hrow">・layers ＝ 位置のみ。form / mat / 向きは失われ、読込で全て fullblock になる。</div>
+  </div>
+  <div class="hgrp">
+    <div class="hrow"><b>place / palette / structure</b>（💾 保存 / 📂 読込）</div>
+    <div class="hrow">・place ＝ 形＋slot。palette ＝ slot→mat（別名も保存）。structure ＝ 両者を合成した完成データ。</div>
+    <div class="hrow">・FIXED（具体ブロック）は block=id で直接出力（palette 不要）。</div>
+  </div>`,
+};
+function renderHelp(v){ const b=$('#hmodal-body'); if(b) b.innerHTML = HELP_HTML[v] || HELP_HTML.space;
+  $('#help-tabs').querySelectorAll('button').forEach(x=>x.setAttribute('aria-selected', String(x.dataset.v===v))); }
+$('#help-tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>renderHelp(b.dataset.v));
+$('#b-help').onclick = ()=>{ renderHelp(['space','plan','json'].includes(S.view)?S.view:'space'); $('#hmodal').classList.add('on'); };   // 現在のタブに合わせて開く
 $('#hmodal').onclick = e=>{ if(e.target.id==='hmodal') $('#hmodal').classList.remove('on'); };
 function setMode(m){ S.mode=m;   // 立体・平面 共通のモード（置く/壊す/情報）
   ['place','break','info'].forEach(n=>{ const a=$('#b-'+n), b=$('#pm-'+n);
