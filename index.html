@@ -415,7 +415,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.56';
+const APP_VERSION = '4.57';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1384,9 +1384,9 @@ $('#b-place').onclick = ()=>setMode('place');
 $('#b-break').onclick = ()=>setMode('break');
 $('#b-info').onclick = ()=>setMode('info');   // モードボタン（置く/壊す/情報）
 const HELP_BLOCK = `<div class="hgrp">
-    <div class="hrow"><b>置くブロック</b>（form / property / slot）</div>
-    <div class="hrow">・<b>form</b>：FULLBLOCK / SLAB / STAIRS / TRAPDOOR / others / <b>FIXED</b>（具体ブロックを検索して直接指定）。</div>
-    <div class="hrow">・<b>property</b>：facing / axis 等の向き。<b>slot</b>：役割（色）。スロット名は<b>ダブルクリックで別名</b>。</div>
+    <div class="hrow"><b>置くブロック</b>（下部の <b>form</b> / <b>property</b> / <b>slot</b> の各行）</div>
+    <div class="hrow">・<b>form</b> の行 ＝ 種類：FULLBLOCK / SLAB / STAIRS / TRAPDOOR / others / <b>FIXED</b>（具体ブロックを検索して直接指定）。</div>
+    <div class="hrow">・<b>property</b> の行 ＝ facing / axis 等の向き。<b>slot</b> の行 ＝ 役割（色）。スロット名は<b>ダブルクリックで別名</b>。</div>
     <div class="hrow">・スポイト（左下）＝ 選択中ブロックの設定を「置くブロック」へ反映。</div>
   </div>`;
 const HELP_SAVE = `<div class="hgrp">
@@ -1397,7 +1397,7 @@ const HELP_SAVE = `<div class="hgrp">
 const HELP_HTML = {
   space:`<div class="hgrp">
     <div class="hrow"><b>モード</b>（描画エリア上のタブ 選択 / 置く / 壊す）</div>
-    <div class="hrow">・<b>選択</b> … ドラッグで範囲選択 → コピー / 切取 / 貼付 / ↻回転、選択内へ一括で 置く / 壊す。タップで1マスの情報。</div>
+    <div class="hrow">・<b>選択</b> … ドラッグで範囲選択 → 下部 <b>action</b> の行で コピー / 切取 / 貼付 / ↻回転、選択内へ一括で 置く / 壊す。タップで1マスの情報。</div>
     <div class="hrow">・<b>置く / 壊す</b> … タップで1マス、ドラッグで矩形。</div>
   </div>
   <div class="hgrp">
@@ -1406,18 +1406,16 @@ const HELP_HTML = {
     <div class="hrow">・2本指 ＝ ズーム / 移動　・ダブルタップ ＝ 削除（選択/コピー中は取消）</div>
   </div>
   <div class="hgrp">
-    <div class="hrow"><b>層（作業面）</b></div>
-    <div class="hrow">・緑の作業面を編集。上の層は半透明で編集不可。</div>
-    <div class="hrow">・▼下の層 / ▲上の層 / 視点をリセット。</div>
+    <div class="hrow"><b>層（作業面）</b>（▼下の層 / ▲上の層 / 視点をリセット）</div>
+    <div class="hrow">・緑の作業面の層を編集。上の層は半透明で編集不可。</div>
   </div>
   ${HELP_BLOCK}
   <div class="hgrp">
-    <div class="hrow"><b>強調 / ラベル</b>（右上トグル）</div>
-    <div class="hrow">・強調 ＝ 選択中 form を強調・他を減光。ラベル ＝ form 名(others)＋原点の軸名。</div>
+    <div class="hrow"><b>強調 / ラベル</b>（描画エリア右上のトグル）</div>
+    <div class="hrow">・<b>強調</b> ＝ 選択中 form を強調・他を減光。<b>ラベル</b> ＝ others の form 名を表示。</div>
   </div>
   <div class="hgrp">
-    <div class="hrow"><b>軸</b>　原点(0,0,0) ＝ 手前・下・左</div>
-    <div class="hrow"><span style="color:#ff8a8a">赤 W →</span>　<span style="color:#7ad79a">緑 H ↑</span>　<span style="color:#8aa8ff">青 D 奥</span></div>
+    <div class="hrow"><b>reset</b>（すべて消去）＝ 全ブロックを削除。</div>
   </div>
   ${HELP_SAVE}`,
   plan:`<div class="hgrp">
@@ -1426,7 +1424,7 @@ const HELP_HTML = {
   </div>
   <div class="hgrp">
     <div class="hrow"><b>モード</b>（選択 / 置く / 壊す）</div>
-    <div class="hrow">・<b>選択</b> … ドラッグで範囲 → コピー / 切取 / 貼付 / ↻回転、一括で 置く / 壊す。タップで情報。</div>
+    <div class="hrow">・<b>選択</b> … ドラッグで範囲 → 下部 <b>action</b> の行で コピー / 切取 / 貼付 / ↻回転、一括で 置く / 壊す。タップで情報。</div>
     <div class="hrow">・<b>置く / 壊す</b> … タップで1マス、ドラッグで矩形。</div>
   </div>
   <div class="hgrp">
@@ -1434,15 +1432,18 @@ const HELP_HTML = {
     <div class="hrow">・タップ=単発 / ドラッグ=矩形 / ダブルタップ(+ドラッグ)=削除 / 2本指=ズーム・移動。</div>
   </div>
   <div class="hgrp">
-    <div class="hrow"><b>層</b></div>
-    <div class="hrow">・左の帯 ＝ 各層のブロック量。ドラッグで層移動。▼下 / ▲上 で層送り。</div>
-    <div class="hrow">・層ボタン ＝ コピー / 貼付 / 追加 / 切取 / 挿入 / 削除。</div>
+    <div class="hrow"><b>層</b>（▼下 / ▲上 で層送り）</div>
+    <div class="hrow">・左の帯 ＝ 各層のブロック量。ドラッグで層移動。</div>
+    <div class="hrow">・<b>layer action</b> の行 ＝ 層をコピー / 貼付 / 追加 / 切取 / 挿入 / 削除。</div>
     <div class="hnote">・<b>追加</b>＝常に最上段へ空層。<b>挿入</b>＝選択層の位置へ（コピー/切取中はその内容）。</div>
   </div>
   ${HELP_BLOCK}
   <div class="hgrp">
-    <div class="hrow"><b>色・ラベル</b>（右上トグル）</div>
-    <div class="hrow">・色 ＝ 役割(slot)。ラベル ON で form 名(others/slab/stairs/trapdoor)＋原点の軸名(W/H/D)。</div>
+    <div class="hrow"><b>色・ラベル</b>（描画エリア右上のトグル）</div>
+    <div class="hrow">・色 ＝ 役割(slot)。<b>ラベル</b> ON で form 名(others / slab / stairs / trapdoor)を表示。</div>
+  </div>
+  <div class="hgrp">
+    <div class="hrow"><b>reset</b>（すべて消去）＝ 全ブロックを削除。</div>
   </div>
   ${HELP_SAVE}`,
   json:`<div class="hgrp">
