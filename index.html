@@ -215,6 +215,9 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #raw-search{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:9px 8px;font-size:13px;margin:0 0 6px;font-family:ui-monospace,monospace;box-sizing:border-box;width:100%;flex:none}
 #raw-form,#raw-light,#raw-sort,#mat-light,#mat-sort{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:10px 8px;font-size:13px;line-height:1.3;margin:0 0 6px;font-family:ui-monospace,monospace;box-sizing:border-box;width:100%;flex:none;height:auto}
 .matlight{font-size:10px;color:var(--brass);font-family:ui-monospace,monospace;flex:none;white-space:nowrap;margin-left:4px}
+.filttog{background:transparent;border:1px dashed var(--rule);color:var(--dim);border-radius:4px;padding:6px 8px;font-size:11px;margin:0 0 6px;width:100%;text-align:left;cursor:pointer;font-family:inherit;box-sizing:border-box}
+.filtwrap{display:none}
+.filtwrap.on{display:block}
 #rawmodal-list{flex:1;overflow:auto;min-height:0}
 .rawhdr{background:var(--panel2);color:var(--brass);font-size:11px;font-weight:700;letter-spacing:.05em;padding:8px 6px 5px;border-bottom:1px solid var(--brass-dim)}
 .rawhdr:first-child{padding-top:2px}
@@ -354,12 +357,15 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <div id="status"></div>
 <div id="modal"><div class="panel"><h3>種類を選択</h3><div class="grid" id="modal-grid"></div></div></div>
-<div id="matmodal"><div class="panel"><h3 id="matmodal-title">mat を選択</h3><input id="mat-search" placeholder="mat / block / 和名 で検索" autocomplete="off" spellcheck="false"><select id="mat-light" aria-label="光源で絞り込み"><option value="all">光源: すべて</option><option value="light">光源のみ</option><option value="dark">非光源のみ</option></select><select id="mat-sort" aria-label="並び替え"><option value="form">並び: 既定(mat名)</option><option value="prefix">並び: prefix(接頭辞)</option><option value="suffix">並び: suffix(接尾辞)</option></select><div id="matmodal-list"></div></div></div>
+<div id="matmodal"><div class="panel"><h3 id="matmodal-title">mat を選択</h3><input id="mat-search" placeholder="mat / block / 和名 で検索" autocomplete="off" spellcheck="false"><button type="button" class="filttog" id="mat-filttog" aria-expanded="false">絞り込み・並び替え ▸</button><div class="filtwrap" id="mat-filts"><select id="mat-light" aria-label="光源で絞り込み"><option value="all">光源: すべて</option><option value="light">光源のみ</option><option value="dark">非光源のみ</option></select><select id="mat-sort" aria-label="並び替え"><option value="form">並び: 既定(mat名)</option><option value="prefix">並び: prefix(接頭辞)</option><option value="suffix">並び: suffix(接尾辞)</option></select></div><div id="matmodal-list"></div></div></div>
 <div id="rawmodal"><div class="panel"><h3>ブロックを指定</h3>
   <input id="raw-search" placeholder="物理名 / 和名 で検索" autocomplete="off" spellcheck="false">
-  <select id="raw-form" aria-label="form で絞り込み"></select>
-  <select id="raw-light" aria-label="光源で絞り込み"><option value="all">光源: すべて</option><option value="light">光源のみ</option><option value="dark">非光源のみ</option></select>
-  <select id="raw-sort" aria-label="並び替え"><option value="form">並び: FORM(既定)</option><option value="prefix">並び: prefix(接頭辞)</option><option value="suffix">並び: suffix(接尾辞)</option></select>
+  <button type="button" class="filttog" id="raw-filttog" aria-expanded="false">絞り込み・並び替え ▸</button>
+  <div class="filtwrap" id="raw-filts">
+    <select id="raw-form" aria-label="form で絞り込み"></select>
+    <select id="raw-light" aria-label="光源で絞り込み"><option value="all">光源: すべて</option><option value="light">光源のみ</option><option value="dark">非光源のみ</option></select>
+    <select id="raw-sort" aria-label="並び替え"><option value="form">並び: FORM(既定)</option><option value="prefix">並び: prefix(接頭辞)</option><option value="suffix">並び: suffix(接尾辞)</option></select>
+  </div>
   <div id="rawmodal-list"></div>
 </div></div>
 <div id="vmodal"><div class="panel"><h3>バージョン情報</h3><div id="vmodal-body"></div></div></div>
@@ -418,7 +424,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.59';
+const APP_VERSION = '4.60';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1867,7 +1873,7 @@ function cmpBlockSort(mode, a, b){   // suffix順 / prefix順。form(既定)は 
 function renderMatList(){   // 検索/光源でフィルタ＋並び替え（既定=mat名 / prefix / suffix）。(未割当) は常に先頭
   const list=$('#matmodal-list'); if(!list) return; list.innerHTML='';
   const q=($('#mat-search').value||'').trim().toLowerCase(); const lf=($('#mat-light')&&$('#mat-light').value)||'all';
-  const sort=($('#mat-sort')&&$('#mat-sort').value)||'form'; const CAP=400;
+  const sort=($('#mat-sort')&&$('#mat-sort').value)||'form'; const CAP=100000;
   list.appendChild(matRow(''));
   const mats=[];
   for(const m of formMats(matPickForm)){
@@ -1884,7 +1890,7 @@ function renderMatList(){   // 検索/光源でフィルタ＋並び替え（既
 function openMatPicker(slot, form){   // mat 選択モーダル：検索＋物理名・和名・イメージ一覧。押下で選択
   matPickSlot=slot; matPickForm=form;
   $('#matmodal-title').textContent=slot+' の mat を選択';
-  $('#mat-search').value=''; if($('#mat-light'))$('#mat-light').value='all'; if($('#mat-sort'))$('#mat-sort').value='form'; renderMatList();
+  $('#mat-search').value=''; if($('#mat-light'))$('#mat-light').value='all'; if($('#mat-sort'))$('#mat-sort').value='form'; setFilts('mat-filttog','mat-filts',false); renderMatList();
   $('#matmodal').classList.add('on'); setTimeout(()=>{ try{$('#mat-search').focus();}catch(_){} },60);
 }
 $('#mat-search').oninput=renderMatList;
@@ -1896,14 +1902,14 @@ function closeMatPicker(){ $('#matmodal').classList.remove('on'); }
 function fillRawForm(){   // form セレクトの選択肢：すべて / form登録あり / form登録なし / 各 form
   const sel=$('#raw-form'); if(!sel) return; const keep=sel.value; sel.innerHTML='';
   const add=(v,t)=>{ const o=document.createElement('option'); o.value=v; o.textContent=t; sel.appendChild(o); };
-  add('all','すべて'); add('none','form登録なし'); add('form','form登録あり');   // なし→あり→form別
-  for(const f of FORM_LIST) add(f, '　'+f);   // 各 form（インデント）
+  add('all','form: すべて'); add('none','form: 登録なし'); add('form','form: 登録あり');   // なし→あり→form別
+  for(const f of FORM_LIST) add(f, 'form: '+f);   // 各 form
   sel.value = [...sel.options].some(o=>o.value===keep) ? keep : 'all';
 }
-function openRawPicker(){ $('#raw-search').value=''; fillRawForm(); $('#raw-form').value='all'; if($('#raw-light'))$('#raw-light').value='all'; if($('#raw-sort'))$('#raw-sort').value='form';
+function openRawPicker(){ $('#raw-search').value=''; fillRawForm(); $('#raw-form').value='all'; if($('#raw-light'))$('#raw-light').value='all'; if($('#raw-sort'))$('#raw-sort').value='form'; setFilts('raw-filttog','raw-filts',false);
   renderRawList(); $('#rawmodal').classList.add('on'); setTimeout(()=>{ try{$('#raw-search').focus();}catch(_){} },60); }
 function renderRawList(){ const list=$('#rawmodal-list'); if(!list) return; list.innerHTML='';
-  const q=($('#raw-search').value||'').trim().toLowerCase(); const sel=$('#raw-form').value||'all'; const lf=($('#raw-light')&&$('#raw-light').value)||'all'; const sort=($('#raw-sort')&&$('#raw-sort').value)||'form'; const CAP=400;
+  const q=($('#raw-search').value||'').trim().toLowerCase(); const sel=$('#raw-form').value||'all'; const lf=($('#raw-light')&&$('#raw-light').value)||'all'; const sort=($('#raw-sort')&&$('#raw-sort').value)||'form'; const CAP=100000;
   const items=[];
   for(const b of BLOCKS_ALL_ARR){
     const d=DICT_BY_BLOCK[b.block], form=(d&&d.form)||'';
@@ -1946,6 +1952,10 @@ $('#raw-search').oninput=renderRawList;
 $('#raw-form').onchange=renderRawList;
 if($('#raw-light')) $('#raw-light').onchange=renderRawList;
 if($('#raw-sort')) $('#raw-sort').onchange=renderRawList;
+function setFilts(togId, wrapId, on){ const t=$('#'+togId), w=$('#'+wrapId); if(!t||!w) return;   // 折りたたみ（名前検索以外）
+  w.classList.toggle('on', on); t.setAttribute('aria-expanded', on?'true':'false'); t.textContent='絞り込み・並び替え '+(on?'▾':'▸'); }
+if($('#raw-filttog')) $('#raw-filttog').onclick=()=>setFilts('raw-filttog','raw-filts', !$('#raw-filts').classList.contains('on'));
+if($('#mat-filttog')) $('#mat-filttog').onclick=()=>setFilts('mat-filttog','mat-filts', !$('#mat-filts').classList.contains('on'));
 function renderPalList(){
   const el=$('#pal-list'); if(!el) return; el.innerHTML='';
   const formRank=f=>{ const i=FORM_LIST.indexOf(f); return i<0?9999:i; };   // form_dict の並び順
