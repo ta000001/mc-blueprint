@@ -220,6 +220,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .filtwrap.on{display:block}
 .matphys.exp,.matblock.exp{white-space:normal;overflow:visible;text-overflow:clip;word-break:break-all}
 .expdots{flex:none;color:var(--brass);cursor:pointer;padding:0 6px;font-weight:700;user-select:none;align-self:center}
+.fulltip{position:fixed;z-index:100;max-width:80vw;background:var(--panel2);color:var(--chalk);border:1px solid var(--brass);border-radius:5px;padding:6px 9px;font-family:ui-monospace,monospace;font-size:12px;word-break:break-all;box-shadow:0 3px 12px rgba(0,0,0,.5);display:none;cursor:pointer}
 #rawmodal-list{flex:1;overflow:auto;min-height:0}
 .rawhdr{background:var(--panel2);color:var(--brass);font-size:11px;font-weight:700;letter-spacing:.05em;padding:8px 6px 5px;border-bottom:1px solid var(--brass-dim)}
 .rawhdr:first-child{padding-top:2px}
@@ -426,7 +427,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.62';
+const APP_VERSION = '4.63';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1867,9 +1868,22 @@ function matRow(mat){   // 1行：物理名・block・和名・イメージ
 function blkSuffix(id){ const b=BLOCKS_ALL[id]; return (b&&b.suffix) || (id?('_'+id):''); }             // block の suffix（無ければ _id）
 function blkPrefix(id){ const s=blkSuffix(id); return (id && id.endsWith(s)) ? id.slice(0,-s.length) : ''; }  // 接頭辞（素材部分・単語ブロックは空）
 function prefixKey(pre){ return pre ? pre.split('_').reverse().join(' ') : ''; }                    // 末尾トークン優先で比較（oak 系をまとめる）
-function expandDots(nameEl, full){ nameEl.title=full||'';   // 末尾「⋯」タップでその名前だけ全文展開（行タップは選択のまま）
+let _fulltip=null;
+function hideTip(){ if(_fulltip) _fulltip.style.display='none'; }
+function showTip(anchorEl, text){   // 全文をツールチップ表示（iOSで効かない title の代替。タップで開く・他タップ/スクロールで閉じる）
+  if(!text) return;
+  if(!_fulltip){ _fulltip=document.createElement('div'); _fulltip.className='fulltip'; document.body.appendChild(_fulltip);
+    _fulltip.onclick=e=>{ e.stopPropagation(); hideTip(); }; }
+  _fulltip.textContent=text; _fulltip.style.display='block'; _fulltip.style.left='0px'; _fulltip.style.top='0px';
+  const r=anchorEl.getBoundingClientRect(), tw=_fulltip.offsetWidth, th=_fulltip.offsetHeight;
+  const left=Math.min(Math.max(6, r.left+r.width/2-tw/2), window.innerWidth-tw-6);
+  const top=(r.top-th-6>=6) ? (r.top-th-6) : (r.bottom+6);
+  _fulltip.style.left=left+'px'; _fulltip.style.top=top+'px'; }
+document.addEventListener('click', hideTip, true);
+document.addEventListener('scroll', hideTip, true);
+function expandDots(nameEl, full){ nameEl.title=full||'';   // 末尾「⋯」タップで全文をツールチップ表示（行タップは選択のまま）
   const d=document.createElement('span'); d.className='expdots'; d.textContent='⋯';
-  d.onclick=e=>{ e.stopPropagation(); nameEl.classList.toggle('exp'); }; return d; }
+  d.onclick=e=>{ e.stopPropagation(); showTip(d, full); }; return d; }
 function cmpBlockSort(mode, a, b){   // suffix順 / prefix順。form(既定)は 0 を返し呼び側の tiebreak に任せる
   if(mode==='suffix'){ const sa=blkSuffix(a), sb=blkSuffix(b); if(sa!==sb) return sa<sb?-1:1; const pa=blkPrefix(a), pb=blkPrefix(b); return pa<pb?-1:pa>pb?1:0; }
   if(mode==='prefix'){ const pa=prefixKey(blkPrefix(a)), pb=prefixKey(blkPrefix(b)); if(pa!==pb) return pa<pb?-1:1; const sa=blkSuffix(a), sb=blkSuffix(b); return sa<sb?-1:sa>sb?1:0; }
