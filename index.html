@@ -219,7 +219,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .filtwrap{display:none}
 .filtwrap.on{display:block}
 .matphys.exp,.matblock.exp{white-space:normal;overflow:visible;text-overflow:clip;word-break:break-all}
-.matphys[title],.matblock[title]{cursor:zoom-in}
+.expdots{flex:none;color:var(--brass);cursor:pointer;padding:0 6px;font-weight:700;user-select:none;align-self:center}
 #rawmodal-list{flex:1;overflow:auto;min-height:0}
 .rawhdr{background:var(--panel2);color:var(--brass);font-size:11px;font-weight:700;letter-spacing:.05em;padding:8px 6px 5px;border-bottom:1px solid var(--brass-dim)}
 .rawhdr:first-child{padding-top:2px}
@@ -426,7 +426,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.61';
+const APP_VERSION = '4.62';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1853,9 +1853,9 @@ function matRow(mat){   // 1行：物理名・block・和名・イメージ
   const r=document.createElement('button'); r.className='matrow'+((S.pal.map[slot]||'')===mat?' on':'');
   const key=matKey(form, mat);
   r.appendChild(matThumb(key));
-  const p=document.createElement('span'); p.className='matphys'; p.textContent=mat||'(未割当)'; tapExpand(p, mat); r.appendChild(p);  // 左: mat物理名
+  const p=document.createElement('span'); p.className='matphys'; p.textContent=mat||'(未割当)'; r.appendChild(p); if(mat) r.appendChild(expandDots(p, mat));  // 左: mat物理名
   const col=document.createElement('span'); col.className='matbcol';                                    // 右: block物理名 + その下に和名
-  if(key){ const bl=document.createElement('span'); bl.className='matblock'; bl.textContent=key; tapExpand(bl, key); col.appendChild(bl); }
+  if(key){ const bl=document.createElement('span'); bl.className='matblock'; bl.textContent=key; bl.title=key; col.appendChild(bl); }
   const j=document.createElement('span'); j.className='matja'; j.textContent=matJa(key); col.appendChild(j);
   r.appendChild(col);
   const lm=(BLOCKS_ALL[key]&&BLOCKS_ALL[key].lightMax)||0;   // 光源なら 💡+レベル
@@ -1867,7 +1867,9 @@ function matRow(mat){   // 1行：物理名・block・和名・イメージ
 function blkSuffix(id){ const b=BLOCKS_ALL[id]; return (b&&b.suffix) || (id?('_'+id):''); }             // block の suffix（無ければ _id）
 function blkPrefix(id){ const s=blkSuffix(id); return (id && id.endsWith(s)) ? id.slice(0,-s.length) : ''; }  // 接頭辞（素材部分・単語ブロックは空）
 function prefixKey(pre){ return pre ? pre.split('_').reverse().join(' ') : ''; }                    // 末尾トークン優先で比較（oak 系をまとめる）
-function tapExpand(el, full){ if(!full) return el; el.title=full; el.onclick=e=>{ e.stopPropagation(); el.classList.toggle('exp'); }; return el; }
+function expandDots(nameEl, full){ nameEl.title=full||'';   // 末尾「⋯」タップでその名前だけ全文展開（行タップは選択のまま）
+  const d=document.createElement('span'); d.className='expdots'; d.textContent='⋯';
+  d.onclick=e=>{ e.stopPropagation(); nameEl.classList.toggle('exp'); }; return d; }
 function cmpBlockSort(mode, a, b){   // suffix順 / prefix順。form(既定)は 0 を返し呼び側の tiebreak に任せる
   if(mode==='suffix'){ const sa=blkSuffix(a), sb=blkSuffix(b); if(sa!==sb) return sa<sb?-1:1; const pa=blkPrefix(a), pb=blkPrefix(b); return pa<pb?-1:pa>pb?1:0; }
   if(mode==='prefix'){ const pa=prefixKey(blkPrefix(a)), pb=prefixKey(blkPrefix(b)); if(pa!==pb) return pa<pb?-1:1; const sa=blkSuffix(a), sb=blkSuffix(b); return sa<sb?-1:sa>sb?1:0; }
@@ -1940,7 +1942,7 @@ function renderRawList(){ const list=$('#rawmodal-list'); if(!list) return; list
 function rawRow(b){
   const r=document.createElement('button'); r.className='matrow'+((S.shape==='raw'&&S.raw===b.block)?' on':'');
   r.appendChild(matThumb(b.block));
-  const p=document.createElement('span'); p.className='matphys'; p.textContent=b.block; tapExpand(p, b.block); r.appendChild(p);
+  const p=document.createElement('span'); p.className='matphys'; p.textContent=b.block; r.appendChild(p); r.appendChild(expandDots(p, b.block));
   const j=document.createElement('span'); j.className='matja'; j.textContent=b.ja||''; r.appendChild(j);   // 和名（form は見出しで表示）
   if(b.lightMax>0){ const L=document.createElement('span'); L.className='matlight'; L.textContent='💡'+b.lightMax; r.appendChild(L); }   // 光源
   r.onclick=()=>pickRaw(b.block);
