@@ -218,6 +218,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .filttog{background:transparent;border:1px dashed var(--rule);color:var(--dim);border-radius:4px;padding:6px 8px;font-size:11px;margin:0 0 6px;width:100%;text-align:left;cursor:pointer;font-family:inherit;box-sizing:border-box}
 .filtwrap{display:none}
 .filtwrap.on{display:block}
+.matphys.clip{text-overflow:clip}
+.moretip{flex:none;color:var(--brass);font-weight:700;cursor:pointer;padding:0 4px;align-self:center;user-select:none;border-bottom:1px dotted var(--brass)}
 .fulltip{position:fixed;z-index:100;max-width:80vw;background:var(--panel2);color:var(--chalk);border:1px solid var(--brass);border-radius:5px;padding:6px 9px;font-family:ui-monospace,monospace;font-size:12px;word-break:break-all;box-shadow:0 3px 12px rgba(0,0,0,.5);display:none;cursor:pointer}
 #rawmodal-list{flex:1;overflow:auto;min-height:0}
 .rawhdr{background:var(--panel2);color:var(--brass);font-size:11px;font-weight:700;letter-spacing:.05em;padding:8px 6px 5px;border-bottom:1px solid var(--brass-dim)}
@@ -425,7 +427,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.64';
+const APP_VERSION = '4.65';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1881,6 +1883,15 @@ document.addEventListener('click', hideTip, true);
 document.addEventListener('scroll', hideTip, true);
 function tipIfTrunc(nameEl, full){ nameEl.title=full||'';   // 名前が切れている(…表示)行だけ、その名前タップで全文ツールチップ。切れてなければ行選択に委ねる
   nameEl.onclick=e=>{ if(nameEl.scrollWidth > nameEl.clientWidth+1){ e.stopPropagation(); showTip(nameEl, full); } }; return nameEl; }
+function markTrunc(container){ if(!container) return;   // 描画後に実測し、切れている名前の末尾へ強調「…」(真鍮色)を付ける
+  requestAnimationFrame(()=>{
+    const els=[...container.querySelectorAll('.matphys')];
+    for(const el of els){ const nx=el.nextElementSibling; if(nx && nx.classList.contains('moretip')) nx.remove(); }  // 旧マーカー除去
+    const trunc=els.map(el=> el.scrollWidth > el.clientWidth+1);   // 読み取りをまとめる(reflow 1回)
+    els.forEach((el,i)=>{ el.classList.toggle('clip', trunc[i]);   // 書き込みをまとめる
+      if(trunc[i]){ const m=document.createElement('span'); m.className='moretip'; m.textContent='…';
+        m.onclick=e=>{ e.stopPropagation(); showTip(el, el.title); }; el.after(m); } });
+  }); }
 function cmpBlockSort(mode, a, b){   // suffix順 / prefix順。form(既定)は 0 を返し呼び側の tiebreak に任せる
   if(mode==='suffix'){ const sa=blkSuffix(a), sb=blkSuffix(b); if(sa!==sb) return sa<sb?-1:1; const pa=blkPrefix(a), pb=blkPrefix(b); return pa<pb?-1:pa>pb?1:0; }
   if(mode==='prefix'){ const pa=prefixKey(blkPrefix(a)), pb=prefixKey(blkPrefix(b)); if(pa!==pb) return pa<pb?-1:1; const sa=blkSuffix(a), sb=blkSuffix(b); return sa<sb?-1:sa>sb?1:0; }
@@ -1901,13 +1912,14 @@ function renderMatList(){   // 検索/光源でフィルタ＋並び替え（既
   mats.sort((x,y)=> cmpBlockSort(sort, matKey(matPickForm,x), matKey(matPickForm,y)) || (x<y?-1:x>y?1:0));
   const more = mats.length>CAP;
   for(const m of mats.slice(0,CAP)) list.appendChild(matRow(m));
+  markTrunc(list);
   if(more){ const e=document.createElement('div'); e.className='matja'; e.style.padding='8px'; e.textContent='上位'+CAP+' / '+mats.length+' 件（検索で絞り込み）'; list.appendChild(e); }
 }
 function openMatPicker(slot, form){   // mat 選択モーダル：検索＋物理名・和名・イメージ一覧。押下で選択
   matPickSlot=slot; matPickForm=form;
   $('#matmodal-title').textContent=slot+' の mat を選択';
   $('#mat-search').value=''; if($('#mat-light'))$('#mat-light').value='all'; if($('#mat-sort'))$('#mat-sort').value='form'; setFilts('mat-filttog','mat-filts',false); renderMatList();
-  $('#matmodal').classList.add('on'); setTimeout(()=>{ try{$('#mat-search').focus();}catch(_){} },60);
+  $('#matmodal').classList.add('on'); setTimeout(()=>{ try{$('#mat-search').focus();}catch(_){} markTrunc($('#matmodal-list')); },60);
 }
 $('#mat-search').oninput=renderMatList;
 if($('#mat-light')) $('#mat-light').onchange=renderMatList;
@@ -1923,7 +1935,7 @@ function fillRawForm(){   // form セレクトの選択肢：すべて / form登
   sel.value = [...sel.options].some(o=>o.value===keep) ? keep : 'all';
 }
 function openRawPicker(){ $('#raw-search').value=''; fillRawForm(); $('#raw-form').value='all'; if($('#raw-light'))$('#raw-light').value='all'; if($('#raw-sort'))$('#raw-sort').value='form'; setFilts('raw-filttog','raw-filts',false);
-  renderRawList(); $('#rawmodal').classList.add('on'); setTimeout(()=>{ try{$('#raw-search').focus();}catch(_){} },60); }
+  renderRawList(); $('#rawmodal').classList.add('on'); setTimeout(()=>{ try{$('#raw-search').focus();}catch(_){} markTrunc($('#rawmodal-list')); },60); }
 function renderRawList(){ const list=$('#rawmodal-list'); if(!list) return; list.innerHTML='';
   const q=($('#raw-search').value||'').trim().toLowerCase(); const sel=$('#raw-form').value||'all'; const lf=($('#raw-light')&&$('#raw-light').value)||'all'; const sort=($('#raw-sort')&&$('#raw-sort').value)||'form'; const CAP=100000;
   const items=[];
@@ -1946,6 +1958,7 @@ function renderRawList(){ const list=$('#rawmodal-list'); if(!list) return; list
       const h=document.createElement('div'); h.className='rawhdr'; h.textContent=it.form||'（form なし）'; list.appendChild(h); }
     list.appendChild(rawRow(it.b));
   }
+  markTrunc(list);
   const note=document.createElement('div'); note.className='matja'; note.style.padding='8px';
   note.textContent = items.length===0 ? '該当なし' : items.length>CAP ? ('上位'+CAP+' / '+items.length+' 件（検索で絞り込み）') : (items.length+' 件');
   list.appendChild(note);
