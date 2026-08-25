@@ -83,6 +83,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .ldfn:empty::after{content:'\00a0'}
 #savemodal .ldrow{margin-bottom:14px}
 #savemodal .ldrow input{flex:1;min-width:0;max-width:none;margin-bottom:0;padding:6px 2px;font-size:12px}
+.ext{flex:none;color:var(--dim);font-family:ui-monospace,monospace;font-size:12px;margin-left:-8px}
+.modnote{font-size:11px;color:var(--dim);line-height:1.4;margin-top:10px}
 .appname{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   font-size:20px;letter-spacing:-.02em;line-height:1;color:var(--chalk)}
 .namerow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
@@ -404,10 +406,11 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   </div>
 </div></div>
 <div id="savemodal"><div class="panel"><h3>保存</h3>
-  <div class="ldrow"><button class="btn" id="j-dl">place</button><input id="name" value="blueprint-01" aria-label="place の名前"></div>
-  <div class="ldrow"><button class="btn" id="pal-save">palette</button><input id="pal-name" value="palette-01" aria-label="palette の名前"></div>
-  <div class="ldrow"><button class="btn" id="pal-struct">structure</button><input id="struct-name" value="structure-01" aria-label="structure の名前"></div>
+  <div class="ldrow"><button class="btn" id="j-dl">place</button><input id="name" value="blueprint-01" aria-label="place の名前"><span class="ext">.json</span></div>
+  <div class="ldrow"><button class="btn" id="pal-save">palette</button><input id="pal-name" value="palette-01" aria-label="palette の名前"><span class="ext">.json</span></div>
+  <div class="ldrow"><button class="btn" id="pal-struct">structure</button><input id="struct-name" value="structure-01" aria-label="structure の名前"><span class="ext">.json</span></div>
   <div class="bar sep"><button class="btn" id="save-all" style="flex:1">一括保存（place + palette + structure）</button></div>
+  <div class="modnote">保存先フォルダは設定画面で指定できます（未指定の端末はダウンロード保存）。</div>
 </div></div>
 <div id="loadmodal"><div class="panel"><h3>読み込み</h3>
   <div class="ldgrp">
@@ -423,11 +426,12 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
       <div class="ldrow"><button class="btn" id="pal-loadstruct">structure</button><span class="ldfn" id="fn-structure"></span></div>
     </div>
   </div>
+  <div class="modnote">設定画面で指定したフォルダから読み込めます。</div>
 </div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.65';
+const APP_VERSION = '4.66';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
