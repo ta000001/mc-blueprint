@@ -213,7 +213,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #rawmodal .panel{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:14px;width:min(480px,94%);max-height:84%;display:flex;flex-direction:column;min-height:0}
 #rawmodal h3{margin:0 0 8px;font-size:13px;color:var(--brass)}
 #raw-search{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:9px 8px;font-size:13px;margin:0 0 6px;font-family:ui-monospace,monospace;box-sizing:border-box;width:100%;flex:none}
-#raw-form,#raw-light,#mat-light{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:10px 8px;font-size:13px;line-height:1.3;margin:0 0 6px;font-family:ui-monospace,monospace;box-sizing:border-box;width:100%;flex:none;height:auto}
+#raw-form,#raw-light,#raw-sort,#mat-light,#mat-sort{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:10px 8px;font-size:13px;line-height:1.3;margin:0 0 6px;font-family:ui-monospace,monospace;box-sizing:border-box;width:100%;flex:none;height:auto}
 .matlight{font-size:10px;color:var(--brass);font-family:ui-monospace,monospace;flex:none;white-space:nowrap;margin-left:4px}
 #rawmodal-list{flex:1;overflow:auto;min-height:0}
 .rawhdr{background:var(--panel2);color:var(--brass);font-size:11px;font-weight:700;letter-spacing:.05em;padding:8px 6px 5px;border-bottom:1px solid var(--brass-dim)}
@@ -354,11 +354,12 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <div id="status"></div>
 <div id="modal"><div class="panel"><h3>種類を選択</h3><div class="grid" id="modal-grid"></div></div></div>
-<div id="matmodal"><div class="panel"><h3 id="matmodal-title">mat を選択</h3><input id="mat-search" placeholder="mat / block / 和名 で検索" autocomplete="off" spellcheck="false"><select id="mat-light" aria-label="光源で絞り込み"><option value="all">光源: すべて</option><option value="light">光源のみ</option><option value="dark">非光源のみ</option></select><div id="matmodal-list"></div></div></div>
+<div id="matmodal"><div class="panel"><h3 id="matmodal-title">mat を選択</h3><input id="mat-search" placeholder="mat / block / 和名 で検索" autocomplete="off" spellcheck="false"><select id="mat-light" aria-label="光源で絞り込み"><option value="all">光源: すべて</option><option value="light">光源のみ</option><option value="dark">非光源のみ</option></select><select id="mat-sort" aria-label="並び替え"><option value="form">並び: 既定(mat名)</option><option value="prefix">並び: prefix(接頭辞)</option><option value="suffix">並び: suffix(接尾辞)</option></select><div id="matmodal-list"></div></div></div>
 <div id="rawmodal"><div class="panel"><h3>ブロックを指定</h3>
   <input id="raw-search" placeholder="物理名 / 和名 で検索" autocomplete="off" spellcheck="false">
   <select id="raw-form" aria-label="form で絞り込み"></select>
   <select id="raw-light" aria-label="光源で絞り込み"><option value="all">光源: すべて</option><option value="light">光源のみ</option><option value="dark">非光源のみ</option></select>
+  <select id="raw-sort" aria-label="並び替え"><option value="form">並び: FORM(既定)</option><option value="prefix">並び: prefix(接頭辞)</option><option value="suffix">並び: suffix(接尾辞)</option></select>
   <div id="rawmodal-list"></div>
 </div></div>
 <div id="vmodal"><div class="panel"><h3>バージョン情報</h3><div id="vmodal-body"></div></div></div>
@@ -417,7 +418,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.58';
+const APP_VERSION = '4.59';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1854,27 +1855,41 @@ function matRow(mat){   // 1行：物理名・block・和名・イメージ
   r.onclick=()=>{ S.pal.map[slot]=mat; closeMatPicker(); renderPalList(); };
   return r;
 }
-function renderMatList(){   // 検索でフィルタ（mat物理名 / block id / 和名）。(未割当) は常に先頭
+/* ---------- 並び替えキー（blocks_all の suffix を利用。接尾辞順=suffix→prefix / 接頭辞順=prefix(末尾トークン優先)→suffix） ---------- */
+function blkSuffix(id){ const b=BLOCKS_ALL[id]; return (b&&b.suffix) || (id?('_'+id):''); }             // block の suffix（無ければ _id）
+function blkPrefix(id){ const s=blkSuffix(id); return (id && id.endsWith(s)) ? id.slice(0,-s.length) : ''; }  // 接頭辞（素材部分・単語ブロックは空）
+function prefixKey(pre){ return pre ? pre.split('_').reverse().join(' ') : ''; }                    // 末尾トークン優先で比較（oak 系をまとめる）
+function cmpBlockSort(mode, a, b){   // suffix順 / prefix順。form(既定)は 0 を返し呼び側の tiebreak に任せる
+  if(mode==='suffix'){ const sa=blkSuffix(a), sb=blkSuffix(b); if(sa!==sb) return sa<sb?-1:1; const pa=blkPrefix(a), pb=blkPrefix(b); return pa<pb?-1:pa>pb?1:0; }
+  if(mode==='prefix'){ const pa=prefixKey(blkPrefix(a)), pb=prefixKey(blkPrefix(b)); if(pa!==pb) return pa<pb?-1:1; const sa=blkSuffix(a), sb=blkSuffix(b); return sa<sb?-1:sa>sb?1:0; }
+  return 0;
+}
+function renderMatList(){   // 検索/光源でフィルタ＋並び替え（既定=mat名 / prefix / suffix）。(未割当) は常に先頭
   const list=$('#matmodal-list'); if(!list) return; list.innerHTML='';
-  const q=($('#mat-search').value||'').trim().toLowerCase(); const lf=($('#mat-light')&&$('#mat-light').value)||'all'; const CAP=400; let n=0, more=false;
+  const q=($('#mat-search').value||'').trim().toLowerCase(); const lf=($('#mat-light')&&$('#mat-light').value)||'all';
+  const sort=($('#mat-sort')&&$('#mat-sort').value)||'form'; const CAP=400;
   list.appendChild(matRow(''));
+  const mats=[];
   for(const m of formMats(matPickForm)){
     const key=matKey(matPickForm, m);
     if(lf!=='all'){ const lm=(BLOCKS_ALL[key]&&BLOCKS_ALL[key].lightMax)||0; if(lf==='light' ? !(lm>0) : (lm>0)) continue; }   // 光源フィルタ（block の lightMax>0）
     if(q && !(m.toLowerCase().includes(q) || key.includes(q) || (matJa(key)||'').toLowerCase().includes(q))) continue;
-    if(n>=CAP){ more=true; break; }
-    n++; list.appendChild(matRow(m));
+    mats.push(m);
   }
-  if(more){ const e=document.createElement('div'); e.className='matja'; e.style.padding='8px'; e.textContent='上位'+CAP+'件（検索で絞り込み）'; list.appendChild(e); }
+  mats.sort((x,y)=> cmpBlockSort(sort, matKey(matPickForm,x), matKey(matPickForm,y)) || (x<y?-1:x>y?1:0));
+  const more = mats.length>CAP;
+  for(const m of mats.slice(0,CAP)) list.appendChild(matRow(m));
+  if(more){ const e=document.createElement('div'); e.className='matja'; e.style.padding='8px'; e.textContent='上位'+CAP+' / '+mats.length+' 件（検索で絞り込み）'; list.appendChild(e); }
 }
 function openMatPicker(slot, form){   // mat 選択モーダル：検索＋物理名・和名・イメージ一覧。押下で選択
   matPickSlot=slot; matPickForm=form;
   $('#matmodal-title').textContent=slot+' の mat を選択';
-  $('#mat-search').value=''; if($('#mat-light'))$('#mat-light').value='all'; renderMatList();
+  $('#mat-search').value=''; if($('#mat-light'))$('#mat-light').value='all'; if($('#mat-sort'))$('#mat-sort').value='form'; renderMatList();
   $('#matmodal').classList.add('on'); setTimeout(()=>{ try{$('#mat-search').focus();}catch(_){} },60);
 }
 $('#mat-search').oninput=renderMatList;
 if($('#mat-light')) $('#mat-light').onchange=renderMatList;
+if($('#mat-sort')) $('#mat-sort').onchange=renderMatList;
 function closeMatPicker(){ $('#matmodal').classList.remove('on'); }
 
 /* ---------- raw ブロック指定ピッカー（全 vanilla を物理名/和名で検索・form 別に絞り込み/ソート） ---------- */
@@ -1885,10 +1900,10 @@ function fillRawForm(){   // form セレクトの選択肢：すべて / form登
   for(const f of FORM_LIST) add(f, '　'+f);   // 各 form（インデント）
   sel.value = [...sel.options].some(o=>o.value===keep) ? keep : 'all';
 }
-function openRawPicker(){ $('#raw-search').value=''; fillRawForm(); $('#raw-form').value='all'; if($('#raw-light'))$('#raw-light').value='all';
+function openRawPicker(){ $('#raw-search').value=''; fillRawForm(); $('#raw-form').value='all'; if($('#raw-light'))$('#raw-light').value='all'; if($('#raw-sort'))$('#raw-sort').value='form';
   renderRawList(); $('#rawmodal').classList.add('on'); setTimeout(()=>{ try{$('#raw-search').focus();}catch(_){} },60); }
 function renderRawList(){ const list=$('#rawmodal-list'); if(!list) return; list.innerHTML='';
-  const q=($('#raw-search').value||'').trim().toLowerCase(); const sel=$('#raw-form').value||'all'; const lf=($('#raw-light')&&$('#raw-light').value)||'all'; const CAP=400;
+  const q=($('#raw-search').value||'').trim().toLowerCase(); const sel=$('#raw-form').value||'all'; const lf=($('#raw-light')&&$('#raw-light').value)||'all'; const sort=($('#raw-sort')&&$('#raw-sort').value)||'form'; const CAP=400;
   const items=[];
   for(const b of BLOCKS_ALL_ARR){
     const d=DICT_BY_BLOCK[b.block], form=(d&&d.form)||'';
@@ -1899,11 +1914,13 @@ function renderRawList(){ const list=$('#rawmodal-list'); if(!list) return; list
     if(q && !(b.block.includes(q) || (b.ja||'').toLowerCase().includes(q))) continue;
     items.push({b, form});
   }
-  items.sort((x,y)=>{ const fi=x.form?FORM_LIST.indexOf(x.form):9999, fj=y.form?FORM_LIST.indexOf(y.form):9999;   // form 別ソート（form順→物理名）
+  items.sort((x,y)=>{
+    if(sort!=='form') return cmpBlockSort(sort, x.b.block, y.b.block) || x.b.block.localeCompare(y.b.block);
+    const fi=x.form?FORM_LIST.indexOf(x.form):9999, fj=y.form?FORM_LIST.indexOf(y.form):9999;   // form 別ソート（form順→物理名）
     return fi!==fj ? fi-fj : x.b.block.localeCompare(y.b.block); });
   let lastForm=' ';
-  for(const it of items.slice(0,CAP)){
-    if(it.form!==lastForm){ lastForm=it.form;   // form が変わったら見出し（タイトル）で仕切る
+  const grouped=(sort==='form'); for(const it of items.slice(0,CAP)){
+    if(grouped && it.form!==lastForm){ lastForm=it.form;   // form が変わったら見出し（タイトル）で仕切る
       const h=document.createElement('div'); h.className='rawhdr'; h.textContent=it.form||'（form なし）'; list.appendChild(h); }
     list.appendChild(rawRow(it.b));
   }
@@ -1928,6 +1945,7 @@ $('#rawmodal').onclick=e=>{ if(e.target.id==='rawmodal') $('#rawmodal').classLis
 $('#raw-search').oninput=renderRawList;
 $('#raw-form').onchange=renderRawList;
 if($('#raw-light')) $('#raw-light').onchange=renderRawList;
+if($('#raw-sort')) $('#raw-sort').onchange=renderRawList;
 function renderPalList(){
   const el=$('#pal-list'); if(!el) return; el.innerHTML='';
   const formRank=f=>{ const i=FORM_LIST.indexOf(f); return i<0?9999:i; };   // form_dict の並び順
