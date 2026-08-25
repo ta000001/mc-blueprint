@@ -218,8 +218,6 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .filttog{background:transparent;border:1px dashed var(--rule);color:var(--dim);border-radius:4px;padding:6px 8px;font-size:11px;margin:0 0 6px;width:100%;text-align:left;cursor:pointer;font-family:inherit;box-sizing:border-box}
 .filtwrap{display:none}
 .filtwrap.on{display:block}
-.matphys.exp,.matblock.exp{white-space:normal;overflow:visible;text-overflow:clip;word-break:break-all}
-.expdots{flex:none;color:var(--brass);cursor:pointer;padding:0 6px;font-weight:700;user-select:none;align-self:center}
 .fulltip{position:fixed;z-index:100;max-width:80vw;background:var(--panel2);color:var(--chalk);border:1px solid var(--brass);border-radius:5px;padding:6px 9px;font-family:ui-monospace,monospace;font-size:12px;word-break:break-all;box-shadow:0 3px 12px rgba(0,0,0,.5);display:none;cursor:pointer}
 #rawmodal-list{flex:1;overflow:auto;min-height:0}
 .rawhdr{background:var(--panel2);color:var(--brass);font-size:11px;font-weight:700;letter-spacing:.05em;padding:8px 6px 5px;border-bottom:1px solid var(--brass-dim)}
@@ -427,7 +425,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.63';
+const APP_VERSION = '4.64';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1854,9 +1852,9 @@ function matRow(mat){   // 1行：物理名・block・和名・イメージ
   const r=document.createElement('button'); r.className='matrow'+((S.pal.map[slot]||'')===mat?' on':'');
   const key=matKey(form, mat);
   r.appendChild(matThumb(key));
-  const p=document.createElement('span'); p.className='matphys'; p.textContent=mat||'(未割当)'; r.appendChild(p); if(mat) r.appendChild(expandDots(p, mat));  // 左: mat物理名
+  const p=document.createElement('span'); p.className='matphys'; p.textContent=mat||'(未割当)'; if(mat) tipIfTrunc(p, mat); r.appendChild(p);  // 左: mat物理名
   const col=document.createElement('span'); col.className='matbcol';                                    // 右: block物理名 + その下に和名
-  if(key){ const bl=document.createElement('span'); bl.className='matblock'; bl.textContent=key; bl.title=key; col.appendChild(bl); }
+  if(key){ const bl=document.createElement('span'); bl.className='matblock'; bl.textContent=key; tipIfTrunc(bl, key); col.appendChild(bl); }
   const j=document.createElement('span'); j.className='matja'; j.textContent=matJa(key); col.appendChild(j);
   r.appendChild(col);
   const lm=(BLOCKS_ALL[key]&&BLOCKS_ALL[key].lightMax)||0;   // 光源なら 💡+レベル
@@ -1881,9 +1879,8 @@ function showTip(anchorEl, text){   // 全文をツールチップ表示（iOS�
   _fulltip.style.left=left+'px'; _fulltip.style.top=top+'px'; }
 document.addEventListener('click', hideTip, true);
 document.addEventListener('scroll', hideTip, true);
-function expandDots(nameEl, full){ nameEl.title=full||'';   // 末尾「⋯」タップで全文をツールチップ表示（行タップは選択のまま）
-  const d=document.createElement('span'); d.className='expdots'; d.textContent='⋯';
-  d.onclick=e=>{ e.stopPropagation(); showTip(d, full); }; return d; }
+function tipIfTrunc(nameEl, full){ nameEl.title=full||'';   // 名前が切れている(…表示)行だけ、その名前タップで全文ツールチップ。切れてなければ行選択に委ねる
+  nameEl.onclick=e=>{ if(nameEl.scrollWidth > nameEl.clientWidth+1){ e.stopPropagation(); showTip(nameEl, full); } }; return nameEl; }
 function cmpBlockSort(mode, a, b){   // suffix順 / prefix順。form(既定)は 0 を返し呼び側の tiebreak に任せる
   if(mode==='suffix'){ const sa=blkSuffix(a), sb=blkSuffix(b); if(sa!==sb) return sa<sb?-1:1; const pa=blkPrefix(a), pb=blkPrefix(b); return pa<pb?-1:pa>pb?1:0; }
   if(mode==='prefix'){ const pa=prefixKey(blkPrefix(a)), pb=prefixKey(blkPrefix(b)); if(pa!==pb) return pa<pb?-1:1; const sa=blkSuffix(a), sb=blkSuffix(b); return sa<sb?-1:sa>sb?1:0; }
@@ -1956,7 +1953,7 @@ function renderRawList(){ const list=$('#rawmodal-list'); if(!list) return; list
 function rawRow(b){
   const r=document.createElement('button'); r.className='matrow'+((S.shape==='raw'&&S.raw===b.block)?' on':'');
   r.appendChild(matThumb(b.block));
-  const p=document.createElement('span'); p.className='matphys'; p.textContent=b.block; r.appendChild(p); r.appendChild(expandDots(p, b.block));
+  const p=document.createElement('span'); p.className='matphys'; p.textContent=b.block; tipIfTrunc(p, b.block); r.appendChild(p);
   const j=document.createElement('span'); j.className='matja'; j.textContent=b.ja||''; r.appendChild(j);   // 和名（form は見出しで表示）
   if(b.lightMax>0){ const L=document.createElement('span'); L.className='matlight'; L.textContent='💡'+b.lightMax; r.appendChild(L); }   // 光源
   r.onclick=()=>pickRaw(b.block);
