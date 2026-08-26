@@ -1,5 +1,5 @@
 {
-  "version": "7(20260826)",
+  "version": "8(20260826)",
   "_comment": "全 vanilla ブロック -> {block, blockClass, suffix, lightMax, ja(和名), updated}. 運用①: ./gradlew runData (BlockMasterGenProvider) が生成（ja は前回値引き継ぎ・新規は空）。運用②: in-game /abtest exporttex が ja 列と blocktex を更新。properties/settable は block_class_all.json（blockClass で join）。suffix=末尾語(既知複合最長一致・先頭_付き)・lightMax=全stateの発光最大(>0で光源)・updated=行の更新日(変更行のみ当日)。version のカッコ内=updated の最大値。手編集禁止（mc-blueprint は一方向 sync）。",
   "blocks": [
     {"block":"air","blockClass":"AirBlock","suffix":"_air","lightMax":0,"ja":"空気","updated":"20260826"},
