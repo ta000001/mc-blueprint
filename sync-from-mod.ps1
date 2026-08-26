@@ -35,7 +35,7 @@ foreach ($f in @("dict.json")) {
 
 # blocks_all.json (block columns) + block_class_all.json (blockClass -> properties/settable).
 # Generated out-of-game by `gradlew runData`; the ja column is updated in-game by /abtest exporttex.
-foreach ($f in @("blocks_all.json", "block_class_all.json")) {
+foreach ($f in @("blocks_all.json", "block_class_all.json", "rel_defs.json")) {
     $from = Join-Path $src $f
     if (Test-Path $from) {
         Copy-Item $from (Join-Path $PSScriptRoot $f) -Force
