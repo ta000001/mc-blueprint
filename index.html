@@ -432,7 +432,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.69';
+const APP_VERSION = '4.70';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -514,6 +514,7 @@ let BLOCKS_ALL_ARR = [];        // 同上（配列・raw ピッカーの一覧�
 let BLOCKS_ALL_VERSION = null;
 let BLOCK_CLASS = {};           // blockClass -> {properties:[{name,values,settable}]}（block_class_all.json 由来）
 let BLOCK_CLASS_VERSION = null;
+let REL_DEFS_VERSION = null;    // rel_defs.json の version（角度規約の定義。回転/ミラーは rel タグ＋内蔵ベクトルで実装・現状は版表示のみ）
 let DICT_BY_BLOCK = {};         // block(short) -> {form, mat}（dict 逆引き。form 登録有無の判定にも使う）
 let BLOCK_BY_FORMMAT = {};      // 'FORM|MAT' -> block_id（画像/和名は block id キー。form 毎に別ブロック）
 function buildBlockIndex(){ BLOCK_BY_FORMMAT={}; DICT_BY_BLOCK={};
@@ -536,6 +537,10 @@ async function loadDict(){
   try { const rC = await fetch('./block_class_all.json?v='+APP_VERSION, {cache:'no-cache'});
         if(rC.ok){ const jC = await rC.json(); BLOCK_CLASS_VERSION = (jC && jC.version!=null) ? jC.version : null;
           BLOCK_CLASS={}; for(const c of (jC.classes||[])) BLOCK_CLASS[c.blockClass]=c; } }
+  catch(_){}
+  // rel_defs.json（角度規約の定義・version 表示用）
+  try { const rR = await fetch('./rel_defs.json?v='+APP_VERSION, {cache:'no-cache'});
+        if(rR.ok){ const jR = await rR.json(); REL_DEFS_VERSION = (jR && jR.version!=null) ? jR.version : null; } }
   catch(_){}
   // blocktex.json（画像群の version のみ・任意）
   try { const r4 = await fetch('./blocktex.json?v='+APP_VERSION, {cache:'no-cache'});
@@ -2253,6 +2258,7 @@ function fillVer(){ $('#vmodal-body').innerHTML =                     // ? バ�
   '<div class="vrow">dict v'+(DICT_VERSION??'?')+'</div>'+
   '<div class="vrow">blocks_all v'+(BLOCKS_ALL_VERSION??'?')+'</div>'+
     '<div class="vrow">block_class_all v'+(BLOCK_CLASS_VERSION??'?')+'</div>'+
+    '<div class="vrow">rel_defs v'+(REL_DEFS_VERSION??'?')+'</div>'+
   '<div class="vrow">blocktex v'+(BLOCKTEX_VERSION??'?')+'</div>'; }
 fillVer();
 $('#ver').onclick = ()=> $('#vmodal').classList.add('on');
