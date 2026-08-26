@@ -432,7 +432,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.68';
+const APP_VERSION = '4.69';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -460,21 +460,24 @@ const MIRROR = new Set(['facing','hinge','east','west']);            // 左右�
 const OTHER_KEY2FORM = { door:'DOOR', torch:'TORCH', wall_torch:'WALL_TORCH', lantern:'LANTERN', campfire:'CAMPFIRE', chain:'CHAIN', fence:'FENCE', fence_gate:'FENCE_GATE' };  // 旧 other-key → form 移行
 let FORM_PROPS = {};      // form -> { propName: [values...] }（dict×block_class_all 由来）
 let FORM_SETTABLE = {};   // form -> { propName: settable(bool) }（block_class_all の settable）
+let FORM_PROP_REL = {};   // form -> { propName: rel種別 }（block_class_all の rel。回転/ミラーの機械適用に使う）
 let FORM_LIST  = [];      // unregistered 以外の全 form
 function blockProps(blockId){   // block の properties（settable 付き）＝blocks_all.blockClass → block_class_all を join
   const ba=BLOCKS_ALL[blockId]; if(!ba) return [];
   if(ba.properties) return ba.properties;                        // 旧スキーマ(v4以前)後方互換
   const bc=BLOCK_CLASS[ba.blockClass]; return (bc && bc.properties) || [];
 }
-function buildFormProps(){   // dict(block→form) × block_class_all(blockClass→properties/settable) から form→プロパティ を導出
-  const fp={}, fs={}, order=[];
+function buildFormProps(){   // dict(block→form) × block_class_all(blockClass→properties/settable/rel) から form→プロパティ を導出
+  const fp={}, fs={}, fr={}, order=[];
   for(const e of DICT_ENTRIES){ const f=e.form; if(!f) continue;
-    if(!(f in fp)){ fp[f]={}; fs[f]={}; order.push(f); }
+    if(!(f in fp)){ fp[f]={}; fs[f]={}; fr[f]={}; order.push(f); }
     for(const pr of blockProps(e.block)){ const cur=fp[f][pr.name]||[];
       for(const v of (pr.values||[])) if(!cur.includes(v)) cur.push(v); fp[f][pr.name]=cur;
-      if(pr.settable!==false) fs[f][pr.name]=true; } }             // form 内のどれかの class で設定可なら出す
-  FORM_PROPS=fp; FORM_SETTABLE=fs; FORM_LIST=order;
+      if(pr.settable!==false) fs[f][pr.name]=true;                 // form 内のどれかの class で設定可なら出す
+      if(pr.rel) fr[f][pr.name]=pr.rel; } }
+  FORM_PROPS=fp; FORM_SETTABLE=fs; FORM_PROP_REL=fr; FORM_LIST=order;
 }
+function relMapOf(properties){ const m={}; for(const pr of (properties||[])) if(pr.rel) m[pr.name]=pr.rel; return m; }   // raw 用: name→rel
 // 汎用ハンドラ: settable(block_class_all) + 例外 から、出すプロパティを [{name,values}] で返す（旧 SHOW allowlist 廃止）
 function isMultiHalf(form){ const p=FORM_PROPS[form]; return !!(p && (p.half||[]).includes('upper')); }  // half=upper/lower→複数ブロック
 const propsMapOf = (properties)=>{ const m={}; for(const pr of (properties||[])) m[pr.name]=pr.values||[]; return m; };
@@ -1326,17 +1329,21 @@ function blockRecs(fieldFn){   // S.vox を structure レコード(1行文字列
   return arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:mirW(p[0],W)}};
     if(v.s==='raw'){                                                   // raw＝block=id 直指定（form/mat なし）
       rec.block = (v.raw.indexOf(':')<0 ? 'minecraft:'+v.raw : v.raw);
+      const relmR=relMapOf(blockProps(v.raw));
       for(const {name} of shownPropsRaw(v.raw)){ let val=v.props[name];
         if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val);
         else if(name==='east') val=v.props['west']; else if(name==='west') val=v.props['east'];
+        else if(val!=null && (relmR[name]==='rot16'||relmR[name]==='rail'||relmR[name]==='orientation')) val=mirRel(relmR[name], String(val));
         rec[name]=val; }
       return '  '+JSON.stringify(rec);
     }
     const form=formOf({s:v.s,ot:v.ot}); rec.form=form;                 // form 先（dict と統一・2026-08-15）
     Object.assign(rec, fieldFn(v.r));                                  // slot（place）または mat（structure）
+    const relmF=FORM_PROP_REL[form]||{};
     for(const {name} of shownProps(form)){ let val=v.props[name];      // 汎用: 出すプロパティを素直に書く
       if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val);
       else if(name==='east') val=v.props['west']; else if(name==='west') val=v.props['east'];   // W反転で東西入替
+      else if(val!=null && (relmF[name]==='rot16'||relmF[name]==='rail'||relmF[name]==='orientation')) val=mirRel(relmF[name], String(val));
       rec[name]=val; }
     if(isMultiHalf(form)){ rec.half='lower';                           // upper/lower の form（ドア等）は2レコードに展開
       const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},form:form}; Object.assign(up, fieldFn(v.r)); up.half='upper';
@@ -1694,11 +1701,47 @@ function rotVineFaces(props, plane){   // つたの付く面（north/south/east/
   for(const f in FACE_DIR){ if(props[f]!=='true') continue;
     const nf=faceOfVec(rotVec90(FACE_DIR[f], plane)); if(nf) res[nf]='true'; }   // 縦回転で down になる面は消える（vine に down 無し）
   return res; }
-function rotVal(val, plane){ const n=norm(val), props={...n.props};   // facing/axis を回転（half/hinge 等はそのまま＝水平回転で不変）
+/* ---- rel 種別（rot16/rail/orientation）の回転・ミラー（block_class_all の rel タグ＋rel_defs の角度規約に整合） ---- */
+const REL_ANGLE={FRONT:0,RIGHT:4,BACK:8,LEFT:12};                      // 水平トークン→相対角度（rel_defs と同一）
+const ANGLE_REL={0:'FRONT',4:'RIGHT',8:'BACK',12:'LEFT'};
+const RAIL_ORD={FRONT:0,BACK:1,LEFT:2,RIGHT:3};                        // rail 平面トークンの表記順（RelRailShape と同一）
+function rotWordTok(tok, plane){ if(tok==='UP'||tok==='DOWN'){ const i=rotFacingIdx(FAC_I[tok],plane); return FAC[i]; }
+  return FAC[ rotFacingIdx(FAC_I[tok]||0, plane) ]; }                  // FDIR 語をベクトル回転（全平面対応）
+function rotDelta(plane){ const t=rotWordTok('FRONT',plane); return (t in REL_ANGLE) ? REL_ANGLE[t] : null; }   // 水平回転の角度差（縦回転は null）
+function rotRel(kind, val, plane){
+  if(kind==='rot16'){ const d=rotDelta(plane); return d==null ? val : String((parseInt(val,10)+d)%16); }        // 看板16方位（縦回転は据え置き）
+  if(kind==='rail'){
+    if(val.startsWith('ASCEND_')){ const t=rotWordTok(val.slice(7),plane); return (t in REL_ANGLE) ? 'ASCEND_'+t : val; }
+    const p=val.split('_'); if(p.length!==2) return val;
+    const a=rotWordTok(p[0],plane), b=rotWordTok(p[1],plane);
+    if(!(a in RAIL_ORD)||!(b in RAIL_ORD)) return val;                 // 縦回転で水平でなくなる場合は据え置き
+    return RAIL_ORD[a]<=RAIL_ORD[b] ? a+'_'+b : b+'_'+a; }
+  if(kind==='orientation'){
+    const p=val.split('_'); if(p.length!==2) return val;
+    const f=rotWordTok(p[0],plane), t=rotWordTok(p[1],plane);
+    const ok=((f==='UP'||f==='DOWN') && (t in REL_ANGLE)) || ((f in REL_ANGLE) && t==='UP');   // FrontAndTop に実在する組のみ
+    return ok ? f+'_'+t : val; }
+  return val; }
+const MIR_WORD={RIGHT:'LEFT',LEFT:'RIGHT'};                            // W ミラー＝左右反転（FRONT/BACK/UP/DOWN 不変）
+function mirRel(kind, val){
+  if(kind==='rot16'){ const v=parseInt(val,10); return String((16-v)%16); }                    // 角度 a→(16−a)
+  if(kind==='rail'){
+    if(val.startsWith('ASCEND_')){ const t=val.slice(7); return 'ASCEND_'+(MIR_WORD[t]||t); }
+    const p=val.split('_'); if(p.length!==2) return val;
+    const a=MIR_WORD[p[0]]||p[0], b=MIR_WORD[p[1]]||p[1];
+    return RAIL_ORD[a]<=RAIL_ORD[b] ? a+'_'+b : b+'_'+a; }
+  if(kind==='orientation'){ const p=val.split('_'); if(p.length!==2) return val;
+    return (MIR_WORD[p[0]]||p[0])+'_'+(MIR_WORD[p[1]]||p[1]); }
+  return val; }
+function relKinds(n){ return n.s==='raw' ? relMapOf(blockProps(n.raw)) : (FORM_PROP_REL[formOf(n)] || {}); }   // name→rel（raw/form 共通）
+function rotVal(val, plane){ const n=norm(val), props={...n.props};   // 向き系プロパティを回転（half/hinge 等はそのまま＝水平回転で不変）
   const fp = n.s==='raw' ? propsMapOf(blockProps(n.raw)) : (FORM_PROPS[formOf(n)] || {});   // その form/ブロックが実際に持つ向きだけ回す
   if(fp.facing) props.facing = FAC[ rotFacingIdx(FAC_I[props.facing]||0, plane) ];
   if(fp.axis)   props.axis   = rotAxisTok(props.axis, plane);
   if(fp.north){ const nf=rotVineFaces(props, plane); if(vineAny(nf)) Object.assign(props, nf); }   // つた面（0面になる回転は据え置き）
+  const rk=relKinds(n);                                                                            // rot16/rail/orientation（rel タグで機械適用）
+  for(const name in rk){ const k=rk[name];
+    if((k==='rot16'||k==='rail'||k==='orientation') && props[name]!=null) props[name]=rotRel(k, String(props[name]), plane); }
   return n.s==='raw' ? {s:'raw', raw:n.raw, props} : {r:n.r, s:n.s, ot:n.ot, props}; }
 function rotateClip(){ const cc=S.cellClip; if(!cc){ status('コピー / 切り取り中に回転できます'); return; }
   const w=cc.w;
@@ -1801,20 +1844,26 @@ function importJson(text){
         if(b.block){                   // raw＝block=id 直指定（form/mat なし）
           const raw=String(b.block).replace(/^minecraft:/,'');
           const props={facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall'};
+          const relmR=relMapOf(blockProps(raw));
           for(const {name} of shownPropsRaw(raw)){
             let val=(name==='east')?b['west']:(name==='west')?b['east']:b[name];
             if(val==null) continue;
-            if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); props[name]=String(val); }
+            if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val);
+            else if(relmR[name]==='rot16'||relmR[name]==='rail'||relmR[name]==='orientation') val=mirRel(relmR[name], String(val));
+            props[name]=String(val); }
           set.set(K(mirW(p.w,impW),p.h,p.d), {s:'raw', raw, props}); return;
         }
         const fm=(b.form||'').toUpperCase();
         const SF={FULLBLOCK:'fullblock',SLAB:'slab',STAIRS:'stairs',TRAPDOOR:'trapdoor'};
         const s = SF[fm] || 'others', ot = SF[fm] ? 'DOOR' : fm;
         const props = {facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall'};
+        const relmF=FORM_PROP_REL[fm]||{};
         for(const {name} of shownProps(fm)){   // 汎用: 出すプロパティを素直に読む（east/west は W反転で入替）
           let val = (name==='east') ? b['west'] : (name==='west') ? b['east'] : b[name];
           if(val==null) continue;
-          if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val); props[name]=String(val); }
+          if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val);
+          else if(relmF[name]==='rot16'||relmF[name]==='rail'||relmF[name]==='orientation') val=mirRel(relmF[name], String(val));
+          props[name]=String(val); }
         set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.slot||b.mat||(fm||'FULLBLOCK')+'_1', s, ot, props}); });   // slot 優先・旧 mat も後方互換
     }
     else if(Array.isArray(d.voxels))   // 旧形式（後方互換・ミラー前のアプリ内部座標）
