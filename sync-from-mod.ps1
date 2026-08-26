@@ -33,14 +33,16 @@ foreach ($f in @("dict.json")) {
     Write-Host "synced $f  <-  $from"
 }
 
-# blocks_all.json (all vanilla blocks: block/blockClass/ja/properties). Generated in-game by /abtest exporttex.
-# (Replaces the old form_dict.json + names_ja.json, which are no longer used.)
-$allFrom = Join-Path $src "blocks_all.json"
-if (Test-Path $allFrom) {
-    Copy-Item $allFrom (Join-Path $PSScriptRoot "blocks_all.json") -Force
-    Write-Host "synced blocks_all.json  <-  $allFrom"
-} else {
-    Write-Host "skip blocks_all.json (run /abtest exporttex in-game to generate)"
+# blocks_all.json (block columns) + block_class_all.json (blockClass -> properties/settable).
+# Generated out-of-game by `gradlew runData`; the ja column is updated in-game by /abtest exporttex.
+foreach ($f in @("blocks_all.json", "block_class_all.json")) {
+    $from = Join-Path $src $f
+    if (Test-Path $from) {
+        Copy-Item $from (Join-Path $PSScriptRoot $f) -Force
+        Write-Host "synced $f  <-  $from"
+    } else {
+        Write-Host "skip $f (run gradlew runData to generate)"
+    }
 }
 
 # Optional: block face textures (data/master/block/blocktex/*.png) -> assets/blocks/,

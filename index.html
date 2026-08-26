@@ -432,7 +432,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.67';
+const APP_VERSION = '4.68';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -456,39 +456,47 @@ const AXES = ['VERTICAL','DEPTH','WIDTH'];                 // axis（相対軸 R
    others に出す form／各 form のプロパティボタンは form_dict から導出。ラベルは form 名（そのまま）。 */
 const PRIMARY_SHAPES = ['FULLBLOCK','SLAB','STAIRS','TRAPDOOR'];
 const STATE_OPTIN = { open: ['TRAPDOOR'] };            // 既定 close 固定、ここに挙げた form だけ open ボタン
-const SHOW   = new Set(['facing','axis','half','type','hinge','open','hanging','face',
-                        'up','north','south','east','west',   // VINE：付く面
-                        'age','leaves','stage']);             // BAMBOO_PLANT：太さ/葉/成長
 const MIRROR = new Set(['facing','hinge','east','west']);            // 左右ミラー対象(I/O時に反転)。east↔west は W 反転で入替
 const OTHER_KEY2FORM = { door:'DOOR', torch:'TORCH', wall_torch:'WALL_TORCH', lantern:'LANTERN', campfire:'CAMPFIRE', chain:'CHAIN', fence:'FENCE', fence_gate:'FENCE_GATE' };  // 旧 other-key → form 移行
-let FORM_PROPS = {};   // form -> { propName: [values...] }（form_dict 由来）
-let FORM_LIST  = [];   // unregistered 以外の全 form（form_dict 由来）
-function buildFormProps(){   // dict(block→form) × blocks_all(block→properties) から form→プロパティ を導出（form_dict 廃止）
-  const fp={}, order=[];
-  for(const e of DICT_ENTRIES){ const f=e.form; if(!f) continue;
-    if(!(f in fp)){ fp[f]={}; order.push(f); }
-    const ba=BLOCKS_ALL[e.block]; if(!ba||!ba.properties) continue;
-    for(const pr of ba.properties){ const cur=fp[f][pr.name]||[];
-      for(const v of (pr.values||[])) if(!cur.includes(v)) cur.push(v); fp[f][pr.name]=cur; } }
-  FORM_PROPS=fp; FORM_LIST=order;
+let FORM_PROPS = {};      // form -> { propName: [values...] }（dict×block_class_all 由来）
+let FORM_SETTABLE = {};   // form -> { propName: settable(bool) }（block_class_all の settable）
+let FORM_LIST  = [];      // unregistered 以外の全 form
+function blockProps(blockId){   // block の properties（settable 付き）＝blocks_all.blockClass → block_class_all を join
+  const ba=BLOCKS_ALL[blockId]; if(!ba) return [];
+  if(ba.properties) return ba.properties;                        // 旧スキーマ(v4以前)後方互換
+  const bc=BLOCK_CLASS[ba.blockClass]; return (bc && bc.properties) || [];
 }
-// 汎用ハンドラ: form_dict + allowlist(SHOW) + 例外 から、出すプロパティを [{name,values}] で返す
+function buildFormProps(){   // dict(block→form) × block_class_all(blockClass→properties/settable) から form→プロパティ を導出
+  const fp={}, fs={}, order=[];
+  for(const e of DICT_ENTRIES){ const f=e.form; if(!f) continue;
+    if(!(f in fp)){ fp[f]={}; fs[f]={}; order.push(f); }
+    for(const pr of blockProps(e.block)){ const cur=fp[f][pr.name]||[];
+      for(const v of (pr.values||[])) if(!cur.includes(v)) cur.push(v); fp[f][pr.name]=cur;
+      if(pr.settable!==false) fs[f][pr.name]=true; } }             // form 内のどれかの class で設定可なら出す
+  FORM_PROPS=fp; FORM_SETTABLE=fs; FORM_LIST=order;
+}
+// 汎用ハンドラ: settable(block_class_all) + 例外 から、出すプロパティを [{name,values}] で返す（旧 SHOW allowlist 廃止）
 function isMultiHalf(form){ const p=FORM_PROPS[form]; return !!(p && (p.half||[]).includes('upper')); }  // half=upper/lower→複数ブロック
 const propsMapOf = (properties)=>{ const m={}; for(const pr of (properties||[])) m[pr.name]=pr.values||[]; return m; };
-function filterShown(form, p){   // p={name:[values]} → 表示するプロパティ [{name,values}]（allowlist＋順）
-  const order = ['facing','axis','half','type','hinge','hanging','face','open',
-                 'up','north','south','east','west','leaves','age','stage'];   // ボタン表示順（末尾＝vine面/bamboo状態）
+const PROP_ORDER = ['facing','axis','half','type','hinge','hanging','face','open',
+                    'up','north','south','east','west','leaves','age','stage'];   // ボタン表示順（残りは末尾に名前順）
+function filterShown(form, p, settableOf){   // p={name:[values]} → 表示するプロパティ [{name,values}]（settable＋順）
+  const names = [...PROP_ORDER.filter(n=>n in p), ...Object.keys(p).filter(n=>!PROP_ORDER.includes(n)).sort()];
   const out = [];
-  for(const name of order){
-    if(!(name in p) || !SHOW.has(name)) continue;
+  for(const name of names){
+    if(settableOf && settableOf(name)===false) continue;                       // 設定不可（周囲/BlockEntityで再計算）は出さない
+    if((p[name]||[]).length<2) continue;                                       // 値が1つ＝選択の余地なし
     if(name==='half' && (p.half||[]).includes('upper')) continue;              // 複数ブロック→自動(非ボタン)
     if(STATE_OPTIN[name] && form && !STATE_OPTIN[name].includes(form)) continue; // 状態 opt-in(open→trapdoorのみ)。raw(form='')は制限なし
     out.push({name, values:p[name]});
   }
   return out;
 }
-function shownProps(form){ return filterShown(form, FORM_PROPS[form] || {}); }
-function shownPropsRaw(rawId){ const ba=BLOCKS_ALL[rawId]; return filterShown('', propsMapOf(ba && ba.properties)); }   // raw＝ブロック自身の properties
+function shownProps(form){ const fs=FORM_SETTABLE[form]||{};
+  return filterShown(form, FORM_PROPS[form] || {}, n=>fs[n]===true); }
+function shownPropsRaw(rawId){ const list=blockProps(rawId); const st={};
+  for(const pr of list) st[pr.name]=(pr.settable!==false);
+  return filterShown('', propsMapOf(list), n=>st[n]); }   // raw＝ブロック自身の properties（settable でフィルタ）
 function curShownProps(){ return S.shape==='raw' ? shownPropsRaw(S.raw) : shownProps(formOf({s:S.shape, ot:S.other})); }
 
 /* dict.json（block/form/mat 対応）を起動時に ./dict.json から fetch して読む（下記 loadDict）。
@@ -498,9 +506,11 @@ let DICT_ENTRIES = [];   // loadDict() が ./dict.json から投入（form/mat �
 let DICT_VERSION = null;
 let NAMES_JA = {};              // block(short) -> 和名（blocks_all.json 由来）
 let BLOCKTEX_VERSION = null;    // blocktex.json の version（番号(yyyymmdd)）
-let BLOCKS_ALL = {};            // block(short) -> {block, blockClass, ja, properties}（全 vanilla・blocks_all.json 由来）
+let BLOCKS_ALL = {};            // block(short) -> {block, blockClass, suffix, lightMax, ja, updated}（全 vanilla・blocks_all.json 由来）
 let BLOCKS_ALL_ARR = [];        // 同上（配列・raw ピッカーの一覧用）
 let BLOCKS_ALL_VERSION = null;
+let BLOCK_CLASS = {};           // blockClass -> {properties:[{name,values,settable}]}（block_class_all.json 由来）
+let BLOCK_CLASS_VERSION = null;
 let DICT_BY_BLOCK = {};         // block(short) -> {form, mat}（dict 逆引き。form 登録有無の判定にも使う）
 let BLOCK_BY_FORMMAT = {};      // 'FORM|MAT' -> block_id（画像/和名は block id キー。form 毎に別ブロック）
 function buildBlockIndex(){ BLOCK_BY_FORMMAT={}; DICT_BY_BLOCK={};
@@ -513,11 +523,16 @@ async function loadDict(){
   DICT_ENTRIES = Array.isArray(j) ? j : (j.entries||[]);
   DICT_VERSION = (j && j.version!=null) ? j.version : null;
   buildBlockIndex();
-  // blocks_all.json（全 vanilla: block/blockClass/ja/properties）。form/mat は dict と join して算出。
+  // blocks_all.json（全 vanilla: block 固有列）。form/mat は dict と、properties/settable は block_class_all と join。
   try { const rB = await fetch('./blocks_all.json?v='+APP_VERSION, {cache:'no-cache'});
         if(rB.ok){ const jB = await rB.json(); BLOCKS_ALL_VERSION = (jB && jB.version!=null) ? jB.version : null;
           BLOCKS_ALL={}; NAMES_JA={}; BLOCKS_ALL_ARR = jB.blocks || [];
           for(const b of BLOCKS_ALL_ARR){ BLOCKS_ALL[b.block]=b; NAMES_JA[b.block]=b.ja||''; } } }
+  catch(_){}
+  // block_class_all.json（blockClass -> properties[name/values/settable]）
+  try { const rC = await fetch('./block_class_all.json?v='+APP_VERSION, {cache:'no-cache'});
+        if(rC.ok){ const jC = await rC.json(); BLOCK_CLASS_VERSION = (jC && jC.version!=null) ? jC.version : null;
+          BLOCK_CLASS={}; for(const c of (jC.classes||[])) BLOCK_CLASS[c.blockClass]=c; } }
   catch(_){}
   // blocktex.json（画像群の version のみ・任意）
   try { const r4 = await fetch('./blocktex.json?v='+APP_VERSION, {cache:'no-cache'});
@@ -1680,7 +1695,7 @@ function rotVineFaces(props, plane){   // つたの付く面（north/south/east/
     const nf=faceOfVec(rotVec90(FACE_DIR[f], plane)); if(nf) res[nf]='true'; }   // 縦回転で down になる面は消える（vine に down 無し）
   return res; }
 function rotVal(val, plane){ const n=norm(val), props={...n.props};   // facing/axis を回転（half/hinge 等はそのまま＝水平回転で不変）
-  const fp = n.s==='raw' ? propsMapOf((BLOCKS_ALL[n.raw]||{}).properties) : (FORM_PROPS[formOf(n)] || {});   // その form/ブロックが実際に持つ向きだけ回す
+  const fp = n.s==='raw' ? propsMapOf(blockProps(n.raw)) : (FORM_PROPS[formOf(n)] || {});   // その form/ブロックが実際に持つ向きだけ回す
   if(fp.facing) props.facing = FAC[ rotFacingIdx(FAC_I[props.facing]||0, plane) ];
   if(fp.axis)   props.axis   = rotAxisTok(props.axis, plane);
   if(fp.north){ const nf=rotVineFaces(props, plane); if(vineAny(nf)) Object.assign(props, nf); }   // つた面（0面になる回転は据え置き）
@@ -2188,6 +2203,7 @@ function fillVer(){ $('#vmodal-body').innerHTML =                     // ? バ�
   '<div class="vrow">app v'+APP_VERSION+'</div>'+
   '<div class="vrow">dict v'+(DICT_VERSION??'?')+'</div>'+
   '<div class="vrow">blocks_all v'+(BLOCKS_ALL_VERSION??'?')+'</div>'+
+    '<div class="vrow">block_class_all v'+(BLOCK_CLASS_VERSION??'?')+'</div>'+
   '<div class="vrow">blocktex v'+(BLOCKTEX_VERSION??'?')+'</div>'; }
 fillVer();
 $('#ver').onclick = ()=> $('#vmodal').classList.add('on');
