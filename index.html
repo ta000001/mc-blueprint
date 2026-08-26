@@ -225,8 +225,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .moretip{flex:none;color:var(--brass);font-weight:700;cursor:pointer;padding:0 4px;align-self:center;user-select:none;border-bottom:1px dotted var(--brass)}
 .fulltip{position:fixed;z-index:100;max-width:80vw;background:var(--panel2);color:var(--chalk);border:1px solid var(--brass);border-radius:5px;padding:6px 9px;font-family:ui-monospace,monospace;font-size:12px;word-break:break-all;box-shadow:0 3px 12px rgba(0,0,0,.5);display:none;cursor:pointer}
 #rawmodal-list{flex:1;overflow:auto;min-height:0}
-.rawhdr{background:var(--panel2);color:var(--brass);font-size:11px;font-weight:700;letter-spacing:.05em;padding:8px 6px 5px;border-bottom:1px solid var(--brass-dim)}
-.rawhdr:first-child{padding-top:2px}
+.rawhdr{position:sticky;top:-1px;z-index:2;background:var(--panel2);color:var(--brass);font-size:11px;font-weight:700;letter-spacing:.05em;padding:9px 6px 5px;border-bottom:1px solid var(--brass-dim);box-shadow:0 -2px 0 var(--panel2)}
+.rawhdr:first-child{padding-top:3px}
 </style>
 </head>
 <body>
@@ -432,7 +432,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.73';
+const APP_VERSION = '4.74';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
