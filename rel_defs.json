@@ -1,13 +1,16 @@
 {
-  "version": "1(20260826)",
-  "_comment": "rel 種別（block_class_all.properties.rel）の定義＝予約語と相対⇄絶対の対応表。各トークン: [scan(=build)方位が 北/東/南/西 のときの絶対値]（scanDirs の順）。face は値でなくキー名の対応（north 等の面キーを相対キー front/… で書く）。rot16 の値は 0-15。生成: ./gradlew runData (BlockMasterGenProvider・MOD の Rel* 実装から機械列挙＝実装と常に一致)。手編集禁止。",
-  "scanDirs": ["north","east","south","west"],
+  "version": "3(20260826)",
+  "_comment": "rel 種別（block_class_all.properties.rel）と構造 JSON の向き表現の定義（角度規約）。相対角度=FRONT基準・時計回り・mod 16。world=絶対語彙（MC rotation 準拠・south=0）。上下は 'up'/'down'（回転不変）。変換: 絶対角度=(相対角度+world[scan方位]) mod 16、絶対名は world の逆引き。face のみ values でなく keys（面キー名の語彙）。rot16 は現行実装（autobuild 内部の WEST 起点）の実際の対応をそのまま記載＝FRONT が値4（角度=(値-4) mod 16）。raw_west は防御網＝scan=west とみなした MC 絶対表記。pos は RelPos(d,h,w) の軸方向（基準方位に対する角度 or up）。d=8(基準方位の後方)・w=12(左) だが、scan/print コマンドは基準方位にプレイヤーの逆向きを渡すため、プレイヤーから見ると d=前・w=右・h=上。生成: ./gradlew runData (BlockMasterGenProvider・MOD の Rel*/RelTransform 実装から機械導出＝実装と常に一致)。手編集禁止。",
+  "angles": 16,
   "rels": [
-    {"rel":"facing","map":{"FRONT":["north","east","south","west"],"RIGHT":["east","south","west","north"],"BACK":["south","west","north","east"],"LEFT":["west","north","east","south"],"UP":["up","up","up","up"],"DOWN":["down","down","down","down"]}},
-    {"rel":"axis","map":{"DEPTH":["z","x","z","x"],"WIDTH":["x","z","x","z"],"VERTICAL":["y","y","y","y"]}},
-    {"rel":"rot16","map":{"0":["4","8","12","0"],"1":["5","9","13","1"],"2":["6","10","14","2"],"3":["7","11","15","3"],"4":["8","12","0","4"],"5":["9","13","1","5"],"6":["10","14","2","6"],"7":["11","15","3","7"],"8":["12","0","4","8"],"9":["13","1","5","9"],"10":["14","2","6","10"],"11":["15","3","7","11"],"12":["0","4","8","12"],"13":["1","5","9","13"],"14":["2","6","10","14"],"15":["3","7","11","15"]}},
-    {"rel":"rail","map":{"FRONT_BACK":["north_south","east_west","north_south","east_west"],"LEFT_RIGHT":["east_west","north_south","east_west","north_south"],"ASCEND_RIGHT":["ascending_east","ascending_south","ascending_west","ascending_north"],"ASCEND_LEFT":["ascending_west","ascending_north","ascending_east","ascending_south"],"ASCEND_FRONT":["ascending_north","ascending_east","ascending_south","ascending_west"],"ASCEND_BACK":["ascending_south","ascending_west","ascending_north","ascending_east"],"BACK_RIGHT":["south_east","south_west","north_west","north_east"],"BACK_LEFT":["south_west","north_west","north_east","south_east"],"FRONT_LEFT":["north_west","north_east","south_east","south_west"],"FRONT_RIGHT":["north_east","south_east","south_west","north_west"]}},
-    {"rel":"orientation","map":{"DOWN_RIGHT":["down_east","down_south","down_west","down_north"],"DOWN_FRONT":["down_north","down_east","down_south","down_west"],"DOWN_BACK":["down_south","down_west","down_north","down_east"],"DOWN_LEFT":["down_west","down_north","down_east","down_south"],"UP_RIGHT":["up_east","up_south","up_west","up_north"],"UP_FRONT":["up_north","up_east","up_south","up_west"],"UP_BACK":["up_south","up_west","up_north","up_east"],"UP_LEFT":["up_west","up_north","up_east","up_south"],"LEFT_UP":["west_up","north_up","east_up","south_up"],"RIGHT_UP":["east_up","south_up","west_up","north_up"],"FRONT_UP":["north_up","east_up","south_up","west_up"],"BACK_UP":["south_up","west_up","north_up","east_up"]}},
-    {"rel":"face","keyMap":{"front":["north","east","south","west"],"right":["east","south","west","north"],"back":["south","west","north","east"],"left":["west","north","east","south"],"up":["up","up","up","up"],"down":["down","down","down","down"]}}
+    {"rel":"world","values":{"south":0,"west":4,"north":8,"east":12,"up":"up","down":"down"}},
+    {"rel":"facing","values":{"FRONT":0,"RIGHT":4,"BACK":8,"LEFT":12,"UP":"up","DOWN":"down"}},
+    {"rel":"face","keys":{"front":0,"right":4,"back":8,"left":12,"up":"up","down":"down"}},
+    {"rel":"axis","values":{"DEPTH":[0,8],"WIDTH":[4,12],"VERTICAL":["up","down"]}},
+    {"rel":"rot16","values":{"0":12,"1":13,"2":14,"3":15,"4":0,"5":1,"6":2,"7":3,"8":4,"9":5,"10":6,"11":7,"12":8,"13":9,"14":10,"15":11}},
+    {"rel":"rail","values":{"FRONT_BACK":[0,8],"LEFT_RIGHT":[12,4],"ASCEND_RIGHT":{"ascend":4},"ASCEND_LEFT":{"ascend":12},"ASCEND_FRONT":{"ascend":0},"ASCEND_BACK":{"ascend":8},"BACK_RIGHT":[8,4],"BACK_LEFT":[8,12],"FRONT_LEFT":[0,12],"FRONT_RIGHT":[0,4]}},
+    {"rel":"orientation","values":{"DOWN_RIGHT":{"front":"down","top":4},"DOWN_FRONT":{"front":"down","top":0},"DOWN_BACK":{"front":"down","top":8},"DOWN_LEFT":{"front":"down","top":12},"UP_RIGHT":{"front":"up","top":4},"UP_FRONT":{"front":"up","top":0},"UP_BACK":{"front":"up","top":8},"UP_LEFT":{"front":"up","top":12},"LEFT_UP":{"front":12,"top":"up"},"RIGHT_UP":{"front":4,"top":"up"},"FRONT_UP":{"front":0,"top":"up"},"BACK_UP":{"front":8,"top":"up"}}},
+    {"rel":"raw_west","values":"mc-absolute","frame":{"scan":"west"}},
+    {"rel":"pos","type":"RelPos","axes":{"d":8,"h":"up","w":12}}
   ]
 }
