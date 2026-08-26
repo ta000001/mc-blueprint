@@ -432,7 +432,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.71';
+const APP_VERSION = '4.72';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -514,7 +514,7 @@ let BLOCKS_ALL_ARR = [];        // 同上（配列・raw ピッカーの一覧�
 let BLOCKS_ALL_VERSION = null;
 let BLOCK_CLASS = {};           // blockClass -> {properties:[{name,values,settable}]}（block_class_all.json 由来）
 let BLOCK_CLASS_VERSION = null;
-let REL_DEFS_VERSION = null;    // rel_defs.json の version（角度規約の定義。回転/ミラーは rel タグ＋内蔵ベクトルで実装・現状は版表示のみ）
+let REL_DEFS_VERSION = null;    // rel_defs.json の version（角度規約の定義。回転/ミラーの語彙・角度・妥当性は RD としてここから構築）
 let DICT_BY_BLOCK = {};         // block(short) -> {form, mat}（dict 逆引き。form 登録有無の判定にも使う）
 let BLOCK_BY_FORMMAT = {};      // 'FORM|MAT' -> block_id（画像/和名は block id キー。form 毎に別ブロック）
 function buildBlockIndex(){ BLOCK_BY_FORMMAT={}; DICT_BY_BLOCK={};
@@ -538,9 +538,10 @@ async function loadDict(){
         if(rC.ok){ const jC = await rC.json(); BLOCK_CLASS_VERSION = (jC && jC.version!=null) ? jC.version : null;
           BLOCK_CLASS={}; for(const c of (jC.classes||[])) BLOCK_CLASS[c.blockClass]=c; } }
   catch(_){}
-  // rel_defs.json（角度規約の定義・version 表示用）
+  // rel_defs.json（角度規約の定義）。回転/ミラーの語彙・角度・トークン逆引き（RD）をここから構築。
   try { const rR = await fetch('./rel_defs.json?v='+APP_VERSION, {cache:'no-cache'});
-        if(rR.ok){ const jR = await rR.json(); REL_DEFS_VERSION = (jR && jR.version!=null) ? jR.version : null; } }
+        if(rR.ok){ const jR = await rR.json(); REL_DEFS_VERSION = (jR && jR.version!=null) ? jR.version : null;
+          buildRelDefs(jR); } }
   catch(_){}
   // blocktex.json（画像群の version のみ・任意）
   try { const r4 = await fetch('./blocktex.json?v='+APP_VERSION, {cache:'no-cache'});
@@ -1706,37 +1707,55 @@ function rotVineFaces(props, plane){   // つたの付く面（north/south/east/
   for(const f in FACE_DIR){ if(props[f]!=='true') continue;
     const nf=faceOfVec(rotVec90(FACE_DIR[f], plane)); if(nf) res[nf]='true'; }   // 縦回転で down になる面は消える（vine に down 無し）
   return res; }
-/* ---- rel 種別（rot16/rail/orientation）の回転・ミラー（block_class_all の rel タグ＋rel_defs の角度規約に整合） ---- */
-const REL_ANGLE={FRONT:0,RIGHT:4,BACK:8,LEFT:12};                      // 水平トークン→相対角度（rel_defs と同一）
-const ANGLE_REL={0:'FRONT',4:'RIGHT',8:'BACK',12:'LEFT'};
-const RAIL_ORD={FRONT:0,BACK:1,LEFT:2,RIGHT:3};                        // rail 平面トークンの表記順（RelRailShape と同一）
-function rotWordTok(tok, plane){ if(tok==='UP'||tok==='DOWN'){ const i=rotFacingIdx(FAC_I[tok],plane); return FAC[i]; }
-  return FAC[ rotFacingIdx(FAC_I[tok]||0, plane) ]; }                  // FDIR 語をベクトル回転（全平面対応）
-function rotDelta(plane){ const t=rotWordTok('FRONT',plane); return (t in REL_ANGLE) ? REL_ANGLE[t] : null; }   // 水平回転の角度差（縦回転は null）
+/* ---- rel 種別（rot16/rail/orientation）の回転・ミラー。語彙・角度・妥当性は rel_defs.json（RD）から構築 ----
+   RD 未ロード時は変換をスキップ（値据え置き）。幾何（どの向きに回るか）はアプリのベクトル(FDIR)、語彙は rel_defs が単一ソース。 */
+let RD = null;   // {fac:{FRONT:0..}, facInv:{0:'FRONT'..}, rot16:{'0':0..}, rot16Inv:{0:'0'..}, rail:{tok:{set|ascend}}, ori:{tok:{front,top}}}
+function buildRelDefs(j){
+  try{
+    const rows={}; for(const r of (j.rels||[])) rows[r.rel]=r;
+    const fac={}, facInv={};
+    for(const [t,a] of Object.entries((rows.facing||{}).values||{})){ if(typeof a==='number'){ fac[t]=a; facInv[a]=t; } }
+    const rot16={}, rot16Inv={};
+    for(const [t,a] of Object.entries((rows.rot16||{}).values||{})){ rot16[t]=a; rot16Inv[a]=t; }
+    const rail={};
+    for(const [t,d] of Object.entries((rows.rail||{}).values||{})){
+      rail[t] = Array.isArray(d) ? {set:[...d].sort((x,y)=>x-y)} : {ascend:d.ascend}; }
+    const ori={};
+    for(const [t,d] of Object.entries((rows.orientation||{}).values||{})) ori[t]={front:d.front, top:d.top};
+    RD={fac, facInv, rot16, rot16Inv, rail, ori};
+  }catch(_){ RD=null; }
+}
+function rotWordTok(tok, plane){ return FAC[ rotFacingIdx(FAC_I[tok]||0, plane) ]; }   // FDIR 語をベクトル回転（全平面対応）
+function rotDelta(plane){ if(!RD) return null; const t=rotWordTok('FRONT',plane); return (t in RD.fac) ? RD.fac[t] : null; }   // 水平回転の角度差（縦回転は null）
+const railKey=(s)=>[...s].sort((x,y)=>x-y).join(',');
+function railTok(def){ if(!RD) return null;   // {set}|{ascend} → トークン（rel_defs から逆引き）
+  for(const t in RD.rail){ const d=RD.rail[t];
+    if(def.ascend!=null){ if(d.ascend===def.ascend) return t; }
+    else if(d.set && railKey(d.set)===railKey(def.set)) return t; }
+  return null; }
+function oriTok(front, top){ if(!RD) return null;
+  for(const t in RD.ori){ const d=RD.ori[t]; if(d.front===front && d.top===top) return t; } return null; }
+function wordAngle(w){ return (RD && typeof RD.fac[w]==='number') ? RD.fac[w] : (w==='UP'?'up':w==='DOWN'?'down':null); }   // FDIR語→角度 or 'up'/'down'
 function rotRel(kind, val, plane){
-  if(kind==='rot16'){ const d=rotDelta(plane); return d==null ? val : String((parseInt(val,10)+d)%16); }        // 看板16方位（縦回転は据え置き）
-  if(kind==='rail'){
-    if(val.startsWith('ASCEND_')){ const t=rotWordTok(val.slice(7),plane); return (t in REL_ANGLE) ? 'ASCEND_'+t : val; }
-    const p=val.split('_'); if(p.length!==2) return val;
-    const a=rotWordTok(p[0],plane), b=rotWordTok(p[1],plane);
-    if(!(a in RAIL_ORD)||!(b in RAIL_ORD)) return val;                 // 縦回転で水平でなくなる場合は据え置き
-    return RAIL_ORD[a]<=RAIL_ORD[b] ? a+'_'+b : b+'_'+a; }
-  if(kind==='orientation'){
-    const p=val.split('_'); if(p.length!==2) return val;
-    const f=rotWordTok(p[0],plane), t=rotWordTok(p[1],plane);
-    const ok=((f==='UP'||f==='DOWN') && (t in REL_ANGLE)) || ((f in REL_ANGLE) && t==='UP');   // FrontAndTop に実在する組のみ
-    return ok ? f+'_'+t : val; }
-  return val; }
-const MIR_WORD={RIGHT:'LEFT',LEFT:'RIGHT'};                            // W ミラー＝左右反転（FRONT/BACK/UP/DOWN 不変）
-function mirRel(kind, val){
-  if(kind==='rot16'){ const v=parseInt(val,10); return String((16-v)%16); }                    // 角度 a→(16−a)
-  if(kind==='rail'){
-    if(val.startsWith('ASCEND_')){ const t=val.slice(7); return 'ASCEND_'+(MIR_WORD[t]||t); }
-    const p=val.split('_'); if(p.length!==2) return val;
-    const a=MIR_WORD[p[0]]||p[0], b=MIR_WORD[p[1]]||p[1];
-    return RAIL_ORD[a]<=RAIL_ORD[b] ? a+'_'+b : b+'_'+a; }
+  if(!RD) return val;
+  if(kind==='rot16'){ const d=rotDelta(plane); if(d==null) return val;                          // 縦回転は据え置き
+    const a=RD.rot16[String(val)]; return a==null ? val : (RD.rot16Inv[(a+d)%16] ?? val); }
+  if(kind==='rail'){ const def=RD.rail[val]; if(!def) return val; const d=rotDelta(plane); if(d==null) return val;
+    const nd = def.ascend!=null ? {ascend:(def.ascend+d)%16} : {set:def.set.map(a=>(a+d)%16)};
+    return railTok(nd) ?? val; }
   if(kind==='orientation'){ const p=val.split('_'); if(p.length!==2) return val;
-    return (MIR_WORD[p[0]]||p[0])+'_'+(MIR_WORD[p[1]]||p[1]); }
+    const f=wordAngle(rotWordTok(p[0],plane)), t=wordAngle(rotWordTok(p[1],plane));            // ベクトル回転→角度/up/down
+    return (f==null||t==null) ? val : (oriTok(f,t) ?? val); }                                  // 実在トークンのみ（妥当性も rel_defs）
+  return val; }
+const mirA=(a)=> (typeof a==='number') ? (16-a)%16 : a;                                        // 角度ミラー（up/down 不変）
+function mirRel(kind, val){
+  if(!RD) return val;
+  if(kind==='rot16'){ const a=RD.rot16[String(val)]; return a==null ? val : (RD.rot16Inv[mirA(a)] ?? val); }
+  if(kind==='rail'){ const def=RD.rail[val]; if(!def) return val;
+    const nd = def.ascend!=null ? {ascend:mirA(def.ascend)} : {set:def.set.map(mirA)};
+    return railTok(nd) ?? val; }
+  if(kind==='orientation'){ const d=RD.ori[val]; if(!d) return val;
+    return oriTok(mirA(d.front), mirA(d.top)) ?? val; }
   return val; }
 function relKinds(n){ return n.s==='raw' ? relMapOf(blockProps(n.raw)) : (FORM_PROP_REL[formOf(n)] || {}); }   // name→rel（raw/form 共通）
 function rotVal(val, plane){ const n=norm(val), props={...n.props};   // 向き系プロパティを回転（half/hinge 等はそのまま＝水平回転で不変）
