@@ -1,5 +1,5 @@
 {
-  "version": "10(20260826)",
+  "version": "11(20260826)",
   "_comment": "blockClass -> {properties:[{name, values, settable}], updated}. 運用①: ./gradlew runData (BlockMasterGenProvider) が生成。settable は SettableAnalyzer（MCソース静的解析）で機械判定＝『周囲のブロック、または自身の BlockEntity により常時再計算・派生されるプロパティ ⇒ 設定不可』(ADR 2026-08-26 案B)。properties は blockClass に完全従属（blocks_all と blockClass で join）。facing/axis の values は相対トークン。updated=行の更新日(変更行のみ当日)。version のカッコ内=updated の最大値。手編集禁止。",
   "classes": [
     {"blockClass":"AirBlock","properties":[],"updated":"20260826"},
