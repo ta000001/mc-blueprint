@@ -432,7 +432,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.72';
+const APP_VERSION = '4.73';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -559,8 +559,9 @@ const mirHinge = (h)=> h==='left'?'right':(h==='right'?'left':h);   // W ミラ�
    MOD が読む blocks/layers の入出力時にだけ W を反転し、facing の RIGHT↔LEFT を入れ替える。
    アプリ内部（three.js 座標・localStorage）は無変換のまま。 */
 const mirW  = (w, width)=> (width-1) - w;                       // W 反転（0..width-1 内）
-const MIR_FAC = {FRONT:'FRONT', RIGHT:'LEFT', BACK:'BACK', LEFT:'RIGHT'};
-const mirFac = (tok)=> MIR_FAC[tok] || tok;
+const MIR_FAC = {FRONT:'FRONT', RIGHT:'LEFT', BACK:'BACK', LEFT:'RIGHT'};   // RD 未ロード時のフォールバックのみ（正は rel_defs）
+const mirFac = (tok)=>{ if(RD && typeof RD.fac[tok]==='number') return RD.facInv[(16-RD.fac[tok])%16] ?? tok;   // 角度ミラー a→(16−a)
+  return MIR_FAC[tok] || tok; };
 
 const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'info', tool:'draw', role:'FULLBLOCK_1',
@@ -1340,7 +1341,7 @@ function blockRecs(fieldFn){   // S.vox を structure レコード(1行文字列
         if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val);
         else if(name==='east') val=v.props['west']; else if(name==='west') val=v.props['east'];
         else if(val!=null && (relmR[name]==='rot16'||relmR[name]==='rail'||relmR[name]==='orientation')) val=mirRel(relmR[name], String(val));
-        rec[name]=val; }
+        rec[(RD&&RD.faceApp[name])||name]=val; }   // 面は相対キー(front/…)で書く＝MOD が build 方位で回せる
       return '  '+JSON.stringify(rec);
     }
     const form=formOf({s:v.s,ot:v.ot}); rec.form=form;                 // form 先（dict と統一・2026-08-15）
@@ -1350,7 +1351,7 @@ function blockRecs(fieldFn){   // S.vox を structure レコード(1行文字列
       if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val);
       else if(name==='east') val=v.props['west']; else if(name==='west') val=v.props['east'];   // W反転で東西入替
       else if(val!=null && (relmF[name]==='rot16'||relmF[name]==='rail'||relmF[name]==='orientation')) val=mirRel(relmF[name], String(val));
-      rec[name]=val; }
+      rec[(RD&&RD.faceApp[name])||name]=val; }   // 面は相対キー(front/…)で書く
     if(isMultiHalf(form)){ rec.half='lower';                           // upper/lower の form（ドア等）は2レコードに展開
       const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},form:form}; Object.assign(up, fieldFn(v.r)); up.half='upper';
       if(rec.facing) up.facing=rec.facing; if(rec.hinge) up.hinge=rec.hinge;
@@ -1722,7 +1723,14 @@ function buildRelDefs(j){
       rail[t] = Array.isArray(d) ? {set:[...d].sort((x,y)=>x-y)} : {ascend:d.ascend}; }
     const ori={};
     for(const [t,d] of Object.entries((rows.orientation||{}).values||{})) ori[t]={front:d.front, top:d.top};
-    RD={fac, facInv, rot16, rot16Inv, rail, ori};
+    RD={fac, facInv, rot16, rot16Inv, rail, ori, faceApp:{}, faceRel:{}};
+    // アプリ内部の面名（north 等）⇔ 相対面キー（front 等）の対応を機械導出（FACE_DIR/FDIR のベクトル一致 → FAC トークン小文字 → rel_defs face で実在確認）
+    const FV = Object.assign({down:[0,-1,0]}, FACE_DIR);
+    const faceKeys = (rows.face||{}).keys || {};
+    for(const name in FV){ const v=FV[name];
+      for(let i=0;i<FDIR.length;i++){ const e=FDIR[i];
+        if(e[0]===v[0]&&e[1]===v[1]&&e[2]===v[2]){ const rk=FAC[i].toLowerCase();
+          if(rk in faceKeys){ RD.faceApp[name]=rk; RD.faceRel[rk]=name; } break; } } }
   }catch(_){ RD=null; }
 }
 function rotWordTok(tok, plane){ return FAC[ rotFacingIdx(FAC_I[tok]||0, plane) ]; }   // FDIR 語をベクトル回転（全平面対応）
@@ -1870,7 +1878,8 @@ function importJson(text){
           const props={facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall'};
           const relmR=relMapOf(blockProps(raw));
           for(const {name} of shownPropsRaw(raw)){
-            let val=(name==='east')?b['west']:(name==='west')?b['east']:b[name];
+            const src=(name==='east')?'west':(name==='west')?'east':name;
+            let val=b[src]; if(val==null && RD && RD.faceApp[src]!=null) val=b[RD.faceApp[src]];   // 相対面キー(front/…)も受理
             if(val==null) continue;
             if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val);
             else if(relmR[name]==='rot16'||relmR[name]==='rail'||relmR[name]==='orientation') val=mirRel(relmR[name], String(val));
@@ -1883,7 +1892,8 @@ function importJson(text){
         const props = {facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall'};
         const relmF=FORM_PROP_REL[fm]||{};
         for(const {name} of shownProps(fm)){   // 汎用: 出すプロパティを素直に読む（east/west は W反転で入替）
-          let val = (name==='east') ? b['west'] : (name==='west') ? b['east'] : b[name];
+          const src=(name==='east')?'west':(name==='west')?'east':name;
+          let val=b[src]; if(val==null && RD && RD.faceApp[src]!=null) val=b[RD.faceApp[src]];   // 相対面キー(front/…)も受理
           if(val==null) continue;
           if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val);
           else if(relmF[name]==='rot16'||relmF[name]==='rail'||relmF[name]==='orientation') val=mirRel(relmF[name], String(val));
