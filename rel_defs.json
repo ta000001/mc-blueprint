@@ -1,5 +1,5 @@
 {
-  "version": "10(20260826)",
+  "version": "12(20260826)",
   "_comment": "rel 種別（block_class_all.properties.rel）の定義（角度規約）。FRONT＝構造物の正面（scan/build ではプレイヤーと向き合う向き＝基準方位。コマンドは基準方位にプレイヤーの逆向きを渡す）。相対の円盤: FRONT=0・時計回り・mod 16（rels 各行=相対語彙の円盤上の位置）。abs=絶対語彙の円盤（MC rotation 準拠の固定事実・south=0）。上下は 'up'/'down'（回転不変）。絶対位置はこのファイルからは引けない＝scan/build 時の基準方位（実行時入力）を用いて『絶対角度=(相対角度+abs[基準方位]) mod 16・絶対名は abs の逆引き』で都度合成する。face のみ values でなく keys（面キー名の語彙）。rot16 は FRONT=0（値=相対角度の恒等）。生成: ./gradlew runData (BlockMasterGenProvider・MOD の Rel* 実装から機械導出＝実装と常に一致)。手編集禁止。",
   "angles": 16,
   "abs": {"south":0,"west":4,"north":8,"east":12,"up":"up","down":"down"},
@@ -8,7 +8,7 @@
     {"rel":"face","keys":{"front":0,"right":4,"back":8,"left":12,"up":"up","down":"down"},"updated":"20260826"},
     {"rel":"axis","values":{"DEPTH":[0,8],"WIDTH":[4,12],"VERTICAL":["up","down"]},"updated":"20260826"},
     {"rel":"rot16","values":{"0":0,"1":1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10,"11":11,"12":12,"13":13,"14":14,"15":15},"updated":"20260826"},
-    {"rel":"rail","values":{"FRONT_BACK":[0,8],"LEFT_RIGHT":[12,4],"ASCEND_RIGHT":{"ascend":4},"ASCEND_LEFT":{"ascend":12},"ASCEND_FRONT":{"ascend":0},"ASCEND_BACK":{"ascend":8},"BACK_RIGHT":[8,4],"BACK_LEFT":[8,12],"FRONT_LEFT":[0,12],"FRONT_RIGHT":[0,4]},"updated":"20260826"},
+    {"rel":"rail","values":{"FRONT_BACK":[0,8],"LEFT_RIGHT":[4,12],"ASCEND_RIGHT":{"ascend":4},"ASCEND_LEFT":{"ascend":12},"ASCEND_FRONT":{"ascend":0},"ASCEND_BACK":{"ascend":8},"BACK_RIGHT":[4,8],"BACK_LEFT":[8,12],"FRONT_LEFT":[0,12],"FRONT_RIGHT":[0,4]},"updated":"20260826"},
     {"rel":"orientation","values":{"DOWN_RIGHT":{"front":"down","top":4},"DOWN_FRONT":{"front":"down","top":0},"DOWN_BACK":{"front":"down","top":8},"DOWN_LEFT":{"front":"down","top":12},"UP_RIGHT":{"front":"up","top":4},"UP_FRONT":{"front":"up","top":0},"UP_BACK":{"front":"up","top":8},"UP_LEFT":{"front":"up","top":12},"LEFT_UP":{"front":12,"top":"up"},"RIGHT_UP":{"front":4,"top":"up"},"FRONT_UP":{"front":0,"top":"up"},"BACK_UP":{"front":8,"top":"up"}},"updated":"20260826"}
   ]
 }
