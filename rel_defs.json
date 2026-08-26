@@ -1,13 +1,13 @@
 {
-  "version": "5(20260826)",
-  "_comment": "rel 種別（block_class_all.properties.rel）と構造 JSON の向き表現の定義（角度規約）。相対角度=FRONT基準・時計回り・mod 16。world=絶対語彙（MC rotation 準拠・south=0）。上下は 'up'/'down'（回転不変）。変換: 絶対角度=(相対角度+world[scan方位]) mod 16、絶対名は world の逆引き。face のみ values でなく keys（面キー名の語彙）。rot16 は現行実装（autobuild 内部の WEST 起点）の実際の対応をそのまま記載＝FRONT が値4（角度=(値-4) mod 16）。raw_west は防御網＝scan=west とみなした MC 絶対表記。pos は RelPos(d,h,w) の軸方向（基準方位に対する角度 or up）。d=8(基準方位の後方)・w=12(左) だが、scan/print コマンドは基準方位にプレイヤーの逆向きを渡すため、プレイヤーから見ると d=前・w=右・h=上。生成: ./gradlew runData (BlockMasterGenProvider・MOD の Rel*/RelTransform 実装から機械導出＝実装と常に一致)。手編集禁止。",
+  "version": "6(20260826)",
+  "_comment": "rel 種別（block_class_all.properties.rel）と構造 JSON の向き表現の定義（角度規約）。相対角度=FRONT基準・時計回り・mod 16。world=絶対語彙（MC rotation 準拠・south=0）。上下は 'up'/'down'（回転不変）。変換: 絶対角度=(相対角度+world[scan方位]) mod 16、絶対名は world の逆引き。face のみ values でなく keys（面キー名の語彙）。rot16 は FRONT=0（値=角度の恒等・2026-08-26 再アンカー）。raw_west は防御網＝scan=west とみなした MC 絶対表記。pos は RelPos(d,h,w) の軸方向（基準方位に対する角度 or up）。d=8(基準方位の後方)・w=12(左) だが、scan/print コマンドは基準方位にプレイヤーの逆向きを渡すため、プレイヤーから見ると d=前・w=右・h=上。生成: ./gradlew runData (BlockMasterGenProvider・MOD の Rel*/RelTransform 実装から機械導出＝実装と常に一致)。手編集禁止。",
   "angles": 16,
   "rels": [
     {"rel":"world","values":{"south":0,"west":4,"north":8,"east":12,"up":"up","down":"down"},"updated":"20260826"},
     {"rel":"facing","values":{"FRONT":0,"RIGHT":4,"BACK":8,"LEFT":12,"UP":"up","DOWN":"down"},"updated":"20260826"},
     {"rel":"face","keys":{"front":0,"right":4,"back":8,"left":12,"up":"up","down":"down"},"updated":"20260826"},
     {"rel":"axis","values":{"DEPTH":[0,8],"WIDTH":[4,12],"VERTICAL":["up","down"]},"updated":"20260826"},
-    {"rel":"rot16","values":{"0":12,"1":13,"2":14,"3":15,"4":0,"5":1,"6":2,"7":3,"8":4,"9":5,"10":6,"11":7,"12":8,"13":9,"14":10,"15":11},"updated":"20260826"},
+    {"rel":"rot16","values":{"0":0,"1":1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10,"11":11,"12":12,"13":13,"14":14,"15":15},"updated":"20260826"},
     {"rel":"rail","values":{"FRONT_BACK":[0,8],"LEFT_RIGHT":[12,4],"ASCEND_RIGHT":{"ascend":4},"ASCEND_LEFT":{"ascend":12},"ASCEND_FRONT":{"ascend":0},"ASCEND_BACK":{"ascend":8},"BACK_RIGHT":[8,4],"BACK_LEFT":[8,12],"FRONT_LEFT":[0,12],"FRONT_RIGHT":[0,4]},"updated":"20260826"},
     {"rel":"orientation","values":{"DOWN_RIGHT":{"front":"down","top":4},"DOWN_FRONT":{"front":"down","top":0},"DOWN_BACK":{"front":"down","top":8},"DOWN_LEFT":{"front":"down","top":12},"UP_RIGHT":{"front":"up","top":4},"UP_FRONT":{"front":"up","top":0},"UP_BACK":{"front":"up","top":8},"UP_LEFT":{"front":"up","top":12},"LEFT_UP":{"front":12,"top":"up"},"RIGHT_UP":{"front":4,"top":"up"},"FRONT_UP":{"front":0,"top":"up"},"BACK_UP":{"front":8,"top":"up"}},"updated":"20260826"},
     {"rel":"raw_west","values":"mc-absolute","frame":{"scan":"west"},"updated":"20260826"},
