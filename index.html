@@ -435,7 +435,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.80';
+const APP_VERSION = '4.81';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -555,16 +555,11 @@ async function loadDict(){
 const SHAPE_FORM = {fullblock:'FULLBLOCK', slab:'SLAB', stairs:'STAIRS', trapdoor:'TRAPDOOR'};
 const formOf  = (v)=> v.s==='others' ? (v.ot||'') : (SHAPE_FORM[v.s]||'');   // v.ot は form 文字列
 // mat auto/select は撤去。全 form が form 別役割（FORM_n）方式（A案・2026-08-14）
-const mirHinge = (h)=> h==='left'?'right':(h==='right'?'left':h);   // W ミラーで hinge も左右反転
-
-/* three.js(右手系) ⇄ Minecraft/autobuilder(左手系) の橋渡し（v3.4）。
-   これをしないと、建築結果がアプリ表示の「左右鏡像」になる（W=左右軸の利き手が逆）。
-   MOD が読む blocks/layers の入出力時にだけ W を反転し、facing の RIGHT↔LEFT を入れ替える。
-   アプリ内部（three.js 座標・localStorage）は無変換のまま。 */
+/* three.js(右手系) ⇄ Minecraft/autobuilder(左手系) の橋渡し。
+   内部 x はファイル w の反転（mirW・I/O 時のみ）。これは描画の利き手（カイラリティ）吸収だけが目的で、
+   意味は外に出ない。プレイヤーフレーム統一(v4.81)により facing/hinge/rot16 等の値は無変換
+   （FRONT/RIGHT 等はアプリ表示・ファイル・in-game すべて「プレイヤーから見た向き」で一致）。 */
 const mirW  = (w, width)=> (width-1) - w;                       // W 反転（0..width-1 内）
-const MIR_FAC = {FRONT:'FRONT', RIGHT:'LEFT', BACK:'BACK', LEFT:'RIGHT'};   // RD 未ロード時のフォールバックのみ（正は rel_defs）
-const mirFac = (tok)=>{ if(RD && typeof RD.fac[tok]==='number') return RD.facInv[(16-RD.fac[tok])%16] ?? tok;   // 角度ミラー a→(16−a)
-  return MIR_FAC[tok] || tok; };
 
 const S = {
   dims:{x:16,y:16,z:16}, vox:new Map(), layer:0, mode:'info', tool:'draw', role:'FULLBLOCK_1',
@@ -598,9 +593,33 @@ const RAW_COL = 0x9a8f7a;                                    // raw ブロック
 const voxColor = (v)=> v.s==='raw' ? RAW_COL : roleColor(v.r);   // 描画色（raw は固定色）
 
 /* ---------- persistence ---------- */
+// 旧フレーム(〜v4.80)保存値 → プレイヤーフレーム(v4.81〜)。見た目が変わらない変換:
+// FRONT↔BACK（RIGHT/LEFT は旧アプリでも見た目基準だったので不変）・hinge 反転（mirHinge 撤去の補償）・
+// rot16 r→(8−r)mod16・orientation/rail は FRONT↔BACK 成分のみ入替（rail は鋳造順 FRONT<BACK<LEFT<RIGHT に正規化）
+const FB_MIG={FRONT:'BACK',BACK:'FRONT'};
+const RAIL_ORD={FRONT:0,BACK:1,LEFT:2,RIGHT:3};
+function migRail(t){ if(t.startsWith('ASCEND_')) return 'ASCEND_'+(FB_MIG[t.slice(7)]||t.slice(7));
+  const p=t.split('_'); if(p.length!==2||!(p[0] in RAIL_ORD)||!(p[1] in RAIL_ORD)) return t;
+  const a=FB_MIG[p[0]]||p[0], b=FB_MIG[p[1]]||p[1];
+  return RAIL_ORD[a]<=RAIL_ORD[b] ? a+'_'+b : b+'_'+a; }
+function migrateFrameVox(v){
+  if(!v || typeof v==='string') return v;
+  const o={...v};
+  if(o.props){ const p=o.props={...o.props};
+    if(FB_MIG[p.facing]) p.facing=FB_MIG[p.facing];
+    if(p.hinge==='left') p.hinge='right'; else if(p.hinge==='right') p.hinge='left';
+    if(p.rotation!=null && p.rotation!=='') p.rotation=String((((8-(+p.rotation))%16)+16)%16);
+    if(p.orientation && p.orientation.indexOf('_')>0) p.orientation=p.orientation.split('_').map(t=>FB_MIG[t]||t).join('_');
+    if(p.shape) p.shape=migRail(p.shape);
+  } else {
+    if(o.f===0) o.f=2; else if(o.f===2) o.f=0;
+    if(o.hg==='left') o.hg='right'; else if(o.hg==='right') o.hg='left';
+  }
+  return o;
+}
 function save(){
   try{ localStorage.setItem('blueprint:current', JSON.stringify({
-    dims:S.dims, name:$('#name').value, voxels:[...S.vox.entries()], role:S.role, roleCount:S.roleCount, aliases:S.aliases
+    frame:2, dims:S.dims, name:$('#name').value, voxels:[...S.vox.entries()], role:S.role, roleCount:S.roleCount, aliases:S.aliases
   })); }catch(e){}
 }
 function load(){
@@ -608,9 +627,10 @@ function load(){
     const raw = localStorage.getItem('blueprint:current');
     if(!raw) return;
     const d = JSON.parse(raw);
+    const oldFrame = d.frame!==2;   // frame 無し＝v4.80 以前の保存
     if(d.dims) S.dims = d.dims;
     if(d.name) $('#name').value = d.name;
-    if(Array.isArray(d.voxels)) S.vox = new Map(d.voxels.map(([k,v])=>[k, norm(v)]));
+    if(Array.isArray(d.voxels)) S.vox = new Map(d.voxels.map(([k,v])=>[k, norm(oldFrame?migrateFrameVox(v):v)]));
     if(d.role) S.role = d.role;
     if(d.roleCount) S.roleCount = d.roleCount;
     if(d.aliases && typeof d.aliases==='object') S.aliases = d.aliases;
@@ -675,7 +695,7 @@ function mergeGeo(a,b){   // 2つの indexed BoxGeometry を結合（階段用�
 function doorGeo(left){   // ドア＝2ブロック高の薄板＋蝶番側の縦バー（cell下端→上へ2マス）
   const T=0.1875, oy=0.5;
   const panel=new THREE.BoxGeometry(0.94,2,T); panel.translate(0,oy,-0.5+T/2);
-  const bar=new THREE.BoxGeometry(0.12,2,T+0.14); bar.translate(left?-0.42:0.42, oy, -0.5+(T+0.14)/2);
+  const bar=new THREE.BoxGeometry(0.12,2,T+0.14); bar.translate(left?0.42:-0.42, oy, -0.5+(T+0.14)/2);   // hinge=left は見た目の左（+x=画面左）
   return mergeGeo(panel,bar);
 }
 function buildGeos(){
@@ -684,8 +704,8 @@ function buildGeos(){
     full: new THREE.BoxGeometry(1,1,1),
     slab_bottom: boxAt(1,0.5,1,-0.25,0), slab_top: boxAt(1,0.5,1,0.25,0),
     trapdoor_bottom: boxAt(1,T,1,-0.5+T/2,0), trapdoor_top: boxAt(1,T,1,0.5-T/2,0),
-    trapdoor_open:   boxAt(1,1,T,0,0.5-T/2),   // 開＝facing 側(+z)に立つ縦板（MC準拠・door とは逆／half 非依存）
-    stairs_bottom: mergeGeo(boxAt(1,0.5,1,-0.25,0), boxAt(1,0.5,0.5,0.25,-0.25)), // 高段=facingの反対(-z=BACK側)
+    trapdoor_open:   boxAt(1,1,T,0,0.5-T/2),   // 開＝facing の反対側(ジオメトリ+z=蝶番側)に立つ縦板（MC準拠・door とは逆／half 非依存）
+    stairs_bottom: mergeGeo(boxAt(1,0.5,1,-0.25,0), boxAt(1,0.5,0.5,0.25,-0.25)), // 高段=facing側(ジオメトリ-z。meshAngle で FDIR[f] へ回す)
     stairs_top:    mergeGeo(boxAt(1,0.5,1,0.25,0),  boxAt(1,0.5,0.5,-0.25,-0.25)),
     other:    boxAt(1,1,1,0,0),                              // 形状未登録 form の保険＝フルブロック形（form 名ラベルで区別。設計するまでの一時姿）
     door_left:  doorGeo(true),                               // ドア（蝶番=左）2ブロック高・hinge 別の特例
@@ -861,7 +881,7 @@ function makeInstShape(items, geometry, material){
   im.count=items.length;
   const m=new THREE.Matrix4(), q=new THREE.Quaternion(), pos=new THREE.Vector3(),
         scl=new THREE.Vector3(1,1,1), up=new THREE.Vector3(0,1,0), col=new THREE.Color();
-  items.forEach((o,i)=>{ pos.set(o.p[0]+.5,o.p[1]+.5,o.p[2]+.5); q.setFromAxisAngle(up,o.v.f*Math.PI/2);
+  items.forEach((o,i)=>{ pos.set(o.p[0]+.5,o.p[1]+.5,o.p[2]+.5); q.setFromAxisAngle(up,meshAngle(o.v.f));
     m.compose(pos,q,scl); im.setMatrixAt(i,m);
     col.setHex(voxColor(o.v)); im.setColorAt(i,col); });
   im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true;
@@ -874,22 +894,26 @@ function makeOutline(cells, material){   // 各セルの単位立方体エッジ
   const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(arr,3));
   return new THREE.LineSegments(g, material);
 }
-const rotY=(px,py,pz,f)=>{ const c=[1,0,-1,0][f&3], s=[0,1,0,-1][f&3];   // +Y 周り f*90°（メッシュと同じ）
+// メッシュ回転角: f<4 は π−f*90°（ジオメトリ基準向きをプレイヤーフレームの FDIR[f] へ）。UP/DOWN は回転なし
+const meshAngle=(f)=>{ const ff=(f||0)%6; return ff<4 ? Math.PI - ff*Math.PI/2 : 0; };
+const rotY=(px,py,pz,f)=>{ const c=[-1,0,1,0][f&3], s=[0,1,0,-1][f&3];   // +Y 周り π−f*90°（メッシュと同じ）
   return [px*c+pz*s, py, -px*s+pz*c]; };
 function makeHingeRods(entries, material){   // trapdoor の蝶番(開閉軸)を棒で（開閉問わず／half=bottom→下端 / top→上端、facing で回転）
   const im=new THREE.InstancedMesh(HINGE_GEO, material, entries.length); im.count=entries.length;
   const m=new THREE.Matrix4(), q=new THREE.Quaternion(), pos=new THREE.Vector3(),
         scl=new THREE.Vector3(1,1,1), up=new THREE.Vector3(0,1,0), col=new THREE.Color();
-  entries.forEach((o,i)=>{ const y=o.v.h==='top'?0.5:-0.5;         // 蝶番の高さ（板の外面 +z=facing側 の下/上エッジ）
+  entries.forEach((o,i)=>{ const y=o.v.h==='top'?0.5:-0.5;         // 蝶番の高さ（ジオメトリ+z=facingの反対=蝶番側 の下/上エッジ）
     const off=rotY(0,y,0.5,o.v.f);
     pos.set(o.p[0]+0.5+off[0], o.p[1]+0.5+off[1], o.p[2]+0.5+off[2]);
-    q.setFromAxisAngle(up, o.v.f*Math.PI/2);                        // 幅方向の棒を facing に回す
+    q.setFromAxisAngle(up, meshAngle(o.v.f));                       // 幅方向の棒を facing に回す
     m.compose(pos,q,scl); im.setMatrixAt(i,m);
     col.setHex(voxColor(o.v)); im.setColorAt(i,col); });
   im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true; return im;
 }
-// full の facing：正面(=facing方向)の面に× を描く（全方向・FRONT=手前 -z）
-const FDIR=[[0,0,-1],[1,0,0],[0,0,1],[-1,0,0],[0,1,0],[0,-1,0]]; // FRONT/RIGHT/BACK/LEFT/UP/DOWN → three.js方向
+// full の facing：正面(=facing方向)の面に× を描く（全方向）
+// プレイヤーフレーム統一(v4.81): FRONT=プレイヤーと同じ向き=奥(+z) / BACK=手前(-z) / RIGHT=見た目の右(-x=画面右) / LEFT=+x。
+// 内部 x はファイル w と mirW で反転しているため RIGHT のベクトルは -x（見た目・in-game の右に一致）。
+const FDIR=[[0,0,1],[-1,0,0],[0,0,-1],[1,0,0],[0,1,0],[0,-1,0]]; // FRONT/RIGHT/BACK/LEFT/UP/DOWN → three.js方向
 const AXV={VERTICAL:[0,1,0],DEPTH:[0,0,1],WIDTH:[1,0,0]};        // 相対軸 → three.js軸(vertical=y, DEPTH=z, WIDTH=x)
 function makeOrient(entries, material){
   const pos=[];
@@ -1216,7 +1240,10 @@ function renderGrid(){
   g.style.gridTemplateColumns='repeat('+dimH+','+S.cell+'px)';
   g.style.setProperty('--hcol',P.hcol); g.style.setProperty('--vcol',P.vcol);   // 原点マーカーの軸色
   g.innerHTML='';
-  for(let vv=dimV-1;vv>=0;vv--) for(let hh=0;hh<dimH;hh++){   // 縦軸を逆順で並べ原点を下端に（立体と同じ向き）
+  const hFlip = P.h==='x';                                    // 内部 x はファイル w の反転（mirW）→ x 面は逆順に描き、画面右=W+（見た目＝in-game）
+  const oh = hFlip ? dimH-1 : 0;                              // ファイル原点（w0/d0）にあたる横 index
+  for(let vv=dimV-1;vv>=0;vv--) for(let ih=0;ih<dimH;ih++){   // 縦軸を逆順で並べ原点を下端に（立体と同じ向き）
+    const hh = hFlip ? dimH-1-ih : ih;
     const c=document.createElement('div');
     c.className='cell'; c.dataset.x=hh; c.dataset.z=vv;       // x=横index h, z=縦index v
     const key=planeKeyAt(hh,vv,layer), v=S.vox.get(key);
@@ -1230,8 +1257,8 @@ function renderGrid(){
     if(hlF && v && formOf(v)!==hlF) c.dataset.dim=1;   // 選択 form 以外を減光
     c.dataset.below = (layer>0 && S.vox.has(planeKeyAt(hh,vv,layer-1)) && !v)?1:0;
     c.dataset.cx=(hh+1)%4===0?1:0; c.dataset.cz=(vv+1)%4===0?1:0;
-    c.dataset.origin=(hh===0&&vv===0)?1:0;     // 原点(手前左)にしるし（左=縦軸色・下=横軸色）
-    if(hh===0&&vv===0&&S.labels){              // 原点マークの横に軸ラベル（縦=左上/横=右下）
+    c.dataset.origin=(hh===oh&&vv===0)?1:0;    // 原点(手前左=ファイル w0/d0)にしるし（左=縦軸色・下=横軸色）
+    if(hh===oh&&vv===0&&S.labels){             // 原点マークの横に軸ラベル（縦=左上/横=右下）
       const fs=Math.max(6,Math.min(10,Math.floor(S.cell*0.5)))+'px';
       const mkax=(cls,txt,col)=>{ const s=document.createElement('span'); s.className='axlab '+cls; s.textContent=txt; s.style.color=col; s.style.fontSize=fs; c.appendChild(s); };
       mkax('axlab-v', AXLAB[P.v], P.vcol); mkax('axlab-h', AXLAB[P.h], P.hcol);
@@ -1339,21 +1366,13 @@ function blockRecs(fieldFn){   // S.vox を structure レコード(1行文字列
   return arr.map(o=>{ const p=o.p, v=o.v, rec={pos:{d:p[2],h:p[1],w:mirW(p[0],W)}};
     if(v.s==='raw'){                                                   // raw＝block=id 直指定（form/mat なし）
       rec.block = (v.raw.indexOf(':')<0 ? 'minecraft:'+v.raw : v.raw);
-      const relmR=relMapOf(blockProps(v.raw));
-      for(const {name} of shownPropsRaw(v.raw)){ let val=v.props[name];
-        if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val);
-        else if(name==='east') val=v.props['west']; else if(name==='west') val=v.props['east'];
-        else if(val!=null && (relmR[name]==='rot16'||relmR[name]==='rail'||relmR[name]==='orientation')) val=mirRel(relmR[name], String(val));
-        rec[(RD&&RD.faceApp[name])||name]=val; }   // 面は相対キー(front/…)で書く＝MOD が build 方位で回せる
+      for(const {name} of shownPropsRaw(v.raw)){ const val=v.props[name];
+        rec[(RD&&RD.faceApp[name])||name]=val; }   // 値は無変換（プレイヤーフレーム統一）。面は相対キー(front/…)で書く＝MOD が build 方位で回せる
       return '  '+JSON.stringify(rec);
     }
     const form=formOf({s:v.s,ot:v.ot}); rec.form=form;                 // form 先（dict と統一・2026-08-15）
     Object.assign(rec, fieldFn(v.r));                                  // slot（place）または mat（structure）
-    const relmF=FORM_PROP_REL[form]||{};
-    for(const {name} of shownProps(form)){ let val=v.props[name];      // 汎用: 出すプロパティを素直に書く
-      if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val);
-      else if(name==='east') val=v.props['west']; else if(name==='west') val=v.props['east'];   // W反転で東西入替
-      else if(val!=null && (relmF[name]==='rot16'||relmF[name]==='rail'||relmF[name]==='orientation')) val=mirRel(relmF[name], String(val));
+    for(const {name} of shownProps(form)){ const val=v.props[name];    // 汎用: 出すプロパティを素直に書く（値は無変換）
       rec[(RD&&RD.faceApp[name])||name]=val; }   // 面は相対キー(front/…)で書く
     if(isMultiHalf(form)){ rec.half='lower';                           // upper/lower の form（ドア等）は2レコードに展開
       const up={pos:{d:p[2],h:p[1]+1,w:mirW(p[0],W)},form:form}; Object.assign(up, fieldFn(v.r)); up.half='upper';
@@ -1758,16 +1777,6 @@ function rotRel(kind, val, plane){
     const f=wordAngle(rotWordTok(p[0],plane)), t=wordAngle(rotWordTok(p[1],plane));            // ベクトル回転→角度/up/down
     return (f==null||t==null) ? val : (oriTok(f,t) ?? val); }                                  // 実在トークンのみ（妥当性も rel_defs）
   return val; }
-const mirA=(a)=> (typeof a==='number') ? (16-a)%16 : a;                                        // 角度ミラー（up/down 不変）
-function mirRel(kind, val){
-  if(!RD) return val;
-  if(kind==='rot16'){ const a=RD.rot16[String(val)]; return a==null ? val : (RD.rot16Inv[mirA(a)] ?? val); }
-  if(kind==='rail'){ const def=RD.rail[val]; if(!def) return val;
-    const nd = def.ascend!=null ? {ascend:mirA(def.ascend)} : {set:def.set.map(mirA)};
-    return railTok(nd) ?? val; }
-  if(kind==='orientation'){ const d=RD.ori[val]; if(!d) return val;
-    return oriTok(mirA(d.front), mirA(d.top)) ?? val; }
-  return val; }
 function relKinds(n){ return n.s==='raw' ? relMapOf(blockProps(n.raw)) : (FORM_PROP_REL[formOf(n)] || {}); }   // name→rel（raw/form 共通）
 function rotVal(val, plane){ const n=norm(val), props={...n.props};   // 向き系プロパティを回転（half/hinge 等はそのまま＝水平回転で不変）
   const fp = n.s==='raw' ? propsMapOf(blockProps(n.raw)) : (FORM_PROPS[formOf(n)] || {});   // その form/ブロックが実際に持つ向きだけ回す
@@ -1879,27 +1888,19 @@ function importJson(text){
         if(b.block){                   // raw＝block=id 直指定（form/mat なし）
           const raw=String(b.block).replace(/^minecraft:/,'');
           const props={facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall'};
-          const relmR=relMapOf(blockProps(raw));
           for(const {name} of shownPropsRaw(raw)){
-            const src=(name==='east')?'west':(name==='west')?'east':name;
-            let val=b[src]; if(val==null && RD && RD.faceApp[src]!=null) val=b[RD.faceApp[src]];   // 相対面キー(front/…)も受理
+            let val=b[name]; if(val==null && RD && RD.faceApp[name]!=null) val=b[RD.faceApp[name]];   // 相対面キー(front/…)も受理
             if(val==null) continue;
-            if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val);
-            else if(relmR[name]==='rot16'||relmR[name]==='rail'||relmR[name]==='orientation') val=mirRel(relmR[name], String(val));
-            props[name]=String(val); }
+            props[name]=String(val); }   // 値は無変換（プレイヤーフレーム統一）
           set.set(K(mirW(p.w,impW),p.h,p.d), {s:'raw', raw, props}); return;
         }
         const fm=(b.form||'').toUpperCase();
         const SF={FULLBLOCK:'fullblock',SLAB:'slab',STAIRS:'stairs',TRAPDOOR:'trapdoor'};
         const s = SF[fm] || 'others', ot = SF[fm] ? 'DOOR' : fm;
         const props = {facing:'FRONT',half:'bottom',type:'bottom',axis:'VERTICAL',hinge:'left',open:'false',hanging:'false',face:'wall'};
-        const relmF=FORM_PROP_REL[fm]||{};
-        for(const {name} of shownProps(fm)){   // 汎用: 出すプロパティを素直に読む（east/west は W反転で入替）
-          const src=(name==='east')?'west':(name==='west')?'east':name;
-          let val=b[src]; if(val==null && RD && RD.faceApp[src]!=null) val=b[RD.faceApp[src]];   // 相対面キー(front/…)も受理
+        for(const {name} of shownProps(fm)){   // 汎用: 出すプロパティを素直に読む（値は無変換）
+          let val=b[name]; if(val==null && RD && RD.faceApp[name]!=null) val=b[RD.faceApp[name]];   // 相対面キー(front/…)も受理
           if(val==null) continue;
-          if(name==='facing') val=mirFac(val); else if(name==='hinge') val=mirHinge(val);
-          else if(relmF[name]==='rot16'||relmF[name]==='rail'||relmF[name]==='orientation') val=mirRel(relmF[name], String(val));
           props[name]=String(val); }
         set.set(K(mirW(p.w,impW),p.h,p.d), {r:b.slot||b.mat||(fm||'FULLBLOCK')+'_1', s, ot, props}); });   // slot 優先・旧 mat も後方互換
     }
