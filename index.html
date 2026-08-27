@@ -218,14 +218,15 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #raw-search{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:9px 8px;font-size:13px;margin:0 0 6px;font-family:ui-monospace,monospace;box-sizing:border-box;width:100%;flex:none}
 #raw-form,#raw-light,#raw-sort,#mat-light,#mat-sort{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:10px 8px;font-size:13px;line-height:1.3;margin:0 0 6px;font-family:ui-monospace,monospace;box-sizing:border-box;width:100%;flex:none;height:auto}
 .matlight{font-size:10px;color:var(--brass);font-family:ui-monospace,monospace;flex:none;white-space:nowrap;margin-left:4px}
-.filttog{background:transparent;border:1px dashed var(--rule);color:var(--dim);border-radius:4px;padding:6px 8px;font-size:11px;margin:0 0 6px;width:100%;text-align:left;cursor:pointer;font-family:inherit;box-sizing:border-box}
+.filttog{background:transparent;border:1px dashed var(--rule);color:var(--dim);border-radius:4px;padding:6px 8px;font-size:11px;margin:0;width:100%;text-align:left;cursor:pointer;font-family:inherit;box-sizing:border-box}
+.filtwrap.on{margin-top:6px}
 .filtwrap{display:none}
 .filtwrap.on{display:block}
 .matphys.clip{text-overflow:clip}
 .moretip{flex:none;color:var(--brass);font-weight:700;cursor:pointer;padding:0 4px;align-self:center;user-select:none;border-bottom:1px dotted var(--brass)}
 .fulltip{position:fixed;z-index:100;max-width:80vw;background:var(--panel2);color:var(--chalk);border:1px solid var(--brass);border-radius:5px;padding:6px 9px;font-family:ui-monospace,monospace;font-size:12px;word-break:break-all;box-shadow:0 3px 12px rgba(0,0,0,.5);display:none;cursor:pointer}
 #rawmodal-list{flex:1;overflow:auto;min-height:0}
-.rawhdr{background:var(--panel2);color:var(--brass);font-size:11px;font-weight:700;letter-spacing:.05em;padding:8px 6px 5px;border-bottom:1px solid var(--brass-dim)}
+.rawhdr{position:sticky;top:0;z-index:2;background:var(--panel2);color:var(--brass);font-size:11px;font-weight:700;letter-spacing:.05em;padding:8px 6px 5px;border-bottom:1px solid var(--brass-dim)}
 .rawhdr:first-child{padding-top:2px}
 </style>
 </head>
@@ -432,7 +433,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.78';
+const APP_VERSION = '4.79';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
