@@ -434,7 +434,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.76';
+const APP_VERSION = '4.77';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -2084,11 +2084,15 @@ function pickRaw(blockId){ S.shape='raw'; S.raw=blockId;
 }
 $('#rawmodal').onclick=e=>{ if(e.target.id==='rawmodal') $('#rawmodal').classList.remove('on'); };
 let RAW_HDRS=[];   // 現在リスト中の form 見出し（ピン表示用）
+let rawPinTick=0;   // [debug v4.77] rAF 生存確認カウンタ
 function updateRawPin(){ const list=$('#rawmodal-list'), pin=$('#raw-pin'); if(!list||!pin) return;
   let cur=null; const st=list.scrollTop;
   for(const h of RAW_HDRS){ if(h.offsetTop<=st+1) cur=h; else break; }
-  if(cur && st>0){ if(pin.textContent!==cur.textContent) pin.textContent=cur.textContent; pin.style.display='block'; }
-  else pin.style.display='none'; }
+  // [debug v4.77] 常時表示で内部状態を可視化（原因特定用・後で戻す）
+  rawPinTick++;
+  pin.textContent='dbg t:'+rawPinTick+' st:'+st+' hdrs:'+RAW_HDRS.length
+    +' h0:'+(RAW_HDRS[0]?RAW_HDRS[0].offsetTop:'-')+' cur:'+(cur?cur.textContent:'-');
+  pin.style.display='block'; }
 // iOS PWA では div の scroll イベントが安定しないため、モーダル表示中は rAF で scrollTop を監視する
 let rawPinRaf=0;
 function rawPinLoop(){ if(!$('#rawmodal').classList.contains('on')){ rawPinRaf=0; return; }
