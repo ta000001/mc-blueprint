@@ -225,8 +225,10 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .moretip{flex:none;color:var(--brass);font-weight:700;cursor:pointer;padding:0 4px;align-self:center;user-select:none;border-bottom:1px dotted var(--brass)}
 .fulltip{position:fixed;z-index:100;max-width:80vw;background:var(--panel2);color:var(--chalk);border:1px solid var(--brass);border-radius:5px;padding:6px 9px;font-family:ui-monospace,monospace;font-size:12px;word-break:break-all;box-shadow:0 3px 12px rgba(0,0,0,.5);display:none;cursor:pointer}
 #rawmodal-list{flex:1;overflow:auto;min-height:0}
-.rawhdr{position:sticky;top:-1px;z-index:2;background:var(--panel2);color:var(--brass);font-size:11px;font-weight:700;letter-spacing:.05em;padding:9px 6px 5px;border-bottom:1px solid var(--brass-dim);box-shadow:0 -2px 0 var(--panel2)}
-.rawhdr:first-child{padding-top:3px}
+.rawhdr{background:var(--panel2);color:var(--brass);font-size:11px;font-weight:700;letter-spacing:.05em;padding:8px 6px 5px;border-bottom:1px solid var(--brass-dim)}
+.rawhdr:first-child{padding-top:2px}
+.rawlistwrap{position:relative;flex:1;min-height:0;display:flex;flex-direction:column}
+.rawpin{position:absolute;top:0;left:0;right:0;z-index:3;pointer-events:none;display:none;padding-top:2px}
 </style>
 </head>
 <body>
@@ -372,7 +374,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <select id="raw-light" aria-label="光源で絞り込み"><option value="all">光源: すべて</option><option value="light">光源のみ</option><option value="dark">非光源のみ</option></select>
     <select id="raw-sort" aria-label="並び替え"><option value="form">並び: FORM(既定)</option><option value="prefix">並び: prefix(接頭辞)</option><option value="suffix">並び: suffix(接尾辞)</option></select>
   </div>
-  <div id="rawmodal-list"></div>
+  <div class="rawlistwrap"><div id="raw-pin" class="rawhdr rawpin"></div><div id="rawmodal-list"></div></div>
 </div></div>
 <div id="vmodal"><div class="panel"><h3>バージョン情報</h3><div id="vmodal-body"></div></div></div>
 <div id="pmodal"><div class="panel"><h3>palette / structure の使い方</h3>
@@ -432,7 +434,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.74';
+const APP_VERSION = '4.75';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -2062,6 +2064,7 @@ function renderRawList(){ const list=$('#rawmodal-list'); if(!list) return; list
     list.appendChild(rawRow(it.b));
   }
   markTrunc(list);
+  RAW_HDRS=[...list.querySelectorAll('.rawhdr')]; updateRawPin();
   const note=document.createElement('div'); note.className='matja'; note.style.padding='8px';
   note.textContent = items.length===0 ? '該当なし' : items.length>CAP ? ('上位'+CAP+' / '+items.length+' 件（検索で絞り込み）') : (items.length+' 件');
   list.appendChild(note);
@@ -2080,6 +2083,13 @@ function pickRaw(blockId){ S.shape='raw'; S.raw=blockId;
   $('#rawmodal').classList.remove('on'); save(); renderShapeBar(); status('ブロック指定: '+(NAMES_JA[blockId]||blockId));
 }
 $('#rawmodal').onclick=e=>{ if(e.target.id==='rawmodal') $('#rawmodal').classList.remove('on'); };
+let RAW_HDRS=[];   // 現在リスト中の form 見出し（ピン表示用）
+function updateRawPin(){ const list=$('#rawmodal-list'), pin=$('#raw-pin'); if(!list||!pin) return;
+  let cur=null; const st=list.scrollTop;
+  for(const h of RAW_HDRS){ if(h.offsetTop<=st) cur=h; else break; }
+  if(cur && st>0){ pin.textContent=cur.textContent; pin.style.display='block'; }
+  else pin.style.display='none'; }
+$('#rawmodal-list').addEventListener('scroll', updateRawPin, {passive:true});
 $('#raw-search').oninput=renderRawList;
 $('#raw-form').onchange=renderRawList;
 if($('#raw-light')) $('#raw-light').onchange=renderRawList;
