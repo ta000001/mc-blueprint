@@ -434,7 +434,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.75';
+const APP_VERSION = '4.76';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -2040,7 +2040,7 @@ function fillRawForm(){   // form セレクトの選択肢：すべて / form登
   sel.value = [...sel.options].some(o=>o.value===keep) ? keep : 'all';
 }
 function openRawPicker(){ $('#raw-search').value=''; fillRawForm(); $('#raw-form').value='all'; if($('#raw-light'))$('#raw-light').value='all'; if($('#raw-sort'))$('#raw-sort').value='form'; setFilts('raw-filttog','raw-filts',false);
-  renderRawList(); $('#rawmodal').classList.add('on'); setTimeout(()=>{ try{$('#raw-search').focus();}catch(_){} markTrunc($('#rawmodal-list')); },60); }
+  renderRawList(); $('#rawmodal').classList.add('on'); startRawPin(); setTimeout(()=>{ try{$('#raw-search').focus();}catch(_){} markTrunc($('#rawmodal-list')); },60); }
 function renderRawList(){ const list=$('#rawmodal-list'); if(!list) return; list.innerHTML='';
   const q=($('#raw-search').value||'').trim().toLowerCase(); const sel=$('#raw-form').value||'all'; const lf=($('#raw-light')&&$('#raw-light').value)||'all'; const sort=($('#raw-sort')&&$('#raw-sort').value)||'form'; const CAP=100000;
   const items=[];
@@ -2086,10 +2086,15 @@ $('#rawmodal').onclick=e=>{ if(e.target.id==='rawmodal') $('#rawmodal').classLis
 let RAW_HDRS=[];   // 現在リスト中の form 見出し（ピン表示用）
 function updateRawPin(){ const list=$('#rawmodal-list'), pin=$('#raw-pin'); if(!list||!pin) return;
   let cur=null; const st=list.scrollTop;
-  for(const h of RAW_HDRS){ if(h.offsetTop<=st) cur=h; else break; }
-  if(cur && st>0){ pin.textContent=cur.textContent; pin.style.display='block'; }
+  for(const h of RAW_HDRS){ if(h.offsetTop<=st+1) cur=h; else break; }
+  if(cur && st>0){ if(pin.textContent!==cur.textContent) pin.textContent=cur.textContent; pin.style.display='block'; }
   else pin.style.display='none'; }
-$('#rawmodal-list').addEventListener('scroll', updateRawPin, {passive:true});
+// iOS PWA では div の scroll イベントが安定しないため、モーダル表示中は rAF で scrollTop を監視する
+let rawPinRaf=0;
+function rawPinLoop(){ if(!$('#rawmodal').classList.contains('on')){ rawPinRaf=0; return; }
+  updateRawPin(); rawPinRaf=requestAnimationFrame(rawPinLoop); }
+function startRawPin(){ if(!rawPinRaf) rawPinRaf=requestAnimationFrame(rawPinLoop); }
+$('#rawmodal-list').addEventListener('scroll', updateRawPin, {passive:true});   // 発火する環境では即時反映
 $('#raw-search').oninput=renderRawList;
 $('#raw-form').onchange=renderRawList;
 if($('#raw-light')) $('#raw-light').onchange=renderRawList;
