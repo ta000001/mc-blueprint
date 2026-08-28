@@ -185,12 +185,16 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #status{font-size:10px;color:var(--verdigris);min-height:14px;margin-top:8px}
 .hidden{display:none}
 .btn small{display:block;font-size:9px;color:var(--brass);line-height:1.2}
-#modal,#matmodal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:50}
-#modal.on,#matmodal.on{display:flex}
-#modal .panel,#matmodal .panel{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:14px;max-width:88%;max-height:78%;overflow:auto}
-#modal h3,#matmodal h3{margin:0 0 10px;font-size:13px;color:var(--brass)}
-#modal .grid{display:flex;flex-wrap:wrap;gap:6px}
-#modal .grid .btn{flex:0 0 auto;min-width:110px}
+#modal,#matmodal,#propmodal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:50}
+#modal.on,#matmodal.on,#propmodal.on{display:flex}
+#modal .panel,#matmodal .panel,#propmodal .panel{background:var(--panel2);border:1px solid var(--rule);border-radius:8px;padding:14px;max-width:88%;max-height:78%;overflow:auto}
+#modal h3,#matmodal h3,#propmodal h3{margin:0 0 10px;font-size:13px;color:var(--brass)}
+#modal .grid,#propmodal .grid{display:flex;flex-wrap:wrap;gap:6px}
+#modal .grid .btn,#propmodal .grid .btn{flex:0 0 auto;min-width:110px}
+#propmodal .grid .btn{min-width:90px}
+#propmodal .pv{display:flex;align-items:center;justify-content:center;gap:14px;margin:2px 0 10px}
+#propmodal .pv .val{font-size:20px;font-weight:700;color:var(--brass);min-width:52px;text-align:center}
+#propmodal input[type=range]{display:block;width:250px;max-width:70vw;margin:0 auto 4px}
 #matmodal .panel{width:min(420px,88%);display:flex;flex-direction:column;overflow:hidden;min-height:0}
 #mat-search{background:var(--panel);border:1px solid var(--rule);color:var(--chalk);border-radius:4px;padding:9px 8px;font-size:13px;margin:0 0 8px;font-family:ui-monospace,monospace;box-sizing:border-box;width:100%;flex:none}
 #matmodal-list{display:flex;flex-direction:column;flex:1;overflow:auto;min-height:0}
@@ -366,6 +370,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <div id="status"></div>
 <div id="modal"><div class="panel"><h3>種類を選択</h3><div class="grid" id="modal-grid"></div></div></div>
+<div id="propmodal"><div class="panel"><h3 id="propmodal-title"></h3><div id="propmodal-body"></div></div></div>
 <div id="matmodal"><div class="panel"><h3 id="matmodal-title">mat を選択</h3><input id="mat-search" placeholder="mat / block / 和名 で検索" autocomplete="off" spellcheck="false"><button type="button" class="filttog" id="mat-filttog" aria-expanded="false">絞り込み・並び替え ▸</button><div class="filtwrap" id="mat-filts"><select id="mat-light" aria-label="光源で絞り込み"><option value="all">光源: すべて</option><option value="light">光源のみ</option><option value="dark">非光源のみ</option></select><select id="mat-sort" aria-label="並び替え"><option value="form">並び: 既定(mat名)</option><option value="prefix">並び: prefix(接頭辞)</option><option value="suffix">並び: suffix(接尾辞)</option></select></div><div id="matmodal-list"></div></div></div>
 <div id="rawmodal"><div class="panel"><h3>ブロックを指定</h3>
   <input id="raw-search" placeholder="物理名 / 和名 で検索" autocomplete="off" spellcheck="false">
@@ -435,7 +440,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.81';
+const APP_VERSION = '4.82';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1421,6 +1426,7 @@ function setView(v){
 /* ---------- wiring ---------- */
 ['space','plan','json'].forEach(n=>$('#t-'+n).onclick=()=>setView(n));
 $('#modal').onclick=e=>{ if(e.target.id==='modal') closeModal(); };   // 背景タップで閉じる
+$('#propmodal').onclick=e=>{ if(e.target.id==='propmodal') closePropPicker(); };   // 背景タップで閉じる（値はその場で確定済み）
 $('#matmodal').onclick=e=>{ if(e.target.id==='matmodal') closeMatPicker(); };
 
 $('#name').oninput = save;
@@ -1594,7 +1600,9 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
     const mk=(label,onclick)=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=label; b.onclick=onclick; del.appendChild(b); };
     for(const {name,values} of curShownProps()){          // 汎用: form_dict/raw の値を巡回する1ループ
       if(!values.includes(S.props[name])) S.props[name]=values[0];
-      mk(name+':'+S.props[name], ()=>{ const i=values.indexOf(S.props[name]), next=values[(i+1)%values.length];
+      mk(name+':'+S.props[name], ()=>{
+        if(values.length>PROP_PICK_TH){ openPropPicker(name, values); return; }   // 多値(>6)＝ピッカー（数値=スライダー/他=リスト）
+        const i=values.indexOf(S.props[name]), next=values[(i+1)%values.length];
         if(form==='VINE' && VINE_FACES.includes(name) && next==='false'   // つたは最低1面必要＝最後の1面はオフ不可
            && !VINE_FACES.some(f=>f!==name && S.props[f]==='true')){ status('つたは最低1面必要です'); return; }
         S.props[name]=next; save(); renderShapeBar(); });
@@ -1603,6 +1611,34 @@ function renderShapeBar(){   // 形（行1・full/slab/stairs/trapdoor/その他
   renderRoles();   // 材質なし種類では役割バーを隠す
   if(S.hlForm){ syncVox(); if(S.view==='plan') renderGrid(); }   // 強調中は form 切替で対象を更新
 }
+/* 多値プロパティのピッカー（v4.82）: values.length>PROP_PICK_TH で巡回の代わりに開く。
+   値が全て整数(=IntegerProperty)ならスライダー＋ステッパー、そうでなければ値リスト。判定は values 参照のみ（block_class_all 由来・単一ソース） */
+const PROP_PICK_TH = 6;
+function openPropPicker(name, values){
+  const t=$('#propmodal-title'), body=$('#propmodal-body'); if(!t||!body) return;
+  t.textContent = name;
+  body.innerHTML = '';
+  const numeric = values.every(v=>/^\d+$/.test(v));
+  if(numeric){
+    const nums = values.map(Number), min = Math.min(...nums), max = Math.max(...nums);
+    const pv=document.createElement('div'); pv.className='pv';
+    const mkBtn=(label,d)=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=label;
+      b.onclick=()=>{ const v=Math.min(max, Math.max(min, (+S.props[name]||0)+d)); S.props[name]=String(v); rng.value=v; val.textContent=v; save(); }; return b; };
+    const val=document.createElement('span'); val.className='val'; val.textContent=S.props[name];
+    const rng=document.createElement('input'); rng.type='range'; rng.min=min; rng.max=max; rng.step=1; rng.value=+S.props[name]||min;
+    rng.oninput=()=>{ S.props[name]=String(rng.value); val.textContent=rng.value; save(); };
+    pv.append(mkBtn('−',-1), val, mkBtn('＋',+1));
+    body.append(pv, rng);
+  } else {
+    const g=document.createElement('div'); g.className='grid';
+    values.forEach(v=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=v;
+      b.setAttribute('aria-pressed', S.props[name]===v);
+      b.onclick=()=>{ S.props[name]=v; save(); closePropPicker(); }; g.appendChild(b); });
+    body.append(g);
+  }
+  $('#propmodal').classList.add('on');
+}
+function closePropPicker(){ $('#propmodal').classList.remove('on'); renderShapeBar(); }
 function openModal(){ const g=$('#modal-grid'); if(!g) return; g.innerHTML='';
   FORM_LIST.filter(f=>!PRIMARY_SHAPES.includes(f)).forEach(f=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=f;
     b.setAttribute('aria-pressed', S.shape==='others'&&S.other===f);
