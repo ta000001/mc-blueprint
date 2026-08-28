@@ -440,7 +440,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.82';
+const APP_VERSION = '4.83';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -699,8 +699,9 @@ function mergeGeo(a,b){   // 2つの indexed BoxGeometry を結合（階段用�
 }
 function doorGeo(left){   // ドア＝2ブロック高の薄板＋蝶番側の縦バー（cell下端→上へ2マス）
   const T=0.1875, oy=0.5;
-  const panel=new THREE.BoxGeometry(0.94,2,T); panel.translate(0,oy,-0.5+T/2);
-  const bar=new THREE.BoxGeometry(0.12,2,T+0.14); bar.translate(left?0.42:-0.42, oy, -0.5+(T+0.14)/2);   // hinge=left は見た目の左（+x=画面左）
+  // 閉じた板は facing の反対側の縁（MC準拠・v4.83。ジオメトリ -z=facing面 → 板は +z 縁）
+  const panel=new THREE.BoxGeometry(0.94,2,T); panel.translate(0,oy,0.5-T/2);
+  const bar=new THREE.BoxGeometry(0.12,2,T+0.14); bar.translate(left?0.42:-0.42, oy, 0.5-(T+0.14)/2);   // hinge=left は見た目の左（+x=画面左）
   return mergeGeo(panel,bar);
 }
 function buildGeos(){
@@ -717,13 +718,13 @@ function buildGeos(){
     door_right: doorGeo(false),                              // ドア（蝶番=右）
     // ▼▼ others form の形状レジストリ：新しい form の 3D 見た目はここに「聖典 form 名」で1行足すだけ ▼▼
     TORCH:        boxAt(0.16,0.62,0.16,-0.19,0),             // 松明(床)＝中央の細い棒
-    WALL_TORCH:   boxAt(0.16,0.55,0.16,0.02,-0.36),          // 壁松明＝facing壁際(-z)の細い棒
+    WALL_TORCH:   boxAt(0.16,0.55,0.16,0.02,0.36),           // 壁松明＝取り付け壁際(+z=facingの反対縁・MC準拠 v4.83)の細い棒
     LANTERN:      boxAt(0.34,0.5,0.34,-0.12,0),              // ランタン＝小さな箱
     CAMPFIRE:     boxAt(0.86,0.24,0.86,-0.38,0),             // 焚き火＝低く幅広（薪）
     CHAIN:        boxAt(0.14,1,0.14,0,0),                    // チェーン＝細い縦棒
     FENCE:        boxAt(0.22,1,0.22,0,0),                    // 柵＝中央の支柱
     FENCE_GATE:   boxAt(0.92,0.42,0.16,0.02,0),              // フェンスゲート＝幅広の薄板（facingで回転）
-    BUTTON:       boxAt(0.32,0.14,0.18,-0.32,-0.40),         // ボタン＝小さい低いポッチ（facing壁際）
+    BUTTON:       boxAt(0.32,0.14,0.18,-0.32,0.40),          // ボタン＝小さい低いポッチ（取り付け壁際=+z=facingの反対縁・MC準拠 v4.83）
     PANE:         mergeGeo(boxAt(0.12,1,1,0,0), boxAt(1,1,0.12,0,0)),  // ガラス板＝薄い十字
     GRATE:        boxAt(0.86,0.86,0.86,0,0),                 // 格子(copper_grate)＝無方向。フルブロックより一回り小さい立方体で区別（対称＝回転不変）
     POPPY:        mergeGeo(boxAt(0.08,0.6,0.6,-0.2,0), boxAt(0.6,0.6,0.08,-0.2,0)),  // 花＝小さい十字
