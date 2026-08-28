@@ -440,7 +440,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.83';
+const APP_VERSION = '4.84';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -701,7 +701,9 @@ function doorGeo(left){   // ドア＝2ブロック高の薄板＋蝶番側の�
   const T=0.1875, oy=0.5;
   // 閉じた板は facing の反対側の縁（MC準拠・v4.83。ジオメトリ -z=facing面 → 板は +z 縁）
   const panel=new THREE.BoxGeometry(0.94,2,T); panel.translate(0,oy,0.5-T/2);
-  const bar=new THREE.BoxGeometry(0.12,2,T+0.14); bar.translate(left?0.42:-0.42, oy, 0.5-(T+0.14)/2);   // hinge=left は見た目の左（+x=画面左）
+  // hinge の左右＝「ドアから見て」＝facing と同じ向きを向いたときの左右（MC DoorBlock.getShape 準拠・v4.84）。
+  // ジオメトリは -z=facing面 → ドアから見た左は -x（手前向きドアを正面から見ると左右が逆に見えるのが正しい）
+  const bar=new THREE.BoxGeometry(0.12,2,T+0.14); bar.translate(left?-0.42:0.42, oy, 0.5-(T+0.14)/2);
   return mergeGeo(panel,bar);
 }
 function buildGeos(){
