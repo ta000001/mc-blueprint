@@ -440,7 +440,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.92';
+const APP_VERSION = '4.93';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1571,9 +1571,10 @@ $('#hmodal').onclick = e=>{ if(e.target.id==='hmodal') $('#hmodal').classList.re
 const KEYS_HELP = `
   <div class="hgrp">
     <div class="hrow"><b>キーボード（PC）</b></div>
-    <div class="hrow">・<b>1</b>=選択 / <b>2</b>=置く / <b>3</b>=壊す　・<b>V</b>=3D⇄2D</div>
+    <div class="hrow">・<b>1</b>=選択 / <b>2</b>=置く / <b>3</b>=壊す　・<b>V</b>=3D⇄2D　・<b>P</b>=2D面切替</div>
     <div class="hrow">・<b>↑/↓</b>=層を上下　・<b>Ctrl+Z</b>=元に戻す / <b>Ctrl+Shift+Z</b>・<b>Ctrl+Y</b>=進む</div>
-    <div class="hrow">・<b>Esc</b>=モーダルを閉じる→クリップ取消→選択解除</div>
+    <div class="hrow">・<b>Ctrl+C/X</b>=選択範囲をコピー/切取　・<b>Ctrl+V</b>=貼り付け　・<b>R</b>=クリップ回転</div>
+    <div class="hrow">・<b>F</b>=選択範囲に配置　・<b>Delete</b>=選択範囲を消去　・<b>Esc</b>=モーダル閉→クリップ取消→選択解除</div>
   </div>`;
 const MODAL_IDS=['modal','propmodal','rawmodal','matmodal','hmodal','vmodal','pmodal','smodal','savemodal','loadmodal'];
 function escAction(){
@@ -1589,11 +1590,18 @@ addEventListener('keydown', e=>{
   const mod=e.ctrlKey||e.metaKey, k=e.key;
   if(mod && (k==='z'||k==='Z')){ e.preventDefault(); (e.shiftKey?redo:undo)(); return; }
   if(mod && (k==='y'||k==='Y')){ e.preventDefault(); redo(); return; }
+  if(mod && (k==='c'||k==='C')){ e.preventDefault(); if(S.cellClip&&S.cellClip.mode==='copy') cancelCellClip(); else grabCells('copy'); return; }   // ボタンと同じトグル挙動
+  if(mod && (k==='x'||k==='X')){ e.preventDefault(); if(S.cellClip&&S.cellClip.mode==='cut') cancelCellClip(); else grabCells('cut'); return; }
+  if(mod && (k==='v'||k==='V')){ e.preventDefault(); doPaste(); return; }
   if(mod||e.altKey) return;
   if(k==='1') setMode('info');
   else if(k==='2') setMode('place');
   else if(k==='3') setMode('break');
   else if(k==='v'||k==='V') setView(S.view==='space'?'plan':'space');
+  else if(k==='r'||k==='R'){ if(S.cellClip) rotateClip(); }
+  else if(k==='f'||k==='F') fillSel();
+  else if(k==='Delete'||k==='Backspace'){ e.preventDefault(); if(S.sel) clearSel(); }
+  else if(k==='p'||k==='P'){ if(S.view==='plan'){ const o=['WD','WH','DH']; setPlane(o[(o.indexOf(S.plane)+1)%3]); } }
   else if(k==='ArrowUp'||k==='ArrowDown'){ e.preventDefault(); const d=(k==='ArrowUp')?1:-1;
     if(S.view==='plan') setPlanLayer(curLayer()+d); else setLayer(S.layer+d); }
   else if(k==='Escape') escAction();
