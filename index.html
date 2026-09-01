@@ -440,7 +440,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.91';
+const APP_VERSION = '4.92';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1561,11 +1561,43 @@ const HELP_HTML = {
   </div>
   ${HELP_SAVE}`,
 };
-function renderHelp(v){ const b=$('#hmodal-body'); if(b) b.innerHTML = HELP_HTML[v] || HELP_HTML.space;
+function renderHelp(v){ const b=$('#hmodal-body'); if(b) b.innerHTML = (HELP_HTML[v] || HELP_HTML.space) + KEYS_HELP;
   $('#help-tabs').querySelectorAll('button').forEach(x=>x.setAttribute('aria-selected', String(x.dataset.v===v))); }
 $('#help-tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>renderHelp(b.dataset.v));
 $('#b-help').onclick = ()=>{ renderHelp(['space','plan','json'].includes(S.view)?S.view:'space'); $('#hmodal').classList.add('on'); };   // 現在のタブに合わせて開く
 $('#hmodal').onclick = e=>{ if(e.target.id==='hmodal') $('#hmodal').classList.remove('on'); };
+
+/* ---------- キーボード操作（PC・v4.92。物理キーボードがある環境でのみ発火） ---------- */
+const KEYS_HELP = `
+  <div class="hgrp">
+    <div class="hrow"><b>キーボード（PC）</b></div>
+    <div class="hrow">・<b>1</b>=選択 / <b>2</b>=置く / <b>3</b>=壊す　・<b>V</b>=3D⇄2D</div>
+    <div class="hrow">・<b>↑/↓</b>=層を上下　・<b>Ctrl+Z</b>=元に戻す / <b>Ctrl+Shift+Z</b>・<b>Ctrl+Y</b>=進む</div>
+    <div class="hrow">・<b>Esc</b>=モーダルを閉じる→クリップ取消→選択解除</div>
+  </div>`;
+const MODAL_IDS=['modal','propmodal','rawmodal','matmodal','hmodal','vmodal','pmodal','smodal','savemodal','loadmodal'];
+function escAction(){
+  for(const id of MODAL_IDS){ const m=document.getElementById(id); if(m && m.classList.contains('on')){
+    if(id==='propmodal') closePropPicker(); else m.classList.remove('on'); return; } }
+  if(S.cellClip){ cancelCellClip(); return; }
+  S.sel=null; S.inspect=null; $('#inspect').classList.remove('on'); const pi=$('#pinspect'); if(pi) pi.classList.remove('on');
+  updatePickBtns(); syncVox(); if(S.view==='plan') renderGrid();
+}
+addEventListener('keydown', e=>{
+  const t=e.target;
+  if(t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;   // 入力中は素通し
+  const mod=e.ctrlKey||e.metaKey, k=e.key;
+  if(mod && (k==='z'||k==='Z')){ e.preventDefault(); (e.shiftKey?redo:undo)(); return; }
+  if(mod && (k==='y'||k==='Y')){ e.preventDefault(); redo(); return; }
+  if(mod||e.altKey) return;
+  if(k==='1') setMode('info');
+  else if(k==='2') setMode('place');
+  else if(k==='3') setMode('break');
+  else if(k==='v'||k==='V') setView(S.view==='space'?'plan':'space');
+  else if(k==='ArrowUp'||k==='ArrowDown'){ e.preventDefault(); const d=(k==='ArrowUp')?1:-1;
+    if(S.view==='plan') setPlanLayer(curLayer()+d); else setLayer(S.layer+d); }
+  else if(k==='Escape') escAction();
+});
 function setMode(m){ S.mode=m;   // 立体・平面 共通のモード（置く/壊す/情報）
   ['place','break','info'].forEach(n=>{ const a=$('#b-'+n), b=$('#pm-'+n);
     if(a) a.setAttribute('aria-pressed', n===m); if(b) b.setAttribute('aria-pressed', n===m); });
