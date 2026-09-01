@@ -440,7 +440,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.94';
+const APP_VERSION = '4.95';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1575,16 +1575,26 @@ const KEYS_HELP = `
     <div class="hrow">・<b>↑/↓</b>=層を上下　・<b>Ctrl+Z</b>=元に戻す / <b>Ctrl+Shift+Z</b>・<b>Ctrl+Y</b>=進む</div>
     <div class="hrow">・<b>Ctrl+C/X</b>=選択範囲をコピー/切取　・<b>Ctrl+V</b>=貼り付け　・<b>R</b>=クリップ回転</div>
     <div class="hrow">・<b>F</b>=選択範囲に配置　・<b>Delete</b>=選択範囲を消去　・<b>Esc</b>=モーダル閉→クリップ取消→選択解除</div>
-    <div class="hrow">・<b>W/A/S/D</b>=選択ブロックを奥/左/手前/右へ移動　・<b>Space</b>=上 / <b>Shift</b>=下（選択モード）</div>
+    <div class="hrow">・<b>W/A/S/D</b>=選択を奥/左/手前/右へ移動　・<b>Space</b>=上 / <b>Shift</b>=下（選択モード。ブロック入り=中身ごと／空セル選択=枠のみ／クリップ中=貼り付け位置）</div>
   </div>`;
 /* 選択ブロックの移動（W/A/S/D=奥/左/手前/右・Space=上・Shift=下。選択モードのみ・1押し1マス） */
+function moveSelFrame(dx,dy,dz){   // 選択枠/貼り付け位置だけを移動（クリップ中・空セル選択）
+  if(!S.sel) { status('セルを選択してください'); return; }
+  const P=PLANES[S.sel.plane], d={x:dx,y:dy,z:dz};
+  const nh=[S.sel.a.h+d[P.h], S.sel.b.h+d[P.h]], nv=[S.sel.a.v+d[P.v], S.sel.b.v+d[P.v]], nl=S.sel.layer+d[P.l];
+  const dh=S.dims[P.h], dv=S.dims[P.v], dl=S.dims[P.l];
+  if(Math.min(...nh)<0||Math.max(...nh)>=dh||Math.min(...nv)<0||Math.max(...nv)>=dv||nl<0||nl>=dl){ status('端に当たるため移動できません'); return; }
+  S.sel.a.h=nh[0]; S.sel.b.h=nh[1]; S.sel.a.v=nv[0]; S.sel.b.v=nv[1]; S.sel.layer=nl;
+  redrawSel();
+}
 function moveSel(dx,dy,dz){   // 引数は内部軸(x,y,z)の増分（A=左=w−1=内部x+1・D=右=w+1=内部x−1）
   if(S.mode!=='info') return;
+  if(S.cellClip){ moveSelFrame(dx,dy,dz); return; }   // クリップ中＝貼り付け位置を移動
   let keys=[];
   if(S.sel){ const r=selRange();
     if(r){ for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++){ const k=planeKeyP(r.pl,h,v,r.layer); if(S.vox.has(k)) keys.push(k); } } }
   if(!keys.length && S.inspect && S.vox.has(S.inspect)) keys=[S.inspect];
-  if(!keys.length){ status('移動対象がありません（選択モードでブロック/範囲を選択）'); return; }
+  if(!keys.length){ if(S.sel){ moveSelFrame(dx,dy,dz); } else status('移動対象がありません（選択モードでブロック/範囲を選択）'); return; }   // 空セル選択＝枠だけ移動
   const set=new Set(keys);
   const moves=keys.map(k=>{ const a=k.split(',').map(Number); return {from:k, to:[a[0]+dx,a[1]+dy,a[2]+dz]}; });
   for(const m of moves){ const [x,y,z]=m.to;
