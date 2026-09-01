@@ -440,7 +440,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.93';
+const APP_VERSION = '4.94';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1575,7 +1575,34 @@ const KEYS_HELP = `
     <div class="hrow">・<b>↑/↓</b>=層を上下　・<b>Ctrl+Z</b>=元に戻す / <b>Ctrl+Shift+Z</b>・<b>Ctrl+Y</b>=進む</div>
     <div class="hrow">・<b>Ctrl+C/X</b>=選択範囲をコピー/切取　・<b>Ctrl+V</b>=貼り付け　・<b>R</b>=クリップ回転</div>
     <div class="hrow">・<b>F</b>=選択範囲に配置　・<b>Delete</b>=選択範囲を消去　・<b>Esc</b>=モーダル閉→クリップ取消→選択解除</div>
+    <div class="hrow">・<b>W/A/S/D</b>=選択ブロックを奥/左/手前/右へ移動　・<b>Space</b>=上 / <b>Shift</b>=下（選択モード）</div>
   </div>`;
+/* 選択ブロックの移動（W/A/S/D=奥/左/手前/右・Space=上・Shift=下。選択モードのみ・1押し1マス） */
+function moveSel(dx,dy,dz){   // 引数は内部軸(x,y,z)の増分（A=左=w−1=内部x+1・D=右=w+1=内部x−1）
+  if(S.mode!=='info') return;
+  let keys=[];
+  if(S.sel){ const r=selRange();
+    if(r){ for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++){ const k=planeKeyP(r.pl,h,v,r.layer); if(S.vox.has(k)) keys.push(k); } } }
+  if(!keys.length && S.inspect && S.vox.has(S.inspect)) keys=[S.inspect];
+  if(!keys.length){ status('移動対象がありません（選択モードでブロック/範囲を選択）'); return; }
+  const set=new Set(keys);
+  const moves=keys.map(k=>{ const a=k.split(',').map(Number); return {from:k, to:[a[0]+dx,a[1]+dy,a[2]+dz]}; });
+  for(const m of moves){ const [x,y,z]=m.to;
+    if(x<0||y<0||z<0||x>=S.dims.x||y>=S.dims.y||z>=S.dims.z){ status('端に当たるため移動できません'); return; }
+    const tk=K(x,y,z); if(S.vox.has(tk)&&!set.has(tk)){ status('移動先にブロックがあるため移動できません'); return; } }
+  pushHist();
+  const vals=moves.map(m=>({to:K(m.to[0],m.to[1],m.to[2]), val:S.vox.get(m.from)}));
+  keys.forEach(k=>S.vox.delete(k));
+  vals.forEach(m=>S.vox.set(m.to,m.val));
+  if(S.inspect && set.has(S.inspect)){ const a=S.inspect.split(',').map(Number); S.inspect=K(a[0]+dx,a[1]+dy,a[2]+dz); }
+  if(S.sel){ const P=PLANES[S.sel.plane], d={x:dx,y:dy,z:dz};
+    S.sel.a.h+=d[P.h]; S.sel.b.h+=d[P.h]; S.sel.a.v+=d[P.v]; S.sel.b.v+=d[P.v]; S.sel.layer+=d[P.l]; }
+  changed(); redrawSel(); renderSpine(); if(S.view==='plan') renderGrid();
+  if(S.inspect && S.vox.has(S.inspect)){   // 情報表示の座標行を追随
+    if($('#inspect').classList.contains('on')) showInfo(norm(S.vox.get(S.inspect)), S.inspect);
+    const pi=$('#pinspect'); if(pi && pi.classList.contains('on')) pi.innerHTML=dhwLine(S.inspect)+'<br>'+infoPartsOf(S.vox.get(S.inspect)).join('<br>');
+  }
+}
 const MODAL_IDS=['modal','propmodal','rawmodal','matmodal','hmodal','vmodal','pmodal','smodal','savemodal','loadmodal'];
 function escAction(){
   for(const id of MODAL_IDS){ const m=document.getElementById(id); if(m && m.classList.contains('on')){
@@ -1598,6 +1625,12 @@ addEventListener('keydown', e=>{
   else if(k==='2') setMode('place');
   else if(k==='3') setMode('break');
   else if(k==='v'||k==='V') setView(S.view==='space'?'plan':'space');
+  else if(k==='w'||k==='W'){ e.preventDefault(); moveSel(0,0,1); }
+  else if(k==='s'||k==='S'){ e.preventDefault(); moveSel(0,0,-1); }
+  else if(k==='a'||k==='A'){ e.preventDefault(); moveSel(1,0,0); }
+  else if(k==='d'||k==='D'){ e.preventDefault(); moveSel(-1,0,0); }
+  else if(k===' '){ e.preventDefault(); moveSel(0,1,0); }
+  else if(k==='Shift'){ moveSel(0,-1,0); }
   else if(k==='r'||k==='R'){ if(S.cellClip) rotateClip(); }
   else if(k==='f'||k==='F') fillSel();
   else if(k==='Delete'||k==='Backspace'){ e.preventDefault(); if(S.sel) clearSel(); }
