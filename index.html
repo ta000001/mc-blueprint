@@ -154,7 +154,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 #grid[data-clip="cut"]{outline:2px dashed #ffd24a;outline-offset:3px}
 #grid[data-clip="copy"]{outline:2px dashed #8ff0ff;outline-offset:3px}
 .gridbox{position:relative;flex:1;min-width:0;display:flex}
-#gridwrap{flex:1;min-width:0;overflow:auto;background:var(--panel);border:1px solid var(--rule);
+#gridwrap{flex:1;min-width:0;overflow:auto;margin-bottom:46px;background:var(--panel);border:1px solid var(--rule);
   border-radius:4px;padding:38px 6px 6px;max-height:60vh;min-height:300px;-webkit-overflow-scrolling:touch;touch-action:none}
 #grid{display:grid;width:max-content;margin:0 auto;border-left:1px solid var(--rule);border-top:1px solid var(--rule);--hcol:#ff8a8a;--vcol:#8aa8ff}
 .cell{border-right:1px solid #22302f;border-bottom:1px solid #22302f;background:#131c1e;position:relative;
@@ -440,7 +440,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.88';
+const APP_VERSION = '4.89';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1139,7 +1139,7 @@ function bindGestures(el){
   function set3DSel(a,b){   // a,b:{x,z}作業面上 → S.sel(WD基準)。情報は起点セルのみ
     S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:S.layer, plane:'WD'};
     const k=K(a.x,S.layer,a.z), val=S.vox.get(k);
-    if(val) showInfo(norm(val)); else $('#inspect').classList.remove('on');
+    if(val) showInfo(norm(val), k); else $('#inspect').classList.remove('on');
     S.inspect = val ? k : null; updatePickBtns(); syncVox(); }
   function pickBlockAt(cx,cy){   // 表示中ソリッド（選択層以下＋強調中）へ raycast（break/place と同じ到達範囲・v4.87）
     const r=el.getBoundingClientRect();
@@ -1152,7 +1152,7 @@ function bindGestures(el){
   function sel3DBlock(o){   // 任意層のブロックを直接選択（選択枠・S.sel の層もそのブロックに合わせる）
     const p=o.p;
     S.sel={a:{h:p[0],v:p[2]}, b:{h:p[0],v:p[2]}, layer:p[1], plane:'WD'};
-    showInfo(norm(o.v)); S.inspect=K(p[0],p[1],p[2]); updatePickBtns(); syncVox(); }
+    S.inspect=K(p[0],p[1],p[2]); showInfo(norm(o.v), S.inspect); updatePickBtns(); syncVox(); }
   const up=e=>{
     const was=pts.get(e.pointerId); pts.delete(e.pointerId);
     if(pts.size<2){ pinch=0; mid=null; }
@@ -1195,7 +1195,7 @@ function bindGestures(el){
     if(hit.object!==planeObj){
       const im=hit.object, o=im.userData.items[hit.instanceId]; if(!o) return; const p=o.p;
       if(mode==='break') remove(p[0],p[1],p[2]);
-      else if(mode==='info'){ showInfo(o.v); S.inspect=K(p[0],p[1],p[2]); updatePickBtns(); syncVox(); }   // 選択中ブロックを強調
+      else if(mode==='info'){ S.inspect=K(p[0],p[1],p[2]); showInfo(o.v, S.inspect); updatePickBtns(); syncVox(); }   // 選択中ブロックを強調
       else { const m4=new THREE.Matrix4(); im.getMatrixAt(hit.instanceId,m4);
         const nm=new THREE.Matrix3().getNormalMatrix(m4);
         const n=hit.face.normal.clone().applyMatrix3(nm).normalize();
@@ -1314,7 +1314,7 @@ function renderGrid(){
   function selectRange(a,b){   // 範囲選択。情報は開始セル(a=ドラッグ開始)のみ表示
     S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:curLayer(), plane:S.plane};
     const k=planeKey(a.x,a.z), val=S.vox.get(k), pi=$('#pinspect');
-    if(val){ pi.innerHTML=infoPartsOf(val).join('<br>'); pi.classList.add('on'); S.inspect=k; }
+    if(val){ pi.innerHTML=posLine(k)+'<br>'+infoPartsOf(val).join('<br>'); pi.classList.add('on'); S.inspect=k; }
     else { pi.classList.remove('on'); S.inspect=null; }
     updatePickBtns(); renderGrid(); }
   function setDest(c){ S.sel={a:{h:c.x,v:c.z}, b:{h:c.x,v:c.z}, layer:curLayer(), plane:S.plane}; renderGrid(); }   // クリップ中の貼付先アンカー
@@ -1330,7 +1330,7 @@ function renderGrid(){
     const k=planeKey(c.x,c.z);
     if(mode==='break'){ if(S.vox.has(k)){ pushHist(); S.vox.delete(k); changed(); renderGrid(); renderSpine(); } }
     else if(mode==='info'){ const val=S.vox.get(k), pi=$('#pinspect');
-      if(val){ pi.innerHTML=infoPartsOf(val).join('<br>'); pi.classList.add('on'); S.inspect=k; }
+      if(val){ pi.innerHTML=posLine(k)+'<br>'+infoPartsOf(val).join('<br>'); pi.classList.add('on'); S.inspect=k; }
       else { pi.classList.remove('on'); S.inspect=null; }
       updatePickBtns(); renderGrid(); }   // 選択セルを強調
     else { const v=cur(); if(sig(S.vox.get(k))!==sig(v)){ pushHist(); S.vox.set(k,v); changed(); renderGrid(); renderSpine(); } } }
@@ -1603,8 +1603,9 @@ function infoPartsOf(v){   // 選択情報の行配列（raw は block/和名、
     for(const {name} of shownPropsRaw(n.raw)) if(n.props[name]!=null) parts.push(dispProp(name)+'='+n.props[name]); return parts; }
   const form=formOf(n), parts=['form='+form, 'slot='+n.r];
   for(const {name} of shownProps(form)) if(n.props[name]!=null) parts.push(dispProp(name)+'='+n.props[name]); return parts; }
-function showInfo(v){   // タップしたブロックの情報を右下に表示
-  $('#inspect').innerHTML=infoPartsOf(v).join('<br>'); $('#inspect').classList.add('on'); }
+const posLine=(key)=>{ const a=String(key).split(',').map(Number); return 'pos(d,h,w)='+a[2]+','+a[1]+','+((S.dims.x-1)-a[0]); };   // 表示座標は JSON 出力と同じ (d,h,w)
+function showInfo(v,key){   // タップしたブロックの情報を右下に表示
+  $('#inspect').innerHTML=(key?posLine(key)+'<br>':'')+infoPartsOf(v).join('<br>'); $('#inspect').classList.add('on'); }
 
 $('#pl-undo').onclick=undo; $('#pl-redo').onclick=redo;   // 盤内の 元に戻す/進む
 
