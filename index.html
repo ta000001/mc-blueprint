@@ -441,7 +441,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.97';
+const APP_VERSION = '4.99';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1616,6 +1616,24 @@ addEventListener('keydown', e=>{
   const t=e.target;
   if(t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;   // 入力中は素通し
   const mod=e.ctrlKey||e.metaKey, k=e.key;
+  if(k==='Enter' && !mod && t && t.tagName==='BUTTON'){   // 押下後に再生成されても同じボタンへフォーカス復元
+    e.preventDefault();
+    const txt=t.textContent, r=t.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
+    t.click();
+    setTimeout(()=>{
+      let el=t;
+      if(!el.isConnected || !el.offsetParent){   // 再生成された → 同ラベル・最寄り位置のボタンを探す
+        let best=null,bd=1e9;
+        for(const b of document.querySelectorAll('button')){ if(!b.offsetParent||b.disabled) continue;
+          const rr=b.getBoundingClientRect();
+          const d=Math.hypot(rr.left+rr.width/2-cx, rr.top+rr.height/2-cy)+(b.textContent===txt?0:300);
+          if(d<bd){ bd=d; best=b; } }
+        el=best;
+      }
+      if(el){ el.focus(); document.querySelectorAll('.kbfocus').forEach(x=>x.classList.remove('kbfocus')); el.classList.add('kbfocus'); }
+    },0);
+    return;
+  }
   if(mod && (k==='z'||k==='Z')){ e.preventDefault(); (e.shiftKey?redo:undo)(); return; }
   if(mod && (k==='y'||k==='Y')){ e.preventDefault(); redo(); return; }
   if(mod && (k==='c'||k==='C')){ e.preventDefault(); if(S.cellClip&&S.cellClip.mode==='copy') cancelCellClip(); else grabCells('copy'); return; }   // ボタンと同じトグル挙動
@@ -1644,20 +1662,32 @@ addEventListener('keydown', e=>{
 });
 /* 矢印キーのボタン空間ナビ（最寄りの可視ボタンへフォーカス移動・Enter=ネイティブ押下） */
 function navFocus(dir){
-  const btns=[...document.querySelectorAll('button')].filter(b=>b.offsetParent&&!b.disabled);
+  // モーダル表示中はその中のボタンだけを対象（背後のボタンへ飛ばない）
+  let root=document;
+  for(const id of MODAL_IDS){ const m=document.getElementById(id); if(m&&m.classList.contains('on')){ root=m; break; } }
+  const btns=[...root.querySelectorAll('button')].filter(b=>b.offsetParent&&!b.disabled);
   if(!btns.length) return;
-  const cur=(document.activeElement&&document.activeElement.tagName==='BUTTON'&&document.activeElement.offsetParent)?document.activeElement:null;
+  const cur=(document.activeElement&&document.activeElement.tagName==='BUTTON'&&document.activeElement.offsetParent&&root.contains(document.activeElement))?document.activeElement:null;
   document.querySelectorAll('.kbfocus').forEach(x=>x.classList.remove('kbfocus'));
-  if(!cur){ btns[0].focus(); btns[0].classList.add('kbfocus'); btns[0].scrollIntoView({block:'nearest'}); return; }
+  const go=(t)=>{ t.focus(); t.classList.add('kbfocus'); t.scrollIntoView({block:'nearest'}); };
+  if(!cur){ go(btns[0]); return; }
   const c=cur.getBoundingClientRect(), cx=c.left+c.width/2, cy=c.top+c.height/2;
-  let best=null,bd=1e9;
+  const cand=[];
   for(const b of btns){ if(b===cur) continue; const r=b.getBoundingClientRect();
     const dx=(r.left+r.width/2)-cx, dy=(r.top+r.height/2)-cy;
-    const fwd=dir.x?dx*dir.x:dy*dir.y, lat=dir.x?Math.abs(dy):Math.abs(dx);
+    const fwd=dir.x?dx*dir.x:dy*dir.y;
     if(fwd<=1) continue;
-    const score=fwd+lat*2.5;
-    if(score<bd){ bd=score; best=b; } }
-  const t=best||cur; t.focus(); t.classList.add('kbfocus'); t.scrollIntoView({block:'nearest'});
+    const lat=dir.x?Math.abs(dy):Math.abs(dx);
+    const ovl=dir.x ? Math.min(c.bottom,r.bottom)-Math.max(c.top,r.top)     // 横移動＝縦の重なり（同じ行）
+                    : Math.min(c.right,r.right)-Math.max(c.left,r.left);    // 縦移動＝横の重なり（同じ列）
+    cand.push({b,fwd,lat,ovl}); }
+  if(!cand.length){ go(cur); return; }
+  const inLine=cand.filter(x=>x.ovl>4);                                     // まず同じ行/列を優先＝視覚と一致
+  if(!inLine.length && dir.x){ go(cur); return; }                           // 横移動は行内のみ（行替えは↑↓で）
+  const pool=inLine.length?inLine:cand;
+  pool.sort(inLine.length ? (a,b2)=>(a.fwd-b2.fwd)||(a.lat-b2.lat)
+                          : (a,b2)=>(a.fwd+a.lat*3)-(b2.fwd+b2.lat*3));     // ↑↓で列に無ければ前方最寄り
+  go(pool[0].b);
 }
 addEventListener('pointerdown',()=>document.querySelectorAll('.kbfocus').forEach(x=>x.classList.remove('kbfocus')),true);
 function setMode(m){ S.mode=m;   // 立体・平面 共通のモード（置く/壊す/情報）
