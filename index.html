@@ -440,7 +440,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.87';
+const APP_VERSION = '4.88';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -801,7 +801,7 @@ function initThree(){
   g.fillStyle='#6f6f6f'; g.fillRect(0,15,16,1); g.fillRect(15,0,1,16); // 下/右＝暗い縁
   const tex=new THREE.CanvasTexture(c); tex.magFilter=THREE.NearestFilter; tex.minFilter=THREE.NearestFilter;
   mat = new THREE.MeshLambertMaterial({map:tex});
-  ghostMat = new THREE.MeshLambertMaterial({map:tex, transparent:true, opacity:0.22, depthWrite:false});
+  ghostMat = new THREE.MeshLambertMaterial({map:tex, transparent:true, opacity:0.12, depthWrite:false});   // 選択層より上（v4.88 0.22→0.12）
   dimMat      = new THREE.MeshLambertMaterial({map:tex, transparent:true, opacity:0.13, depthWrite:false});  // form強調：非該当（作業面下）
   ghostDimMat = new THREE.MeshLambertMaterial({map:tex, transparent:true, opacity:0.05, depthWrite:false});  // form強調：非該当（作業面上）
   previewMat = new THREE.MeshBasicMaterial({color:0xF0D48C, transparent:true, opacity:0.5, depthWrite:false});
@@ -814,12 +814,12 @@ function initThree(){
   inspectMat      = new THREE.LineBasicMaterial({color:0x8ff0ff, transparent:true, opacity:1, depthTest:false});  // 選択（範囲/起点）枠
   clipSrcMat      = new THREE.LineBasicMaterial({color:0xffd24a, transparent:true, opacity:1, depthTest:false});  // 切取/コピー元
   clipDstMat      = new THREE.LineBasicMaterial({color:0x7ad79a, transparent:true, opacity:1, depthTest:false});  // 貼り付け先
-  outlineGhostMat = new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.11});
+  outlineGhostMat = new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:0.06});
   hingeMat        = new THREE.MeshBasicMaterial({color:0x9aa7b0});                                 // open trapdoor の蝶番(開閉軸)＝棒
-  hingeGhostMat   = new THREE.MeshBasicMaterial({color:0x9aa7b0, transparent:true, opacity:0.3});
+  hingeGhostMat   = new THREE.MeshBasicMaterial({color:0x9aa7b0, transparent:true, opacity:0.16});
   HINGE_GEO       = new THREE.BoxGeometry(1, 0.12, 0.12);   // 蝶番(開閉軸)＝ドアの蝶番バーと同じ太さ
   orientMat       = new THREE.LineBasicMaterial({color:0xffd24a, transparent:true, opacity:0.9});  // full の facing＝正面に×
-  orientGhostMat  = new THREE.LineBasicMaterial({color:0xffd24a, transparent:true, opacity:0.3});
+  orientGhostMat  = new THREE.LineBasicMaterial({color:0xffd24a, transparent:true, opacity:0.16});
   axisFaceMat      = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.22, depthWrite:false, side:THREE.DoubleSide}); // axis の貫く2面を薄く
   axisFaceGhostMat = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.08, depthWrite:false, side:THREE.DoubleSide});
   target = new THREE.Vector3();
