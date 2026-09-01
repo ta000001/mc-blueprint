@@ -153,9 +153,9 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .seg[data-clip="copy"]{outline:2px dashed #8ff0ff;outline-offset:-2px;z-index:3}
 #grid[data-clip="cut"]{outline:2px dashed #ffd24a;outline-offset:3px}
 #grid[data-clip="copy"]{outline:2px dashed #8ff0ff;outline-offset:3px}
-.gridbox{position:relative;flex:1;min-width:0;display:flex}
-#gridwrap{flex:1;min-width:0;overflow:auto;margin-bottom:46px;background:var(--panel);border:1px solid var(--rule);
-  border-radius:4px;padding:38px 6px 6px;max-height:60vh;min-height:300px;-webkit-overflow-scrolling:touch;touch-action:none}
+.gridbox{position:relative;flex:1;min-width:0;display:flex;background:var(--panel);border:1px solid var(--rule);border-radius:4px}
+#gridwrap{flex:1;min-width:0;overflow:auto;margin-bottom:46px;
+  padding:38px 6px 6px;max-height:60vh;min-height:300px;-webkit-overflow-scrolling:touch;touch-action:none}
 #grid{display:grid;width:max-content;margin:0 auto;border-left:1px solid var(--rule);border-top:1px solid var(--rule);--hcol:#ff8a8a;--vcol:#8aa8ff}
 .cell{border-right:1px solid #22302f;border-bottom:1px solid #22302f;background:#131c1e;position:relative;
   display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:8px;line-height:1;color:#0e1416;text-align:center;font-family:ui-monospace,monospace}
@@ -440,7 +440,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.90';
+const APP_VERSION = '4.91';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1605,7 +1605,7 @@ function infoPartsOf(v){   // 選択情報の行配列（raw は block/和名、
     for(const {name} of shownPropsRaw(n.raw)) if(n.props[name]!=null) parts.push(dispProp(name)+'='+n.props[name]); return parts; }
   const form=formOf(n), parts=['form='+form, 'slot='+n.r];
   for(const {name} of shownProps(form)) if(n.props[name]!=null) parts.push(dispProp(name)+'='+n.props[name]); return parts; }
-const dhwLine=(key)=>{ const a=String(key).split(',').map(Number); return 'd,h,w='+a[2]+','+a[1]+','+((S.dims.x-1)-a[0]); };   // 構造原点基準の RelPos（JSON 出力の値と同一）
+const dhwLine=(key)=>{ const a=String(key).split(',').map(Number); return '(d,h,w)=('+a[2]+','+a[1]+','+((S.dims.x-1)-a[0])+')'; };   // 構造原点基準の RelPos（JSON 出力の値と同一）
 function showInfo(v,key){   // タップしたブロックの情報を右下に表示
   $('#inspect').innerHTML=(key?dhwLine(key)+'<br>':'')+infoPartsOf(v).join('<br>'); $('#inspect').classList.add('on'); }
 
