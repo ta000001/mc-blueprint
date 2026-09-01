@@ -440,7 +440,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '4.86';
+const APP_VERSION = '4.87';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1141,6 +1141,18 @@ function bindGestures(el){
     const k=K(a.x,S.layer,a.z), val=S.vox.get(k);
     if(val) showInfo(norm(val)); else $('#inspect').classList.remove('on');
     S.inspect = val ? k : null; updatePickBtns(); syncVox(); }
+  function pickBlockAt(cx,cy){   // 表示中ソリッド（選択層以下＋強調中）へ raycast（break/place と同じ到達範囲・v4.87）
+    const r=el.getBoundingClientRect();
+    ndc.set(((cx-r.left)/r.width)*2-1, -((cy-r.top)/r.height)*2+1);
+    ray.setFromCamera(ndc,camera);
+    const hit=ray.intersectObjects(editMeshes.filter(m=>m.count),false)[0];
+    if(!hit) return null;
+    const o=hit.object.userData.items && hit.object.userData.items[hit.instanceId];
+    return o ? o : null; }
+  function sel3DBlock(o){   // 任意層のブロックを直接選択（選択枠・S.sel の層もそのブロックに合わせる）
+    const p=o.p;
+    S.sel={a:{h:p[0],v:p[2]}, b:{h:p[0],v:p[2]}, layer:p[1], plane:'WD'};
+    showInfo(norm(o.v)); S.inspect=K(p[0],p[1],p[2]); updatePickBtns(); syncVox(); }
   const up=e=>{
     const was=pts.get(e.pointerId); pts.delete(e.pointerId);
     if(pts.size<2){ pinch=0; mid=null; }
@@ -1149,7 +1161,13 @@ function bindGestures(el){
       if(tap.mode==='break'){
         doTap(x,y,'break'); lastUp=null;    // 削除は即時（ダブル/壊すモード）
       } else if(tap.mode==='select'){
-        const c=planeCell(x,y); if(c){ if(S.cellClip) set3DSel(c,c); else set3DSel(c,c); } else { S.sel=null; $('#inspect').classList.remove('on'); S.inspect=null; syncVox(); } lastUp={x,y,t:Date.now()};   // 単セル選択/配置位置。lastUp=ダブルタップ取消用
+        if(S.cellClip){ const c=planeCell(x,y); if(c) set3DSel(c,c); }   // クリップ中＝作業面上の貼り付け位置指定（従来どおり）
+        else { const o=pickBlockAt(x,y);                                  // 通常選択＝置く/壊すと同様、選択層以下のブロックへ直接タップ
+          if(o) sel3DBlock(o);
+          else { const c=planeCell(x,y);
+            if(c) set3DSel(c,c);
+            else { S.sel=null; $('#inspect').classList.remove('on'); S.inspect=null; syncVox(); } } }
+        lastUp={x,y,t:Date.now()};   // lastUp=ダブルタップ取消用
       } else {                              // 置く単発はダブル判定のため遅延（ダブルなら次のdownで取消）
         lastUp={x,y,t:Date.now()};
         clearTimeout(pendingPlace);
