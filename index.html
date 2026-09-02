@@ -441,7 +441,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '5.03';
+const APP_VERSION = '5.04';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1012,11 +1012,11 @@ function syncVox(){
   outlineMeshes.forEach(m=>{ scene.remove(m); m.geometry.dispose(); });
   labelMeshes.forEach(m=>scene.remove(m));
   editMeshes=[]; ghostMeshes=[]; outlineMeshes=[]; labelMeshes=[];
-  const hl=S.hlForm, hlForm=hl?formOf({s:S.shape,ot:S.other}):null;   // 選択 form を強調・他を減光
+  const hl=S.hlForm;   // 選択 form×slot を強調・他を減光
   const below={}, above={}, belowDim={}, aboveDim={}, belowCells=[], aboveCells=[], belowTrap=[], aboveTrap=[], belowFull=[], aboveFull=[], labelSet=[];
   S.vox.forEach((val,k)=>{ const v=norm(val), p=k.split(',').map(Number), gk=geoKey(v), up=p[1]>S.layer;
     labelSet.push({p,v});   // ラベルは作業面の上下に関わらず全ブロック対象
-    const match = !hl || formOf(v)===hlForm;
+    const match = !hl || hlMatch(v);
     if(!match){ (up?aboveDim:belowDim)[gk] ??= []; (up?aboveDim:belowDim)[gk].push({p,v}); return; }   // 非該当は減光メッシュのみ（枠/詳細なし）
     const solid = hl || !up;   // 強調中は該当を層に関わらず常にソリッド／通常は作業面下のみ
     (solid?below:above)[gk] ??= []; (solid?below:above)[gk].push({p,v});
@@ -1268,7 +1268,7 @@ function renderGrid(){
   const srcR=(cc&&cc.srcPlane===S.plane&&cc.srcLayer===layer)?cc.rect:null;                                   // 切取/コピー元
   const dstR=(cc&&S.mode==='info'&&S.sel&&S.sel.plane===S.plane&&S.sel.layer===layer)?{x0:S.sel.a.h,x1:S.sel.a.h+cc.w-1,z0:S.sel.a.v,z1:S.sel.a.v+cc.h-1}:null;  // 移動先
   const inR=(R,h,v)=>R&&h>=R.x0&&h<=R.x1&&v>=R.z0&&v<=R.z1;
-  const hlF = S.hlForm ? formOf({s:S.shape,ot:S.other}) : null;   // 選択 form 以外を減光
+  const hlF = S.hlForm;   // 選択 form×slot 以外を減光
   g.style.gridTemplateColumns='repeat('+dimH+','+S.cell+'px)';
   g.style.setProperty('--hcol',P.hcol); g.style.setProperty('--vcol',P.vcol);   // 原点マーカーの軸色
   g.innerHTML='';
@@ -1286,7 +1286,7 @@ function renderGrid(){
     if(inR(srcR,hh,vv)) c.dataset.clipsrc=cc.mode;                // 切取/コピー元
     if(inR(dstR,hh,vv)) c.dataset.clipdst=1;                      // 貼り付け先プレビュー
     if(S.labels && v && S.cell>=9){ const lab=labelOf(v); if(lab){ c.textContent=lab; c.style.fontSize=Math.max(6,Math.min(9,Math.floor(S.cell*0.5)))+'px'; } }   // 聖典 form 名（FULLBLOCK除外）
-    if(hlF && v && formOf(v)!==hlF) c.dataset.dim=1;   // 選択 form 以外を減光
+    if(hlF && v && !hlMatch(v)) c.dataset.dim=1;   // 選択 form×slot 以外を減光
     c.dataset.below = (layer>0 && S.vox.has(planeKeyAt(hh,vv,layer-1)) && !v)?1:0;
     c.dataset.cx=(hh+1)%4===0?1:0; c.dataset.cz=(vv+1)%4===0?1:0;
     c.dataset.origin=(hh===oh&&vv===0)?1:0;    // 原点(手前左=ファイル w0/d0)にしるし（左=縦軸色・下=横軸色）
@@ -1473,7 +1473,10 @@ function setLabels(v){ S.labels=v;   // 3D/2D 共通のラベル表示
   syncVox(); if(S.view==='plan') renderGrid(); }
 $('#b-label').onclick = ()=>setLabels(!S.labels);
 $('#pl-label').onclick = ()=>setLabels(!S.labels);
-function setHl(v){ S.hlForm=v;   // 選択中 form を強調・他を減光（3D/2D 共通）
+function hlMatch(val){ const n=norm(val);   // 強調対象＝form×slot 一致（FIXED は同一ブロック id）・v5.04
+  if(S.shape==='raw') return n.s==='raw' && n.raw===S.raw;
+  return n.s!=='raw' && formOf(n)===formOf({s:S.shape,ot:S.other}) && n.r===S.role; }
+function setHl(v){ S.hlForm=v;   // 選択中 form×slot を強調・他を減光（3D/2D 共通）
   ['#b-hl','#pl-hl'].forEach(id=>{ const b=$(id); if(b) b.setAttribute('aria-pressed', v); });
   syncVox(); if(S.view==='plan') renderGrid(); }
 $('#b-hl').onclick = ()=>setHl(!S.hlForm);
@@ -1839,7 +1842,7 @@ function renderRoles(){   // 役割バー：現在 form の役割 FORM_1.. の�
       const b=document.createElement('button'); b.className='btn'; b.textContent=role; addAlias(b, role);   // 別名を下に小さく
       b.style.borderColor=roleHex(role); b.style.background=on?roleHex(role):''; b.style.color=on?'#10171A':'';
       b.setAttribute('aria-pressed',on);
-      b.onclick=()=>{ S.role=role; save(); renderRoles(); };
+      b.onclick=()=>{ S.role=role; save(); renderRoles(); if(S.hlForm){ syncVox(); if(S.view==='plan') renderGrid(); } };
       b.ondblclick=()=>editAlias(role);   // ダブルクリックで別名登録
       el.appendChild(b);
     }
