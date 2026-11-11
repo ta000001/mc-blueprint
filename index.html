@@ -276,6 +276,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn c-cut">切り取り</button>
     <button class="btn c-rot" disabled>↻ 回転</button>
     <button class="btn c-paste">貼り付け</button>
+    <button class="btn c-trim">✂ トリミング</button>
   </div>
   <div class="bar sep" id="form-space" data-label="form"></div>
   <div class="bar sep" id="dir-space" data-label="property"></div>
@@ -319,6 +320,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn c-cut">切り取り</button>
     <button class="btn c-rot" disabled>↻ 回転</button>
     <button class="btn c-paste">貼り付け</button>
+    <button class="btn c-trim">✂ トリミング</button>
   </div>
   <div class="bar sep" data-label="layer action">
     <button class="btn" id="p-lcopy">層をコピー</button>
@@ -441,7 +443,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '5.05';
+const APP_VERSION = '5.06';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1588,6 +1590,7 @@ const KEYS_HELP = `
     <div class="hrow">・<b>Ctrl+Z</b>=元に戻す / <b>Ctrl+Shift+Z</b>・<b>Ctrl+Y</b>=進む</div>
     <div class="hrow">・<b>Ctrl+C/X</b>=選択範囲をコピー/切取　・<b>Ctrl+V</b>=貼り付け　・<b>R</b>=クリップ回転</div>
     <div class="hrow">・<b>F</b>=選択範囲に配置　・<b>Delete</b>=選択範囲を消去　・<b>Esc</b>=モーダル閉→クリップ取消→選択解除</div>
+    <div class="hrow">・<b>T</b>=トリミング（選択範囲でクロップ・全層×内容フィット＝選択矩形の外を削り、残りを原点へ寄せて最小の箱に縮小）</div>
     <div class="hrow">・<b>W/A/S/D</b>=選択枠を奥/左/手前/右へ移動　・<b>Space</b>=上 / <b>Shift</b>=下（選択モード・選択層以下まで。クリップ中は貼り付け位置）</div>
     <div class="hrow">・ブロックの移動＝<b>Ctrl+X</b>（切取）→ 枠を移動 → <b>Ctrl+V</b>（貼付）</div>
   </div>`;
@@ -1663,6 +1666,7 @@ addEventListener('keydown', e=>{
   else if(k==='Shift'){ moveSel(0,-1,0); }
   else if(k==='r'||k==='R'){ if(S.cellClip) rotateClip(); }
   else if(k==='f'||k==='F') fillSel();
+  else if(k==='t'||k==='T') trimToSel();
   else if(k==='Delete'||k==='Backspace'){ e.preventDefault(); if(S.sel) clearSel(); }
   else if(k==='p'||k==='P'){ if(S.view==='plan'){ const o=['WD','WH','DH']; setPlane(o[(o.indexOf(S.plane)+1)%3]); } }
   else if(k==='PageUp'||k==='PageDown'){ e.preventDefault(); const d=(k==='PageUp')?1:-1;
@@ -1929,8 +1933,28 @@ function fillSel(){ const r=selRange(); if(!r){ status('セルを選択してく
 function clearSel(){ const r=selRange(); if(!r){ status('セルを選択してください'); return; } pushHist();
   for(let h=r.x0;h<=r.x1;h++) for(let z=r.z0;z<=r.z1;z++) S.vox.delete(planeKeyP(r.pl,h,z,r.layer));   // 選択範囲を空に
   changed(); redrawSel(); renderSpine(); status('選択範囲を消去'); }
+function trimToSel(){   // トリミング（選択範囲でクロップ・全軸）：面内2軸=選択矩形で切り、直交軸は全層対象→残存の内容境界ボックスで全軸フィット、原点(0,0,0)へ寄せて dims 縮小
+  const r=selRange(); if(!r){ status('セルを選択してください'); return; }
+  const P=PLANES[r.pl];   // r.x0..x1=P.h方向 / r.z0..z1=P.v方向（直交 P.l は全層対象＝選択矩形を全層に適用）
+  const kept=new Map();
+  S.vox.forEach((val,k)=>{ const a=k.split(',').map(Number), c={x:a[0],y:a[1],z:a[2]};
+    if(c[P.h]>=r.x0 && c[P.h]<=r.x1 && c[P.v]>=r.z0 && c[P.v]<=r.z1) kept.set(k,val); });
+  if(!kept.size){ status('選択範囲にブロックがありません'); return; }
+  let mnx=1/0,mny=1/0,mnz=1/0,mxx=-1/0,mxy=-1/0,mxz=-1/0;   // 残存ブロックの内容境界ボックス（全軸）
+  kept.forEach((_v,k)=>{ const a=k.split(',').map(Number);
+    if(a[0]<mnx)mnx=a[0]; if(a[0]>mxx)mxx=a[0]; if(a[1]<mny)mny=a[1]; if(a[1]>mxy)mxy=a[1]; if(a[2]<mnz)mnz=a[2]; if(a[2]>mxz)mxz=a[2]; });
+  pushHist();
+  const next=new Map();   // 内容を原点(0,0,0)へ寄せる
+  kept.forEach((val,k)=>{ const a=k.split(',').map(Number); next.set(K(a[0]-mnx,a[1]-mny,a[2]-mnz),val); });
+  S.vox=next; S.sel=null; S.inspect=null; S.cellClip=null; updateCellClipUI();
+  S.lay={x:0,z:0}; S.layer=0;
+  applyDims({x:mxx-mnx+1, y:mxy-mny+1, z:mxz-mnz+1});   // dims 縮小＋再構築（vox は寄せ済みなので間引かれない）
+  setPlanLayer(0);
+  status('トリミング: W'+(mxx-mnx+1)+'×H'+(mxy-mny+1)+'×D'+(mxz-mnz+1));
+}
 document.querySelectorAll('.c-fill').forEach(b=>b.onclick=fillSel);
 document.querySelectorAll('.c-clear').forEach(b=>b.onclick=clearSel);
+document.querySelectorAll('.c-trim').forEach(b=>b.onclick=trimToSel);
 document.querySelectorAll('.c-copy').forEach(b=>b.onclick=()=>{ if(S.cellClip&&S.cellClip.mode==='copy') cancelCellClip(); else grabCells('copy'); });   // コピー状態ならキャンセル
 document.querySelectorAll('.c-cut').forEach(b=>b.onclick=()=>{ if(S.cellClip&&S.cellClip.mode==='cut') cancelCellClip(); else grabCells('cut'); });      // 切取状態ならキャンセル
 /* ---- クリップボードの90°回転（面の法線＝層軸まわり・時計回り）。位置と向き(facing/axis)を同時に回す ---- */
