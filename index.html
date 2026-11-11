@@ -441,7 +441,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '5.04';
+const APP_VERSION = '5.05';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1412,8 +1412,16 @@ function blockRecs(fieldFn){   // S.vox を structure レコード(1行文字列
       return '  '+JSON.stringify(rec)+',\n  '+JSON.stringify(up); }
     return '  '+JSON.stringify(rec); });
 }
-function structJson(name, recs){ const d=S.dims;   // structure(size=[D,H,W]) の外枠
+function footprintFp(){   // 実ボクセルの境界ボックスを FP 正準型(RECT)で返す。出力座標 d=z,h=y,w=(W-1)-x（JSON の pos と同一）。空なら null
+  const W=S.dims.x; let mnD=1/0,mnH=1/0,mnW=1/0,mxD=-1/0,mxH=-1/0,mxW=-1/0,n=0;
+  S.vox.forEach((_v,k)=>{ const a=k.split(',').map(Number), d=a[2], h=a[1], w=(W-1)-a[0];
+    if(d<mnD)mnD=d; if(d>mxD)mxD=d; if(h<mnH)mnH=h; if(h>mxH)mxH=h; if(w<mnW)mnW=w; if(w>mxW)mxW=w; n++; });
+  if(!n) return null;
+  return {shape:'RECT', min:{d:mnD,h:mnH,w:mnW}, max:{d:mxD,h:mxH,w:mxW}};   // mcbp はボクセル矩形グリッド＝常に RECT（CIRCLE なし）
+}
+function structJson(name, recs){ const d=S.dims, fp=footprintFp();   // structure(size=[D,H,W]) の外枠＋footprint(FP正準型)
   return '{\n "name": '+JSON.stringify(name)+',\n "size": ['+d.z+', '+d.y+', '+d.x+'],\n'
+    +(fp?' "footprint": '+JSON.stringify(fp)+',\n':'')   // city-blueprint が structure の設置範囲/重なり判定に使う
     +' "blocks": [\n'+recs.join(',\n')+(recs.length?'\n':'')+' ]\n}';
 }
 function buildJson(mode){
