@@ -449,7 +449,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '5.11';
+const APP_VERSION = '5.12';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -689,16 +689,14 @@ function setDims(nd){
   buildFloor(); buildOrigin(); buildPlane(); frameCamera(); changed(); renderGrid(); renderSpine(); setLayer(S.layer);
 }
 
-function followSelL(axisChar,d){   // 作業層を d だけ動かした時、同じ層軸の選択ボックスを追従（厚み保持・端でクランプ）
-  if(!d || !S.sel || PLANES[S.sel.plane].l!==axisChar) return;
-  const n=S.dims[axisChar], lr=selLR(); let l0=lr[0]+d, l1=lr[1]+d;
-  if(l0<0){ l1-=l0; l0=0; } if(l1>n-1){ l0-=(l1-(n-1)); l1=n-1; }
-  S.sel.l0=l0; S.sel.l1=l1; S.sel.layer=l0; updateLRangeUI();
+function extendSelToLayer(axisChar,newL){   // 作業層を動かすと「アンカー(最後にクリック/ドラッグした面)〜現在層」を範囲指定に
+  if(!S.sel || PLANES[S.sel.plane].l!==axisChar) return;
+  const a=(S.sel.anchorL==null?newL:S.sel.anchorL);
+  S.sel.l0=Math.min(a,newL); S.sel.l1=Math.max(a,newL); S.sel.layer=S.sel.l0; updateLRangeUI();
 }
 function setLayer(v,follow){
-  const old=S.layer;
   S.layer = clamp(v,0,S.dims.y-1);
-  if(follow) followSelL('y', S.layer-old);   // 高さスライダー等に選択ボックスを追従
+  if(follow) extendSelToLayer('y', S.layer);   // 高さスライダー等でアンカー〜現在層を範囲化
   $('#plane').value = S.layer;
   $('#y3').textContent = 'H'+String(S.layer).padStart(2,'0');   // 立体スライダのラベル（平面の y2 は renderSpine が担当）
   buildPlane(); syncVox(); renderGrid(); renderSpine();
@@ -1158,7 +1156,7 @@ function bindGestures(el){
   });
   function set3DSel(a,b,l0,l1){   // a,b:{x,z}作業面上 → S.sel(WD基準)。l0/l1=立体範囲(省略=作業層)。情報は起点セルのみ
     const L0=(l0==null?S.layer:Math.min(l0,l1)), L1=(l1==null?S.layer:Math.max(l0,l1));
-    S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:L0, plane:'WD', l0:L0, l1:L1};
+    S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:L0, plane:'WD', l0:L0, l1:L1, anchorL:L0};   // anchorL=クリック/ドラッグした面（スライダーで範囲化の基点）
     const k=K(a.x,L0,a.z), val=S.vox.get(k);
     if(val) showInfo(norm(val), k); else $('#inspect').classList.remove('on');
     S.inspect = val ? k : null; updatePickBtns(); updateLRangeUI(); syncVox(); }
@@ -1172,7 +1170,7 @@ function bindGestures(el){
     return o ? o : null; }
   function sel3DBlock(o){   // 任意層のブロックを直接選択（選択枠・S.sel の層もそのブロックに合わせる）
     const p=o.p;
-    S.sel={a:{h:p[0],v:p[2]}, b:{h:p[0],v:p[2]}, layer:p[1], plane:'WD', l0:p[1], l1:p[1]};
+    S.sel={a:{h:p[0],v:p[2]}, b:{h:p[0],v:p[2]}, layer:p[1], plane:'WD', l0:p[1], l1:p[1], anchorL:p[1]};   // anchorL=選んだブロックの層（スライダーで範囲化の基点）
     S.inspect=K(p[0],p[1],p[2]); showInfo(norm(o.v), S.inspect); updatePickBtns(); updateLRangeUI(); syncVox(); }
   const up=e=>{
     const was=pts.get(e.pointerId); pts.delete(e.pointerId);
@@ -1249,7 +1247,7 @@ function planeKeyP(plane,h,v,layer){ const P=PLANES[plane], c={}; c[P.h]=h; c[P.
 const planeKey = (h,v)=> planeKeyAt(h,v,curLayer());
 function setPlanLayer(v,follow){ const P=PLANES[S.plane], n=S.dims[P.l]; v=clamp(v,0,n-1);
   if(P.l==='y') setLayer(v,follow);                        // H は立体の作業面と共有
-  else { const old=S.lay[P.l]; S.lay[P.l]=v; if(follow) followSelL(P.l, v-old); renderGrid(); renderSpine(); } }
+  else { S.lay[P.l]=v; if(follow) extendSelToLayer(P.l, v); renderGrid(); renderSpine(); } }
 function layerCounts(){ const P=PLANES[S.plane], n=S.dims[P.l], c=new Array(n).fill(0), idx=AXI[P.l];
   S.vox.forEach((val,k)=>{ const a=+k.split(',')[idx]; if(a<n) c[a]++; }); return c; }   // 現平面の層軸ごとの数
 function setPlane(p){ S.plane=p; S.manualZoom=false;
@@ -1340,7 +1338,7 @@ function renderGrid(){
       c.dataset.preview=(h>=x0&&h<=x1&&v>=z0&&v<=z1)?kind:''; } }
   function selectRange(a,b,l0,l1){   // 範囲選択。l0/l1=立体範囲(省略=作業層)。情報は開始セル(a=ドラッグ開始)のみ表示
     const L=curLayer(), L0=(l0==null?L:Math.min(l0,l1)), L1=(l1==null?L:Math.max(l0,l1));
-    S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:L0, plane:S.plane, l0:L0, l1:L1};
+    S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:L0, plane:S.plane, l0:L0, l1:L1, anchorL:L0};   // anchorL=クリック/ドラッグした面（スライダーで範囲化の基点）
     const k=planeKey(a.x,a.z), val=S.vox.get(k), pi=$('#pinspect');
     if(val){ pi.innerHTML=dhwLine(k)+'<br>'+infoPartsOf(val).join('<br>'); pi.classList.add('on'); S.inspect=k; }
     else { pi.classList.remove('on'); S.inspect=null; }
@@ -1620,7 +1618,7 @@ const KEYS_HELP = `
     <div class="hrow">・<b>F</b>=選択範囲に配置　・<b>Delete</b>=選択範囲を消去　・<b>Esc</b>=モーダル閉→クリップ取消→選択解除</div>
     <div class="hrow">・<b>立体選択</b>=矩形を選ぶと下の「<b>◯範囲</b>」ステッパー（下端〜上端）で高さ(直交軸)を指定＝<b>立体ボックス</b>に。置く/壊す/トリミング/コピー/切取/貼付/回転は全てこのボックス単位。</div>
     <div class="hrow">・<b>範囲ドラッグ中のホイール</b>=上端を伸縮 / <b>Shift+ホイール</b>=下端を伸縮（指を離すとその立体範囲で確定）</div>
-    <div class="hrow">・<b>高さスライダー/上下ボタン/PgUp・Dn/スパイン</b>で作業層を動かすと、<b>選択ボックスも追従</b>（厚み保持・端でクランプ。箱の相対移動は W/A/S/D・Space/Shift）</div>
+    <div class="hrow">・<b>高さ範囲の指定</b>＝面をクリック/ドラッグで選ぶ（＝アンカー）→ <b>高さスライダー/上下ボタン/PgUp・Dn/スパイン</b>で作業層を動かすと、<b>アンカー〜現在層</b>が範囲になる（上にも下にも伸ばせる）。箱の平行移動は W/A/S/D・Space/Shift</div>
     <div class="hrow">・<b>T</b>=トリミング（選択ボックスでクロップ＝ボックス外を削り、残りを原点へ寄せて最小の箱に縮小。ボタンは「others」バー）</div>
     <div class="hrow">・<b>W/A/S/D</b>=選択枠を奥/左/手前/右へ移動　・<b>Space</b>=上 / <b>Shift</b>=下（選択モード・単層は選択層以下まで。クリップ中は貼り付け位置）</div>
     <div class="hrow">・ブロックの移動＝<b>Ctrl+X</b>（切取）→ 枠を移動 → <b>Ctrl+V</b>（貼付）</div>
@@ -1640,6 +1638,7 @@ function moveSel(dx,dy,dz){   // 引数は内部軸(x,y,z)の増分（A=左=w−
     const yMax = P.l==='y' ? nl : (P.v==='y' ? Math.max(...nv) : (P.h==='y' ? Math.max(...nh) : 0));
     if(yMax>S.layer){ status('選択層より上へは移動できません'); return; } }
   S.sel.a.h=nh[0]; S.sel.b.h=nh[1]; S.sel.a.v=nv[0]; S.sel.b.v=nv[1]; S.sel.layer=nl; S.sel.l0=nl0; S.sel.l1=nl1;
+  if(dL && S.sel.anchorL!=null) S.sel.anchorL+=dL;   // 箱を層軸移動したらアンカーも追随（スライダー範囲化の基点を保つ）
   if(!S.cellClip){   // 枠が乗ったセルの情報を追随表示（クリップ中は貼り付け位置なので情報は触らない）
     const k=planeKeyP(S.sel.plane, S.sel.a.h, S.sel.a.v, S.sel.layer), val=S.vox.get(k);
     S.inspect = val ? k : null;
