@@ -173,6 +173,11 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 .cell[data-preview="break"]{box-shadow:inset 0 0 0 2px #c0533f!important;z-index:3}
 .cell[data-preview="select"]{box-shadow:inset 0 0 0 2px #8ff0ff!important;z-index:3}
 .cell[data-sel="1"]{background:rgba(143,240,255,.16);box-shadow:inset 0 0 0 1px rgba(143,240,255,.5)}
+.lrange-bar{align-items:center;gap:4px}
+.lrange-bar .lrl{color:var(--dim);font-size:12px;margin-right:2px}
+.lrange-bar .lrv{min-width:1.7em;text-align:center;color:var(--brass);font-weight:700}
+.lrange-bar .lrsep,.lrange-bar .lrh{color:var(--dim);font-size:11px;margin:0 2px}
+.lrange-bar .btn{padding:4px 9px}
 .cell[data-inspect="1"]{box-shadow:inset 0 0 0 3px #8ff0ff!important;z-index:5}
 .cell[data-clipsrc="cut"]{outline:2px dashed #ffd24a;outline-offset:-2px;z-index:4}
 .cell[data-clipsrc="copy"]{outline:2px dashed #8ff0ff;outline-offset:-2px;z-index:4}
@@ -276,12 +281,12 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn c-cut">切り取り</button>
     <button class="btn c-rot" disabled>↻ 回転</button>
     <button class="btn c-paste">貼り付け</button>
-    <button class="btn c-trim">✂ トリミング</button>
   </div>
+  <div class="bar lrange-bar sep hidden" data-label="立体範囲"></div>
   <div class="bar sep" id="form-space" data-label="form"></div>
   <div class="bar sep" id="dir-space" data-label="property"></div>
   <div class="bar sep" id="roles-space" data-label="slot"></div>
-  <div class="bar sep" data-label="reset"><button class="btn" id="b-clear">すべて消去</button></div>
+  <div class="bar sep" data-label="others"><button class="btn c-trim">✂ トリミング</button><button class="btn" id="b-clear">すべて消去</button></div>
   <p class="note">合計 <span id="tot">0</span></p>
 </section>
 
@@ -320,8 +325,8 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
     <button class="btn c-cut">切り取り</button>
     <button class="btn c-rot" disabled>↻ 回転</button>
     <button class="btn c-paste">貼り付け</button>
-    <button class="btn c-trim">✂ トリミング</button>
   </div>
+  <div class="bar lrange-bar sep hidden" data-label="立体範囲"></div>
   <div class="bar sep" data-label="layer action">
     <button class="btn" id="p-lcopy">層をコピー</button>
     <button class="btn" id="p-lpaste">層を貼り付け</button>
@@ -335,6 +340,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
   <div class="bar sep" id="form-plan" data-label="form"></div>
   <div class="bar sep" id="dir-plan" data-label="property"></div>
   <div class="bar sep" id="roles-plan" data-label="slot"></div>
+  <div class="bar sep" data-label="others"><button class="btn c-trim">✂ トリミング</button></div>
 </section>
 
 <section id="v-json" class="hidden">
@@ -443,7 +449,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '5.06';
+const APP_VERSION = '5.07';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1033,17 +1039,17 @@ function syncVox(){
   for(const gk in aboveDim){ const im=makeInstShape(aboveDim[gk],geoFor(gk,aboveDim[gk][0].v),ghostDimMat); scene.add(im); ghostMeshes.push(im); }
   if(S.mode==='info' && S.inspect && S.vox.has(S.inspect)){ const ip=S.inspect.split(',').map(Number);   // 選択モード：起点ブロックを強調枠
     const o=makeOutline([ip],inspectMat); scene.add(o); outlineMeshes.push(o); }
-  if(S.mode==='info' && S.sel && S.sel.plane==='WD'){   // 選択範囲（作業面 WD 上）
-    const a=S.sel.a,b=S.sel.b,L=S.sel.layer,cs=[];
-    for(let h=Math.min(a.h,b.h);h<=Math.max(a.h,b.h);h++) for(let v=Math.min(a.v,b.v);v<=Math.max(a.v,b.v);v++) cs.push([h,L,v]);
+  if(S.mode==='info' && S.sel && S.sel.plane==='WD'){   // 選択範囲（作業面 WD 上・立体は上下2層を枠表示）
+    const a=S.sel.a,b=S.sel.b,lr=selLR(),cs=[], Ls=lr[0]===lr[1]?[lr[0]]:[lr[0],lr[1]];
+    for(const L of Ls) for(let h=Math.min(a.h,b.h);h<=Math.max(a.h,b.h);h++) for(let v=Math.min(a.v,b.v);v<=Math.max(a.v,b.v);v++) cs.push([h,L,v]);
     if(cs.length){ const o=makeOutline(cs,inspectMat); scene.add(o); outlineMeshes.push(o); } }
-  if(S.cellClip && S.cellClip.srcPlane==='WD'){   // 切取/コピー元
-    const r=S.cellClip.rect,L=S.cellClip.srcLayer,cs=[];
-    for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++) cs.push([h,L,v]);
+  if(S.cellClip && S.cellClip.srcPlane==='WD'){   // 切取/コピー元（立体は上下2層）
+    const r=S.cellClip.rect,dp=S.cellClip.depth||1,L0=S.cellClip.srcL0,cs=[], Ls=dp<=1?[L0]:[L0,L0+dp-1];
+    for(const L of Ls) for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++) cs.push([h,L,v]);
     const o=makeOutline(cs,clipSrcMat); scene.add(o); outlineMeshes.push(o); }
-  if(S.cellClip && S.mode==='info' && S.sel && S.sel.plane==='WD'){   // 貼り付け先プレビュー
-    const a=S.sel.a,L=S.sel.layer,cc=S.cellClip,cs=[];
-    for(let i=0;i<cc.w;i++) for(let j=0;j<cc.h;j++) cs.push([a.h+i,L,a.v+j]);
+  if(S.cellClip && S.mode==='info' && S.sel && S.sel.plane==='WD'){   // 貼り付け先プレビュー（立体は上下2層）
+    const a=S.sel.a,base=selLR()[0],dp=S.cellClip.depth||1,cc=S.cellClip,cs=[], Ls=dp<=1?[base]:[base,base+dp-1];
+    for(const L of Ls) for(let i=0;i<cc.w;i++) for(let j=0;j<cc.h;j++) cs.push([a.h+i,L,a.v+j]);
     const o=makeOutline(cs,clipDstMat); scene.add(o); outlineMeshes.push(o); }
   if(belowCells.length){ const o=makeOutline(belowCells,outlineMat); scene.add(o); outlineMeshes.push(o); }
   if(aboveCells.length){ const o=makeOutline(aboveCells,outlineGhostMat); scene.add(o); outlineMeshes.push(o); }
@@ -1142,10 +1148,10 @@ function bindGestures(el){
     }
   });
   function set3DSel(a,b){   // a,b:{x,z}作業面上 → S.sel(WD基準)。情報は起点セルのみ
-    S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:S.layer, plane:'WD'};
+    S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:S.layer, plane:'WD', l0:S.layer, l1:S.layer};
     const k=K(a.x,S.layer,a.z), val=S.vox.get(k);
     if(val) showInfo(norm(val), k); else $('#inspect').classList.remove('on');
-    S.inspect = val ? k : null; updatePickBtns(); syncVox(); }
+    S.inspect = val ? k : null; updatePickBtns(); updateLRangeUI(); syncVox(); }
   function pickBlockAt(cx,cy){   // 表示中ソリッド（選択層以下＋強調中）へ raycast（break/place と同じ到達範囲・v4.87）
     const r=el.getBoundingClientRect();
     ndc.set(((cx-r.left)/r.width)*2-1, -((cy-r.top)/r.height)*2+1);
@@ -1156,8 +1162,8 @@ function bindGestures(el){
     return o ? o : null; }
   function sel3DBlock(o){   // 任意層のブロックを直接選択（選択枠・S.sel の層もそのブロックに合わせる）
     const p=o.p;
-    S.sel={a:{h:p[0],v:p[2]}, b:{h:p[0],v:p[2]}, layer:p[1], plane:'WD'};
-    S.inspect=K(p[0],p[1],p[2]); showInfo(norm(o.v), S.inspect); updatePickBtns(); syncVox(); }
+    S.sel={a:{h:p[0],v:p[2]}, b:{h:p[0],v:p[2]}, layer:p[1], plane:'WD', l0:p[1], l1:p[1]};
+    S.inspect=K(p[0],p[1],p[2]); showInfo(norm(o.v), S.inspect); updatePickBtns(); updateLRangeUI(); syncVox(); }
   const up=e=>{
     const was=pts.get(e.pointerId); pts.delete(e.pointerId);
     if(pts.size<2){ pinch=0; mid=null; }
@@ -1171,7 +1177,7 @@ function bindGestures(el){
           if(o) sel3DBlock(o);
           else { const c=planeCell(x,y);
             if(c) set3DSel(c,c);
-            else { S.sel=null; $('#inspect').classList.remove('on'); S.inspect=null; syncVox(); } } }
+            else { S.sel=null; $('#inspect').classList.remove('on'); S.inspect=null; updateLRangeUI(); syncVox(); } } }
         lastUp={x,y,t:Date.now()};   // lastUp=ダブルタップ取消用
       } else {                              // 置く単発はダブル判定のため遅延（ダブルなら次のdownで取消）
         lastUp={x,y,t:Date.now()};
@@ -1265,10 +1271,11 @@ function renderGrid(){
   const P=PLANES[S.plane], g=$('#grid'), f=document.createDocumentFragment();
   const dimH=S.dims[P.h], dimV=S.dims[P.v], layer=curLayer();
   const nr=(a,b)=>({x0:Math.min(a.h,b.h),x1:Math.max(a.h,b.h),z0:Math.min(a.v,b.v),z1:Math.max(a.v,b.v)});
-  const selR=(S.mode==='info'&&S.sel&&S.sel.plane===S.plane&&S.sel.layer===layer)?nr(S.sel.a,S.sel.b):null;   // 選択範囲
+  const lr3=S.sel?selLR():null;
+  const selR=(S.mode==='info'&&S.sel&&S.sel.plane===S.plane&&lr3&&layer>=lr3[0]&&layer<=lr3[1])?nr(S.sel.a,S.sel.b):null;   // 選択範囲（立体=層レンジ内の層で表示）
   const cc=S.cellClip;
-  const srcR=(cc&&cc.srcPlane===S.plane&&cc.srcLayer===layer)?cc.rect:null;                                   // 切取/コピー元
-  const dstR=(cc&&S.mode==='info'&&S.sel&&S.sel.plane===S.plane&&S.sel.layer===layer)?{x0:S.sel.a.h,x1:S.sel.a.h+cc.w-1,z0:S.sel.a.v,z1:S.sel.a.v+cc.h-1}:null;  // 移動先
+  const srcR=(cc&&cc.srcPlane===S.plane&&layer>=cc.srcL0&&layer<=cc.srcL0+(cc.depth||1)-1)?cc.rect:null;        // 切取/コピー元（立体=depth層）
+  const dstR=(cc&&S.mode==='info'&&S.sel&&S.sel.plane===S.plane&&lr3&&layer>=lr3[0]&&layer<=lr3[0]+(cc.depth||1)-1)?{x0:S.sel.a.h,x1:S.sel.a.h+cc.w-1,z0:S.sel.a.v,z1:S.sel.a.v+cc.h-1}:null;  // 移動先（基点=l0・depth層）
   const inR=(R,h,v)=>R&&h>=R.x0&&h<=R.x1&&v>=R.z0&&v<=R.z1;
   const hlF = S.hlForm;   // 選択 form×slot 以外を減光
   g.style.gridTemplateColumns='repeat('+dimH+','+S.cell+'px)';
@@ -1317,12 +1324,12 @@ function renderGrid(){
     for(const c of $('#grid').children){ const h=+c.dataset.x, v=+c.dataset.z;
       c.dataset.preview=(h>=x0&&h<=x1&&v>=z0&&v<=z1)?kind:''; } }
   function selectRange(a,b){   // 範囲選択。情報は開始セル(a=ドラッグ開始)のみ表示
-    S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:curLayer(), plane:S.plane};
+    const L=curLayer(); S.sel={a:{h:a.x,v:a.z}, b:{h:b.x,v:b.z}, layer:L, plane:S.plane, l0:L, l1:L};
     const k=planeKey(a.x,a.z), val=S.vox.get(k), pi=$('#pinspect');
     if(val){ pi.innerHTML=dhwLine(k)+'<br>'+infoPartsOf(val).join('<br>'); pi.classList.add('on'); S.inspect=k; }
     else { pi.classList.remove('on'); S.inspect=null; }
-    updatePickBtns(); renderGrid(); }
-  function setDest(c){ S.sel={a:{h:c.x,v:c.z}, b:{h:c.x,v:c.z}, layer:curLayer(), plane:S.plane}; renderGrid(); }   // クリップ中の貼付先アンカー
+    updatePickBtns(); updateLRangeUI(); renderGrid(); }
+  function setDest(c){ const L=curLayer(); S.sel={a:{h:c.x,v:c.z}, b:{h:c.x,v:c.z}, layer:L, plane:S.plane, l0:L, l1:L}; updateLRangeUI(); renderGrid(); }   // クリップ中の貼付先アンカー
   const clearPrev=()=>{ for(const c of $('#grid').children) c.dataset.preview=''; };
   function rect(a,b,mode){   // 矩形を確定
     const x0=Math.min(a.x,b.x),x1=Math.max(a.x,b.x),z0=Math.min(a.z,b.z),z1=Math.max(a.z,b.z);
@@ -1590,8 +1597,9 @@ const KEYS_HELP = `
     <div class="hrow">・<b>Ctrl+Z</b>=元に戻す / <b>Ctrl+Shift+Z</b>・<b>Ctrl+Y</b>=進む</div>
     <div class="hrow">・<b>Ctrl+C/X</b>=選択範囲をコピー/切取　・<b>Ctrl+V</b>=貼り付け　・<b>R</b>=クリップ回転</div>
     <div class="hrow">・<b>F</b>=選択範囲に配置　・<b>Delete</b>=選択範囲を消去　・<b>Esc</b>=モーダル閉→クリップ取消→選択解除</div>
-    <div class="hrow">・<b>T</b>=トリミング（選択範囲でクロップ・全層×内容フィット＝選択矩形の外を削り、残りを原点へ寄せて最小の箱に縮小）</div>
-    <div class="hrow">・<b>W/A/S/D</b>=選択枠を奥/左/手前/右へ移動　・<b>Space</b>=上 / <b>Shift</b>=下（選択モード・選択層以下まで。クリップ中は貼り付け位置）</div>
+    <div class="hrow">・<b>立体選択</b>=矩形を選ぶと下の「<b>◯範囲</b>」ステッパー（下端〜上端）で高さ(直交軸)を指定＝<b>立体ボックス</b>に。置く/壊す/トリミング/コピー/切取/貼付/回転は全てこのボックス単位。</div>
+    <div class="hrow">・<b>T</b>=トリミング（選択ボックスでクロップ＝ボックス外を削り、残りを原点へ寄せて最小の箱に縮小。ボタンは「others」バー）</div>
+    <div class="hrow">・<b>W/A/S/D</b>=選択枠を奥/左/手前/右へ移動　・<b>Space</b>=上 / <b>Shift</b>=下（選択モード・単層は選択層以下まで。クリップ中は貼り付け位置）</div>
     <div class="hrow">・ブロックの移動＝<b>Ctrl+X</b>（切取）→ 枠を移動 → <b>Ctrl+V</b>（貼付）</div>
   </div>`;
 /* 選択の移動キー（W/A/S/D=奥/左/手前/右・Space=上・Shift=下・選択モードのみ）
@@ -1600,13 +1608,15 @@ const KEYS_HELP = `
 function moveSel(dx,dy,dz){   // 引数は内部軸(x,y,z)の増分（A=左=w−1=内部x+1・D=右=w+1=内部x−1）
   if(S.mode!=='info') return;
   if(!S.sel){ status('セルを選択してください'); return; }
-  const P=PLANES[S.sel.plane], d={x:dx,y:dy,z:dz};
-  const nh=[S.sel.a.h+d[P.h], S.sel.b.h+d[P.h]], nv=[S.sel.a.v+d[P.v], S.sel.b.v+d[P.v]], nl=S.sel.layer+d[P.l];
+  const P=PLANES[S.sel.plane], d={x:dx,y:dy,z:dz}, dL=d[P.l], lr=selLR();
+  const nh=[S.sel.a.h+d[P.h], S.sel.b.h+d[P.h]], nv=[S.sel.a.v+d[P.v], S.sel.b.v+d[P.v]];
+  const nl0=lr[0]+dL, nl1=lr[1]+dL, nl=S.sel.layer+dL;   // ボックス全体を P.l 軸で平行移動
   const dh=S.dims[P.h], dv=S.dims[P.v], dl=S.dims[P.l];
-  if(Math.min(...nh)<0||Math.max(...nh)>=dh||Math.min(...nv)<0||Math.max(...nv)>=dv||nl<0||nl>=dl){ status('端に当たるため移動できません'); return; }
-  const yMax = P.l==='y' ? nl : (P.v==='y' ? Math.max(...nv) : (P.h==='y' ? Math.max(...nh) : 0));
-  if(yMax>S.layer){ status('選択層より上へは移動できません'); return; }   // マウス操作と同じ到達範囲（選択層以下）
-  S.sel.a.h=nh[0]; S.sel.b.h=nh[1]; S.sel.a.v=nv[0]; S.sel.b.v=nv[1]; S.sel.layer=nl;
+  if(Math.min(...nh)<0||Math.max(...nh)>=dh||Math.min(...nv)<0||Math.max(...nv)>=dv||nl0<0||nl1>=dl){ status('端に当たるため移動できません'); return; }
+  if(lr[0]===lr[1]){   // 単層のみ従来の到達制限（選択層以下）。立体は自由に移動可
+    const yMax = P.l==='y' ? nl : (P.v==='y' ? Math.max(...nv) : (P.h==='y' ? Math.max(...nh) : 0));
+    if(yMax>S.layer){ status('選択層より上へは移動できません'); return; } }
+  S.sel.a.h=nh[0]; S.sel.b.h=nh[1]; S.sel.a.v=nv[0]; S.sel.b.v=nv[1]; S.sel.layer=nl; S.sel.l0=nl0; S.sel.l1=nl1;
   if(!S.cellClip){   // 枠が乗ったセルの情報を追随表示（クリップ中は貼り付け位置なので情報は触らない）
     const k=planeKeyP(S.sel.plane, S.sel.a.h, S.sel.a.v, S.sel.layer), val=S.vox.get(k);
     S.inspect = val ? k : null;
@@ -1616,7 +1626,7 @@ function moveSel(dx,dy,dz){   // 引数は内部軸(x,y,z)の増分（A=左=w−
     else { $('#inspect').classList.remove('on'); if(pi) pi.classList.remove('on'); }
     updatePickBtns();
   }
-  redrawSel();
+  updateLRangeUI(); redrawSel();
 }
 const MODAL_IDS=['modal','propmodal','rawmodal','matmodal','hmodal','vmodal','pmodal','smodal','savemodal','loadmodal'];
 function escAction(){
@@ -1626,7 +1636,7 @@ function escAction(){
     return; } }
   if(S.cellClip){ cancelCellClip(); return; }
   S.sel=null; S.inspect=null; $('#inspect').classList.remove('on'); const pi=$('#pinspect'); if(pi) pi.classList.remove('on');
-  updatePickBtns(); syncVox(); if(S.view==='plan') renderGrid();
+  updatePickBtns(); updateLRangeUI(); syncVox(); if(S.view==='plan') renderGrid();
 }
 addEventListener('keydown', e=>{
   const t=e.target;
@@ -1728,7 +1738,7 @@ function setMode(m){ S.mode=m;   // 立体・平面 共通のモード（置く/
   if(m!=='info'){ $('#inspect').classList.remove('on'); const pi=$('#pinspect'); if(pi) pi.classList.remove('on');
     const had=S.inspect||S.sel||S.cellClip; S.inspect=null; S.sel=null; S.cellClip=null; updateCellClipUI();
     if(had){ syncVox(); if(S.view==='plan') renderGrid(); } }
-  updatePickBtns(); }
+  updateLRangeUI(); updatePickBtns(); }
 $('#pm-place').onclick=()=>setMode('place');
 $('#pm-break').onclick=()=>setMode('break');
 $('#pm-info').onclick=()=>setMode('info');
@@ -1913,6 +1923,20 @@ $('#p-ldel').onclick=()=>{ const P=PLANES[S.plane]; if(S.dims[P.l]<=1){ status('
 
 /* ---- 選択モードのセル範囲クリップボード（コピー/切取/貼付） ---- */
 function redrawSel(){ if(S.view==='plan') renderGrid(); else syncVox(); }   // 選択/クリップの再描画（2D/3D）
+function selLR(){ const s=S.sel; if(!s) return null; const l0=(s.l0==null?s.layer:s.l0), l1=(s.l1==null?s.layer:s.l1); return [Math.min(l0,l1),Math.max(l0,l1)]; }   // 選択の層レンジ[下,上]（P.l軸）
+function bumpSelL(which,d){ if(!S.sel) return; const P=PLANES[S.sel.plane], n=S.dims[P.l], lr=selLR(); let lo=lr[0], hi=lr[1];   // which:0=下端 1=上端
+  if(which===0){ lo=clamp(lo+d,0,n-1); if(lo>hi) hi=lo; } else { hi=clamp(hi+d,0,n-1); if(hi<lo) lo=hi; }
+  S.sel.l0=lo; S.sel.l1=hi; S.sel.layer=lo; updateLRangeUI(); redrawSel(); }
+function updateLRangeUI(){ const bars=document.querySelectorAll('.lrange-bar'); if(!bars.length) return;   // 立体範囲ステッパー（選択の P.l 軸=下端〜上端・スマホ向け）
+  const show = S.mode==='info' && !!S.sel;
+  bars.forEach(bar=>{ bar.classList.toggle('hidden', !show); if(!show){ bar.innerHTML=''; return; }
+    const P=PLANES[S.sel.plane], lab=P.llab, lr=selLR();
+    bar.innerHTML='<span class="lrl">'+lab+'範囲</span>'
+      +'<button class="btn lr-b" data-e="0" data-d="-1">−</button><span class="lrv">'+lr[0]+'</span><button class="btn lr-b" data-e="0" data-d="1">＋</button>'
+      +'<span class="lrsep">〜</span>'
+      +'<button class="btn lr-b" data-e="1" data-d="-1">−</button><span class="lrv">'+lr[1]+'</span><button class="btn lr-b" data-e="1" data-d="1">＋</button>'
+      +'<span class="lrh">'+(lr[1]-lr[0]+1)+'層</span>';
+    bar.querySelectorAll('.lr-b').forEach(b=>b.onclick=()=>bumpSelL(+b.dataset.e, +b.dataset.d)); }); }
 function updateCellClipUI(){ const m=S.cellClip&&S.cellClip.mode;   // コピー/切取ボタンをキャンセルに変える・貼付ボタンの準備完了（両ビュー）
   document.querySelectorAll('.c-copy').forEach(b=>{ b.setAttribute('aria-pressed', m==='copy'); b.textContent = m==='copy'?'キャンセル':'コピー'; });
   document.querySelectorAll('.c-cut').forEach(b=>{ b.setAttribute('aria-pressed', m==='cut'); b.textContent = m==='cut'?'キャンセル':'切り取り'; });
@@ -1920,25 +1944,25 @@ function updateCellClipUI(){ const m=S.cellClip&&S.cellClip.mode;   // コピー
   document.querySelectorAll('.c-rot').forEach(b=>b.disabled = !S.cellClip); }
 function cancelCellClip(){ if(!S.cellClip) return; S.cellClip=null; updateCellClipUI(); redrawSel(); status('コピー/切り取りをキャンセル'); }
 function grabCells(mode){ if(!S.sel){ status('セルを選択してください'); return; }
-  const pl=S.sel.plane, layer=S.sel.layer, a=S.sel.a, b=S.sel.b;
+  const pl=S.sel.plane, a=S.sel.a, b=S.sel.b, lr=selLR();   // 立体＝P.l 軸 lr[0..1] を depth として取り込む
   const r={x0:Math.min(a.h,b.h),x1:Math.max(a.h,b.h),z0:Math.min(a.v,b.v),z1:Math.max(a.v,b.v)}, cells=[];
-  for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++){ const val=S.vox.get(planeKeyP(pl,h,v,layer)); if(val) cells.push({dh:h-r.x0,dv:v-r.z0,val}); }
-  S.cellClip={mode, cells, w:r.x1-r.x0+1, h:r.z1-r.z0+1, rect:r, srcLayer:layer, srcPlane:pl};
+  for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++) for(let l=lr[0];l<=lr[1];l++){ const val=S.vox.get(planeKeyP(pl,h,v,l)); if(val) cells.push({dh:h-r.x0,dv:v-r.z0,dl:l-lr[0],val}); }
+  S.cellClip={mode, cells, w:r.x1-r.x0+1, h:r.z1-r.z0+1, depth:lr[1]-lr[0]+1, rect:r, srcL0:lr[0], srcPlane:pl};
   updateCellClipUI(); redrawSel(); status((mode==='cut'?'切り取り':'コピー')+'（'+cells.length+'）→ ドラッグで配置位置・貼り付けで確定・ダブルタップで取消'); }
-function selRange(){ if(!S.sel) return null; const a=S.sel.a,b=S.sel.b;
-  return {pl:S.sel.plane, layer:S.sel.layer, x0:Math.min(a.h,b.h),x1:Math.max(a.h,b.h),z0:Math.min(a.v,b.v),z1:Math.max(a.v,b.v)}; }
+function selRange(){ if(!S.sel) return null; const a=S.sel.a,b=S.sel.b, lr=selLR();
+  return {pl:S.sel.plane, layer:S.sel.layer, l0:lr[0], l1:lr[1], x0:Math.min(a.h,b.h),x1:Math.max(a.h,b.h),z0:Math.min(a.v,b.v),z1:Math.max(a.v,b.v)}; }
 function fillSel(){ const r=selRange(); if(!r){ status('セルを選択してください'); return; } pushHist(); const v=cur();
-  for(let h=r.x0;h<=r.x1;h++) for(let z=r.z0;z<=r.z1;z++) S.vox.set(planeKeyP(r.pl,h,z,r.layer),v);   // 選択範囲へ現在ブロックを配置
-  changed(); redrawSel(); renderSpine(); status('選択範囲に配置'); }
+  for(let h=r.x0;h<=r.x1;h++) for(let z=r.z0;z<=r.z1;z++) for(let l=r.l0;l<=r.l1;l++) S.vox.set(planeKeyP(r.pl,h,z,l),v);   // 選択ボックスへ現在ブロックを配置
+  changed(); redrawSel(); renderSpine(); status('選択範囲に配置'+(r.l1>r.l0?'（'+(r.l1-r.l0+1)+'層）':'')); }
 function clearSel(){ const r=selRange(); if(!r){ status('セルを選択してください'); return; } pushHist();
-  for(let h=r.x0;h<=r.x1;h++) for(let z=r.z0;z<=r.z1;z++) S.vox.delete(planeKeyP(r.pl,h,z,r.layer));   // 選択範囲を空に
-  changed(); redrawSel(); renderSpine(); status('選択範囲を消去'); }
-function trimToSel(){   // トリミング（選択範囲でクロップ・全軸）：面内2軸=選択矩形で切り、直交軸は全層対象→残存の内容境界ボックスで全軸フィット、原点(0,0,0)へ寄せて dims 縮小
+  for(let h=r.x0;h<=r.x1;h++) for(let z=r.z0;z<=r.z1;z++) for(let l=r.l0;l<=r.l1;l++) S.vox.delete(planeKeyP(r.pl,h,z,l));   // 選択ボックスを空に
+  changed(); redrawSel(); renderSpine(); status('選択範囲を消去'+(r.l1>r.l0?'（'+(r.l1-r.l0+1)+'層）':'')); }
+function trimToSel(){   // トリミング（立体選択でクロップ）：選択ボックス(面内2軸 + P.l軸 l0..l1)内を残し、内容境界ボックスで全軸フィット、原点(0,0,0)へ寄せて dims 縮小
   const r=selRange(); if(!r){ status('セルを選択してください'); return; }
-  const P=PLANES[r.pl];   // r.x0..x1=P.h方向 / r.z0..z1=P.v方向（直交 P.l は全層対象＝選択矩形を全層に適用）
+  const P=PLANES[r.pl];   // r.x0..x1=P.h方向 / r.z0..z1=P.v方向 / r.l0..l1=P.l方向（立体ボックス）
   const kept=new Map();
   S.vox.forEach((val,k)=>{ const a=k.split(',').map(Number), c={x:a[0],y:a[1],z:a[2]};
-    if(c[P.h]>=r.x0 && c[P.h]<=r.x1 && c[P.v]>=r.z0 && c[P.v]<=r.z1) kept.set(k,val); });
+    if(c[P.h]>=r.x0 && c[P.h]<=r.x1 && c[P.v]>=r.z0 && c[P.v]<=r.z1 && c[P.l]>=r.l0 && c[P.l]<=r.l1) kept.set(k,val); });
   if(!kept.size){ status('選択範囲にブロックがありません'); return; }
   let mnx=1/0,mny=1/0,mnz=1/0,mxx=-1/0,mxy=-1/0,mxz=-1/0;   // 残存ブロックの内容境界ボックス（全軸）
   kept.forEach((_v,k)=>{ const a=k.split(',').map(Number);
@@ -1946,7 +1970,7 @@ function trimToSel(){   // トリミング（選択範囲でクロップ・全�
   pushHist();
   const next=new Map();   // 内容を原点(0,0,0)へ寄せる
   kept.forEach((val,k)=>{ const a=k.split(',').map(Number); next.set(K(a[0]-mnx,a[1]-mny,a[2]-mnz),val); });
-  S.vox=next; S.sel=null; S.inspect=null; S.cellClip=null; updateCellClipUI();
+  S.vox=next; S.sel=null; S.inspect=null; S.cellClip=null; updateCellClipUI(); updateLRangeUI();
   S.lay={x:0,z:0}; S.layer=0;
   applyDims({x:mxx-mnx+1, y:mxy-mny+1, z:mxz-mnz+1});   // dims 縮小＋再構築（vox は寄せ済みなので間引かれない）
   setPlanLayer(0);
@@ -2027,19 +2051,19 @@ function rotVal(val, plane){ const n=norm(val), props={...n.props};   // 向き�
     if((k==='rot16'||k==='rail'||k==='orientation') && props[name]!=null) props[name]=rotRel(k, String(props[name]), plane); }
   return n.s==='raw' ? {s:'raw', raw:n.raw, props} : {r:n.r, s:n.s, ot:n.ot, props}; }
 function rotateClip(){ const cc=S.cellClip; if(!cc){ status('コピー / 切り取り中に回転できます'); return; }
-  const w=cc.w;
-  cc.cells = cc.cells.map(c=>({ dh:c.dv, dv:(w-1)-c.dh, val:rotVal(c.val, cc.srcPlane) }));   // CW：(dh,dv)→(dv, w-1-dh)
+  const w=cc.w;   // 面の法線（P.l=層軸）まわりの90°回転。dl（層オフセット）は不変＝立体もそのまま回る
+  cc.cells = cc.cells.map(c=>({ dh:c.dv, dv:(w-1)-c.dh, dl:c.dl, val:rotVal(c.val, cc.srcPlane) }));   // CW：(dh,dv)→(dv, w-1-dh)
   const t=cc.w; cc.w=cc.h; cc.h=t;
-  redrawSel(); status('90°回転（'+cc.w+'×'+cc.h+'）'); }
+  redrawSel(); status('90°回転（'+cc.w+'×'+cc.h+((cc.depth||1)>1?'×'+cc.depth:'')+'）'); }
 document.querySelectorAll('.c-rot').forEach(b=>b.onclick=rotateClip);
 const doPaste=()=>{ const cc=S.cellClip;
   if(!cc){ status('クリップボードが空です'); return; }
   if(!S.sel){ status('貼り付け先を選択してください'); return; }
   if(cc.srcPlane!==S.sel.plane){ status('別の面のクリップボードです'); return; }
-  pushHist(); const pl=S.sel.plane, layer=S.sel.layer, a=S.sel.a, P=PLANES[pl], dh=S.dims[P.h], dv=S.dims[P.v];
-  if(cc.mode==='cut') for(let h=cc.rect.x0;h<=cc.rect.x1;h++) for(let v=cc.rect.z0;v<=cc.rect.z1;v++) S.vox.delete(planeKeyP(pl,h,v,cc.srcLayer));  // 切取元を消去
-  for(let i=0;i<cc.w;i++) for(let j=0;j<cc.h;j++){ const h=a.h+i,v=a.v+j; if(h<dh&&v<dv) S.vox.delete(planeKeyP(pl,h,v,layer)); }  // 貼付先を一旦クリア
-  for(const c of cc.cells){ const h=a.h+c.dh,v=a.v+c.dv; if(h<dh&&v<dv) S.vox.set(planeKeyP(pl,h,v,layer),c.val); }
+  pushHist(); const pl=S.sel.plane, a=S.sel.a, P=PLANES[pl], dh=S.dims[P.h], dv=S.dims[P.v], dl=S.dims[P.l], dp=cc.depth||1, base=selLR()[0];   // 貼付基点の層=選択l0
+  if(cc.mode==='cut') for(let h=cc.rect.x0;h<=cc.rect.x1;h++) for(let v=cc.rect.z0;v<=cc.rect.z1;v++) for(let l=0;l<dp;l++) S.vox.delete(planeKeyP(pl,h,v,cc.srcL0+l));  // 切取元を消去（立体）
+  for(let i=0;i<cc.w;i++) for(let j=0;j<cc.h;j++) for(let l=0;l<dp;l++){ const h=a.h+i,v=a.v+j,L=base+l; if(h<dh&&v<dv&&L<dl) S.vox.delete(planeKeyP(pl,h,v,L)); }  // 貼付先ボックスを一旦クリア
+  for(const c of cc.cells){ const h=a.h+c.dh,v=a.v+c.dv,L=base+(c.dl||0); if(h<dh&&v<dv&&L<dl) S.vox.set(planeKeyP(pl,h,v,L),c.val); }
   S.cellClip=null; updateCellClipUI(); changed(); redrawSel(); renderSpine(); status('貼り付けました'); };
 document.querySelectorAll('.c-paste').forEach(b=>b.onclick=doPaste);
 
