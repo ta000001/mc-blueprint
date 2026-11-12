@@ -449,7 +449,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '5.10';
+const APP_VERSION = '5.11';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -689,8 +689,16 @@ function setDims(nd){
   buildFloor(); buildOrigin(); buildPlane(); frameCamera(); changed(); renderGrid(); renderSpine(); setLayer(S.layer);
 }
 
-function setLayer(v){
+function followSelL(axisChar,d){   // 作業層を d だけ動かした時、同じ層軸の選択ボックスを追従（厚み保持・端でクランプ）
+  if(!d || !S.sel || PLANES[S.sel.plane].l!==axisChar) return;
+  const n=S.dims[axisChar], lr=selLR(); let l0=lr[0]+d, l1=lr[1]+d;
+  if(l0<0){ l1-=l0; l0=0; } if(l1>n-1){ l0-=(l1-(n-1)); l1=n-1; }
+  S.sel.l0=l0; S.sel.l1=l1; S.sel.layer=l0; updateLRangeUI();
+}
+function setLayer(v,follow){
+  const old=S.layer;
   S.layer = clamp(v,0,S.dims.y-1);
+  if(follow) followSelL('y', S.layer-old);   // 高さスライダー等に選択ボックスを追従
   $('#plane').value = S.layer;
   $('#y3').textContent = 'H'+String(S.layer).padStart(2,'0');   // 立体スライダのラベル（平面の y2 は renderSpine が担当）
   buildPlane(); syncVox(); renderGrid(); renderSpine();
@@ -1239,9 +1247,9 @@ const curLayer = ()=>{ const l=PLANES[S.plane].l; return l==='y'?S.layer:(S.lay[
 function planeKeyAt(h,v,layer){ const P=PLANES[S.plane], c={}; c[P.h]=h; c[P.v]=v; c[P.l]=layer; return K(c.x,c.y,c.z); }
 function planeKeyP(plane,h,v,layer){ const P=PLANES[plane], c={}; c[P.h]=h; c[P.v]=v; c[P.l]=layer; return K(c.x,c.y,c.z); }   // 面指定版（3D=WD / 2D=S.plane 両対応）
 const planeKey = (h,v)=> planeKeyAt(h,v,curLayer());
-function setPlanLayer(v){ const P=PLANES[S.plane], n=S.dims[P.l]; v=clamp(v,0,n-1);
-  if(P.l==='y') setLayer(v);                        // H は立体の作業面と共有
-  else { S.lay[P.l]=v; renderGrid(); renderSpine(); } }
+function setPlanLayer(v,follow){ const P=PLANES[S.plane], n=S.dims[P.l]; v=clamp(v,0,n-1);
+  if(P.l==='y') setLayer(v,follow);                        // H は立体の作業面と共有
+  else { const old=S.lay[P.l]; S.lay[P.l]=v; if(follow) followSelL(P.l, v-old); renderGrid(); renderSpine(); } }
 function layerCounts(){ const P=PLANES[S.plane], n=S.dims[P.l], c=new Array(n).fill(0), idx=AXI[P.l];
   S.vox.forEach((val,k)=>{ const a=+k.split(',')[idx]; if(a<n) c[a]++; }); return c; }   // 現平面の層軸ごとの数
 function setPlane(p){ S.plane=p; S.manualZoom=false;
@@ -1409,7 +1417,7 @@ function renderGrid(){
   addEventListener('pointermove',e=>{ if(scrub) scrubTo(e.clientY); });
   addEventListener('pointerup',()=>scrub=false);
   function scrubTo(cy){ const P=PLANES[S.plane], n=S.dims[P.l], r=$('#spine').getBoundingClientRect();
-    setPlanLayer(Math.floor((1-(cy-r.top)/r.height)*n)); }
+    setPlanLayer(Math.floor((1-(cy-r.top)/r.height)*n),true); }
 })();
 
 /* ---------- json ---------- */
@@ -1494,9 +1502,9 @@ $('#name').oninput = save;
   setDims(nd);
 });
 
-$('#plane').oninput = e=>setLayer(+e.target.value);
-$('#b-up').onclick = ()=>setLayer(S.layer+1);
-$('#b-down').onclick = ()=>setLayer(S.layer-1);
+$('#plane').oninput = e=>setLayer(+e.target.value,true);   // 高さスライダー＝選択ボックス追従
+$('#b-up').onclick = ()=>setLayer(S.layer+1,true);
+$('#b-down').onclick = ()=>setLayer(S.layer-1,true);
 $('#b-fit').onclick = frameCamera;
 function setLabels(v){ S.labels=v;   // 3D/2D 共通のラベル表示
   ['#b-label','#pl-label'].forEach(id=>{ const b=$(id); if(b) b.setAttribute('aria-pressed', v); });
@@ -1612,6 +1620,7 @@ const KEYS_HELP = `
     <div class="hrow">・<b>F</b>=選択範囲に配置　・<b>Delete</b>=選択範囲を消去　・<b>Esc</b>=モーダル閉→クリップ取消→選択解除</div>
     <div class="hrow">・<b>立体選択</b>=矩形を選ぶと下の「<b>◯範囲</b>」ステッパー（下端〜上端）で高さ(直交軸)を指定＝<b>立体ボックス</b>に。置く/壊す/トリミング/コピー/切取/貼付/回転は全てこのボックス単位。</div>
     <div class="hrow">・<b>範囲ドラッグ中のホイール</b>=上端を伸縮 / <b>Shift+ホイール</b>=下端を伸縮（指を離すとその立体範囲で確定）</div>
+    <div class="hrow">・<b>高さスライダー/上下ボタン/PgUp・Dn/スパイン</b>で作業層を動かすと、<b>選択ボックスも追従</b>（厚み保持・端でクランプ。箱の相対移動は W/A/S/D・Space/Shift）</div>
     <div class="hrow">・<b>T</b>=トリミング（選択ボックスでクロップ＝ボックス外を削り、残りを原点へ寄せて最小の箱に縮小。ボタンは「others」バー）</div>
     <div class="hrow">・<b>W/A/S/D</b>=選択枠を奥/左/手前/右へ移動　・<b>Space</b>=上 / <b>Shift</b>=下（選択モード・単層は選択層以下まで。クリップ中は貼り付け位置）</div>
     <div class="hrow">・ブロックの移動＝<b>Ctrl+X</b>（切取）→ 枠を移動 → <b>Ctrl+V</b>（貼付）</div>
@@ -1694,7 +1703,7 @@ addEventListener('keydown', e=>{
   else if(k==='Delete'||k==='Backspace'){ e.preventDefault(); if(S.sel) clearSel(); }
   else if(k==='p'||k==='P'){ if(S.view==='plan'){ const o=['WD','WH','DH']; setPlane(o[(o.indexOf(S.plane)+1)%3]); } }
   else if(k==='PageUp'||k==='PageDown'){ e.preventDefault(); const d=(k==='PageUp')?1:-1;
-    if(S.view==='plan') setPlanLayer(curLayer()+d); else setLayer(S.layer+d); }
+    if(S.view==='plan') setPlanLayer(curLayer()+d,true); else setLayer(S.layer+d,true); }
   else if(k.startsWith('Arrow')){ e.preventDefault();
     navFocus(k==='ArrowLeft'?{x:-1,y:0}:k==='ArrowRight'?{x:1,y:0}:k==='ArrowUp'?{x:0,y:-1}:{x:0,y:1}); }
   else if(k==='Escape') escAction();
