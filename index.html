@@ -449,7 +449,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '5.08';
+const APP_VERSION = '5.09';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1039,17 +1039,17 @@ function syncVox(){
   for(const gk in aboveDim){ const im=makeInstShape(aboveDim[gk],geoFor(gk,aboveDim[gk][0].v),ghostDimMat); scene.add(im); ghostMeshes.push(im); }
   if(S.mode==='info' && S.inspect && S.vox.has(S.inspect)){ const ip=S.inspect.split(',').map(Number);   // 選択モード：起点ブロックを強調枠
     const o=makeOutline([ip],inspectMat); scene.add(o); outlineMeshes.push(o); }
-  if(S.mode==='info' && S.sel && S.sel.plane==='WD'){   // 選択範囲（作業面 WD 上・立体は上下2層を枠表示）
-    const a=S.sel.a,b=S.sel.b,lr=selLR(),cs=[], Ls=lr[0]===lr[1]?[lr[0]]:[lr[0],lr[1]];
-    for(const L of Ls) for(let h=Math.min(a.h,b.h);h<=Math.max(a.h,b.h);h++) for(let v=Math.min(a.v,b.v);v<=Math.max(a.v,b.v);v++) cs.push([h,L,v]);
+  if(S.mode==='info' && S.sel && S.sel.plane==='WD'){   // 選択範囲（作業面 WD 上・立体は範囲内の全層を枠表示）
+    const a=S.sel.a,b=S.sel.b,lr=selLR(),cs=[];
+    for(let L=lr[0];L<=lr[1];L++) for(let h=Math.min(a.h,b.h);h<=Math.max(a.h,b.h);h++) for(let v=Math.min(a.v,b.v);v<=Math.max(a.v,b.v);v++) cs.push([h,L,v]);
     if(cs.length){ const o=makeOutline(cs,inspectMat); scene.add(o); outlineMeshes.push(o); } }
-  if(S.cellClip && S.cellClip.srcPlane==='WD'){   // 切取/コピー元（立体は上下2層）
-    const r=S.cellClip.rect,dp=S.cellClip.depth||1,L0=S.cellClip.srcL0,cs=[], Ls=dp<=1?[L0]:[L0,L0+dp-1];
-    for(const L of Ls) for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++) cs.push([h,L,v]);
+  if(S.cellClip && S.cellClip.srcPlane==='WD'){   // 切取/コピー元（立体＝全層）
+    const r=S.cellClip.rect,dp=S.cellClip.depth||1,L0=S.cellClip.srcL0,cs=[];
+    for(let L=L0;L<=L0+dp-1;L++) for(let h=r.x0;h<=r.x1;h++) for(let v=r.z0;v<=r.z1;v++) cs.push([h,L,v]);
     const o=makeOutline(cs,clipSrcMat); scene.add(o); outlineMeshes.push(o); }
-  if(S.cellClip && S.mode==='info' && S.sel && S.sel.plane==='WD'){   // 貼り付け先プレビュー（立体は上下2層）
-    const a=S.sel.a,base=selLR()[0],dp=S.cellClip.depth||1,cc=S.cellClip,cs=[], Ls=dp<=1?[base]:[base,base+dp-1];
-    for(const L of Ls) for(let i=0;i<cc.w;i++) for(let j=0;j<cc.h;j++) cs.push([a.h+i,L,a.v+j]);
+  if(S.cellClip && S.mode==='info' && S.sel && S.sel.plane==='WD'){   // 貼り付け先プレビュー（立体＝全層）
+    const a=S.sel.a,base=selLR()[0],dp=S.cellClip.depth||1,cc=S.cellClip,cs=[];
+    for(let L=base;L<=base+dp-1;L++) for(let i=0;i<cc.w;i++) for(let j=0;j<cc.h;j++) cs.push([a.h+i,L,a.v+j]);
     const o=makeOutline(cs,clipDstMat); scene.add(o); outlineMeshes.push(o); }
   if(belowCells.length){ const o=makeOutline(belowCells,outlineMat); scene.add(o); outlineMeshes.push(o); }
   if(aboveCells.length){ const o=makeOutline(aboveCells,outlineGhostMat); scene.add(o); outlineMeshes.push(o); }
