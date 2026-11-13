@@ -449,7 +449,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '5.12';
+const APP_VERSION = '5.13';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1203,7 +1203,7 @@ function bindGestures(el){
   addEventListener('pointerup',up); addEventListener('pointercancel',up);
   el.addEventListener('wheel',e=>{ e.preventDefault();
     if(drag && drag.mode==='select' && !S.cellClip){   // 範囲ドラッグ中＝ホイールで立体範囲。既定=上端(l1)/Shift=下端(l0)
-      const n=S.dims.y, dl=(e.deltaY<0?1:-1);
+      const raw=e.deltaY||e.deltaX, n=S.dims.y, dl=(raw<0?1:-1);   // Shift+ホイールは縦が横(deltaX)に化けるため両方を見る
       if(e.shiftKey) drag.l0=clamp(drag.l0+dl,0,drag.l1); else drag.l1=clamp(drag.l1+dl,drag.l0,n-1);
       showPreview(drag.a,drag.b,'select',drag.l0,drag.l1);
       status('立体範囲 下端H'+drag.l0+'〜上端H'+drag.l1+'（'+(drag.l1-drag.l0+1)+'層）'+(e.shiftKey?' ［下端］':' ［上端］')); return; }
@@ -1406,7 +1406,7 @@ function renderGrid(){
   addEventListener('pointerup',up); addEventListener('pointercancel',up);
   wrap.addEventListener('wheel',e=>{   // 範囲ドラッグ中＝ホイールで立体範囲(P.l軸)。既定=上端(l1)/Shift=下端(l0)。非ドラッグ時は通常スクロール
     if(!(drag && drag.mode==='select' && !S.cellClip)) return;
-    e.preventDefault(); const P=PLANES[S.plane], n=S.dims[P.l], dl=(e.deltaY<0?1:-1);
+    e.preventDefault(); const P=PLANES[S.plane], raw=e.deltaY||e.deltaX, n=S.dims[P.l], dl=(raw<0?1:-1);   // Shift+ホイールは縦が横(deltaX)に化けるため両方を見る
     if(e.shiftKey) drag.l0=clamp(drag.l0+dl,0,drag.l1); else drag.l1=clamp(drag.l1+dl,drag.l0,n-1);
     status('立体範囲 '+P.llab+'='+drag.l0+'〜'+drag.l1+'（'+(drag.l1-drag.l0+1)+'層）'+(e.shiftKey?' ［下端］':' ［上端］')); },{passive:false});
 
