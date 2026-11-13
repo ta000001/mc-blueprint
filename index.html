@@ -449,7 +449,7 @@ h1{font-family:'Bricolage Grotesque',system-ui,sans-serif;font-weight:800;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const APP_VERSION = '5.13';
+const APP_VERSION = '5.14';
 const $ = (s) => document.querySelector(s);
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const K=(x,y,z)=>x+','+y+','+z;
@@ -1126,7 +1126,7 @@ function bindGestures(el){
       // 編集/選択ドラッグ開始（マウスは左のみ／タッチは1本指）。作業面上で始めたら矩形/範囲。
       if(!(e.pointerType==='mouse' && e.button!==0)){
         const c=planeCell(e.clientX,e.clientY);
-        if(c) drag={mode:gmode,a:c,b:c,l0:S.layer,l1:S.layer};           // ダブル時は削除範囲・選択時は選択範囲（l0/l1=立体範囲＝ドラッグ中ホイールで増減）
+        if(c) drag={mode:gmode,a:c,b:c,l0:S.layer,l1:S.layer,anchor:S.layer,cur:S.layer};           // ダブル時は削除範囲・選択時は選択範囲（anchor=起点層・cur=ホイール到達層→l0/l1）
       }
       if(isDbl){ clearTimeout(pendingPlace); pendingPlace=null; lastUp=null; }  // 1回目の配置を取消
       }
@@ -1194,7 +1194,7 @@ function bindGestures(el){
       }
     } else if(drag){
       clearTimeout(pendingPlace); pendingPlace=null;
-      if(drag.mode==='select'){ if(S.cellClip) set3DSel(drag.b,drag.b); else set3DSel(drag.a,drag.b,drag.l0,drag.l1); lastUp=was?{x:was.x,y:was.y,t:Date.now()}:null; }   // クリップ中は配置位置・そうでなければ範囲選択（立体範囲l0/l1も確定）
+      if(drag.mode==='select'){ if(S.cellClip) set3DSel(drag.b,drag.b); else { set3DSel(drag.a,drag.b,drag.l0,drag.l1); if(drag.anchor!=null&&S.sel) S.sel.anchorL=drag.anchor; } lastUp=was?{x:was.x,y:was.y,t:Date.now()}:null; }   // クリップ中は配置位置・そうでなければ範囲選択（立体範囲l0/l1＋anchorも確定）
       else { if(drag.a.x!==drag.b.x || drag.a.z!==drag.b.z) applyRect(drag.a,drag.b,drag.mode); lastUp=null; }   // 1ブロックのみはキャンセル
     }
     clearPreview();
@@ -1202,11 +1202,12 @@ function bindGestures(el){
   };
   addEventListener('pointerup',up); addEventListener('pointercancel',up);
   el.addEventListener('wheel',e=>{ e.preventDefault();
-    if(drag && drag.mode==='select' && !S.cellClip){   // 範囲ドラッグ中＝ホイールで立体範囲。既定=上端(l1)/Shift=下端(l0)
-      const raw=e.deltaY||e.deltaX, n=S.dims.y, dl=(raw<0?1:-1);   // Shift+ホイールは縦が横(deltaX)に化けるため両方を見る
-      if(e.shiftKey) drag.l0=clamp(drag.l0+dl,0,drag.l1); else drag.l1=clamp(drag.l1+dl,drag.l0,n-1);
+    if(drag && drag.mode==='select' && !S.cellClip){   // 範囲ドラッグ中＝ホイールで立体範囲。上スクロール=上へ/下スクロール=下へ（アンカー起点・Shift不要）
+      const raw=e.deltaY||e.deltaX, n=S.dims.y;
+      drag.cur=clamp(drag.cur+(raw<0?1:-1),0,n-1);
+      drag.l0=Math.min(drag.anchor,drag.cur); drag.l1=Math.max(drag.anchor,drag.cur);
       showPreview(drag.a,drag.b,'select',drag.l0,drag.l1);
-      status('立体範囲 下端H'+drag.l0+'〜上端H'+drag.l1+'（'+(drag.l1-drag.l0+1)+'層）'+(e.shiftKey?' ［下端］':' ［上端］')); return; }
+      status('立体範囲 下端H'+drag.l0+'〜上端H'+drag.l1+'（'+(drag.l1-drag.l0+1)+'層）'); return; }
     sph.r=clamp(sph.r*(1+Math.sign(e.deltaY)*0.12),3,400); updateCam(); },{passive:false});
 
   function doTap(cx,cy,mode){
@@ -1372,7 +1373,7 @@ function renderGrid(){
       else {
         const gmode = (S.mode==='info')?'select':(isDbl?'break':S.mode);
         tap  = c ? {x:e.clientX,y:e.clientY,cell:c,mode:gmode,t:now} : null;
-        drag = c ? {mode:gmode,a:c,b:c,l0:curLayer(),l1:curLayer()} : null;   // select も範囲ドラッグ可（l0/l1=立体範囲＝ドラッグ中ホイールで増減）
+        drag = c ? {mode:gmode,a:c,b:c,l0:curLayer(),l1:curLayer(),anchor:curLayer(),cur:curLayer()} : null;   // select も範囲ドラッグ可（anchor=起点層・cur=ホイール到達層→l0/l1）
         if(isDbl){ clearTimeout(pendingPlace); pendingPlace=null; lastUp=null; }   // 1回目の配置を取消
         e.preventDefault();
       }
@@ -1398,17 +1399,18 @@ function renderGrid(){
         pendingPlace=setTimeout(()=>{ single(c,'place'); pendingPlace=null; },130); }
     } else if(drag && (drag.a.x!==drag.b.x||drag.a.z!==drag.b.z)){   // 1セルのみの範囲はキャンセル
       clearTimeout(pendingPlace); pendingPlace=null;
-      if(drag.mode==='select'){ if(S.cellClip) setDest(drag.b); else selectRange(drag.a,drag.b,drag.l0,drag.l1); lastUp=was?{x:was.x,y:was.y,t:Date.now()}:null; }   // 立体範囲l0/l1も確定
+      if(drag.mode==='select'){ if(S.cellClip) setDest(drag.b); else { selectRange(drag.a,drag.b,drag.l0,drag.l1); if(drag.anchor!=null&&S.sel) S.sel.anchorL=drag.anchor; } lastUp=was?{x:was.x,y:was.y,t:Date.now()}:null; }   // 立体範囲l0/l1＋anchorも確定
       else { rect(drag.a,drag.b,drag.mode); lastUp=null; }
     }
     clearPrev();
     if(pts.size===0){ tap=null; drag=null; } };
   addEventListener('pointerup',up); addEventListener('pointercancel',up);
-  wrap.addEventListener('wheel',e=>{   // 範囲ドラッグ中＝ホイールで立体範囲(P.l軸)。既定=上端(l1)/Shift=下端(l0)。非ドラッグ時は通常スクロール
+  wrap.addEventListener('wheel',e=>{   // 範囲ドラッグ中＝ホイールで立体範囲(P.l軸)。上スクロール=上へ/下スクロール=下へ（アンカー起点・Shift不要）。非ドラッグ時は通常スクロール
     if(!(drag && drag.mode==='select' && !S.cellClip)) return;
-    e.preventDefault(); const P=PLANES[S.plane], raw=e.deltaY||e.deltaX, n=S.dims[P.l], dl=(raw<0?1:-1);   // Shift+ホイールは縦が横(deltaX)に化けるため両方を見る
-    if(e.shiftKey) drag.l0=clamp(drag.l0+dl,0,drag.l1); else drag.l1=clamp(drag.l1+dl,drag.l0,n-1);
-    status('立体範囲 '+P.llab+'='+drag.l0+'〜'+drag.l1+'（'+(drag.l1-drag.l0+1)+'層）'+(e.shiftKey?' ［下端］':' ［上端］')); },{passive:false});
+    e.preventDefault(); const P=PLANES[S.plane], raw=e.deltaY||e.deltaX, n=S.dims[P.l];
+    drag.cur=clamp(drag.cur+(raw<0?1:-1),0,n-1);
+    drag.l0=Math.min(drag.anchor,drag.cur); drag.l1=Math.max(drag.anchor,drag.cur);
+    status('立体範囲 '+P.llab+'='+drag.l0+'〜'+drag.l1+'（'+(drag.l1-drag.l0+1)+'層）'); },{passive:false});
 
   let scrub=false;
   $('#spine').addEventListener('pointerdown',e=>{ scrub=true; scrubTo(e.clientY); e.preventDefault(); });
@@ -1617,7 +1619,7 @@ const KEYS_HELP = `
     <div class="hrow">・<b>Ctrl+C/X</b>=選択範囲をコピー/切取　・<b>Ctrl+V</b>=貼り付け　・<b>R</b>=クリップ回転</div>
     <div class="hrow">・<b>F</b>=選択範囲に配置　・<b>Delete</b>=選択範囲を消去　・<b>Esc</b>=モーダル閉→クリップ取消→選択解除</div>
     <div class="hrow">・<b>立体選択</b>=矩形を選ぶと下の「<b>◯範囲</b>」ステッパー（下端〜上端）で高さ(直交軸)を指定＝<b>立体ボックス</b>に。置く/壊す/トリミング/コピー/切取/貼付/回転は全てこのボックス単位。</div>
-    <div class="hrow">・<b>範囲ドラッグ中のホイール</b>=上端を伸縮 / <b>Shift+ホイール</b>=下端を伸縮（指を離すとその立体範囲で確定）</div>
+    <div class="hrow">・<b>範囲ドラッグ中のホイール</b>=起点層から上スクロールで上へ／下スクロールで下へ立体範囲を伸縮（戻せば縮む・指を離すと確定）</div>
     <div class="hrow">・<b>高さ範囲の指定</b>＝面をクリック/ドラッグで選ぶ（＝アンカー）→ <b>高さスライダー/上下ボタン/PgUp・Dn/スパイン</b>で作業層を動かすと、<b>アンカー〜現在層</b>が範囲になる（上にも下にも伸ばせる）。箱の平行移動は W/A/S/D・Space/Shift</div>
     <div class="hrow">・<b>T</b>=トリミング（選択ボックスでクロップ＝ボックス外を削り、残りを原点へ寄せて最小の箱に縮小。ボタンは「others」バー）</div>
     <div class="hrow">・<b>W/A/S/D</b>=選択枠を奥/左/手前/右へ移動　・<b>Space</b>=上 / <b>Shift</b>=下（選択モード・単層は選択層以下まで。クリップ中は貼り付け位置）</div>
